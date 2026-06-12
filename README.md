@@ -6,10 +6,17 @@ best-lap leaderboard.
 
 ## Running
 
+Requires a Postgres database (rooms and the best-lap leaderboard are stored there).
+For local development, start one with Docker or Podman:
+
 ```bash
+docker compose up -d   # or: podman compose up -d
 npm install
 npm run dev
 ```
+
+The server connects to `postgres://postgres:postgres@localhost:5432/racing` by default;
+set `DATABASE_URL` to override (this is how the deployed environment is configured).
 
 - Client: http://localhost:5173
 - WebSocket server: ws://localhost:8080
@@ -27,10 +34,10 @@ room (or join an existing one), and drive.
 
 - `shared/` — track spline definition, checkpoints, and the WebSocket message protocol
 - `server/` — room manager, server-side checkpoint validation and lap timing, persistent
-  leaderboard stored in `server/data/leaderboard.json`
+  leaderboard and room list stored in Postgres
 - `client/` — Three.js scene, track mesh generation, car physics, remote player
   interpolation, lobby and HUD
 
 Laps only count when all checkpoints are passed in order (validated server-side), so
-cutting the track does not pay off. Best lap times are saved on the server and survive
-restarts.
+cutting the track does not pay off. Best lap times are saved in the database and survive
+restarts. Rooms also survive restarts but are automatically closed 1 hour after creation.

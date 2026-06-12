@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage } from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
 import { updateTiming } from "./timing";
+import { initDb } from "./db";
 import { submitTime, topEntries } from "./leaderboard";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -40,10 +41,10 @@ function joinRoom(player: Player, roomId: string): void {
   broadcastRooms();
 }
 
-function handleState(
+async function handleState(
   player: Player,
   msg: Extract<ClientMessage, { type: "state" }>
-): void {
+): Promise<void> {
   const room = player.room;
   if (!room) return;
   player.x = msg.x;
@@ -55,11 +56,11 @@ function handleState(
   const lap = updateTiming(player.timing, msg.x, msg.z, Date.now());
   if (!lap) return;
 
-  const prevRecord = topEntries(1)[0]?.timeMs ?? Infinity;
+  const prevRecord = (await topEntries(1))[0]?.timeMs ?? Infinity;
   let isTrackRecord = false;
-  if (submitTime(player.name, lap.lapTimeMs)) {
+  if (await submitTime(player.name, lap.lapTimeMs)) {
     isTrackRecord = lap.lapTimeMs < prevRecord;
-    broadcastAll({ type: "leaderboard", entries: topEntries(10) });
+    broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
   }
   room.broadcast({
     type: "lap",
@@ -92,7 +93,9 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       broadcastRooms();
       break;
     case "state":
-      handleState(player, msg);
+      handleState(player, msg).catch((err) =>
+        console.error("Failed to handle state:", err)
+      );
       break;
   }
 }
@@ -132,14 +135,14 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
-wss.on("connection", (ws) => {
+wss.on("connection", async (ws) => {
   const player = createPlayer(Math.random().toString(36).slice(2, 10), ws);
   allPlayers.add(player);
   send(ws, {
     type: "welcome",
     playerId: player.id,
     rooms: manager.list(),
-    leaderboard: topEntries(10),
+    leaderboard: await topEntries(10).catch(() => []),
   });
 
   ws.on("message", (raw) => {
@@ -161,12 +164,29 @@ wss.on("connection", (ws) => {
 
 setInterval(() => {
   const now = Date.now();
+  let roomsChanged = false;
   for (const room of manager.rooms.values()) {
+    if (room.expired(now)) {
+      room.broadcast({ type: "left" });
+      manager.close(room);
+      roomsChanged = true;
+      continue;
+    }
     if (room.players.size === 0) continue;
     room.broadcast({ type: "snapshot", t: now, players: room.snapshot() });
   }
+  if (roomsChanged) broadcastRooms();
 }, SNAPSHOT_INTERVAL_MS);
 
-httpServer.listen(PORT, () => {
-  console.log(`Racing server listening on http://localhost:${PORT}`);
+async function main(): Promise<void> {
+  await initDb();
+  await manager.load();
+  httpServer.listen(PORT, () => {
+    console.log(`Racing server listening on http://localhost:${PORT}`);
+  });
+}
+
+main().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

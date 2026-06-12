@@ -1,6 +1,9 @@
 import type { WebSocket } from "ws";
 import type { PlayerSnapshot, RoomInfo, ServerMessage } from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
+import { pool } from "./db";
+
+export const ROOM_TTL_MS = 60 * 60 * 1000;
 
 export interface Player {
   id: string;
@@ -35,7 +38,8 @@ export class Room {
 
   constructor(
     public readonly id: string,
-    public readonly name: string
+    public readonly name: string,
+    public readonly createdAt: number
   ) {}
 
   broadcast(msg: ServerMessage): void {
@@ -62,18 +66,51 @@ export class Room {
     }));
   }
 
+  expired(now: number): boolean {
+    return now - this.createdAt >= ROOM_TTL_MS;
+  }
+
   info(): RoomInfo {
     return { id: this.id, name: this.name, players: this.players.size };
   }
 }
 
+function deleteRow(roomId: string): void {
+  pool
+    .query("DELETE FROM rooms WHERE id = $1", [roomId])
+    .catch((err) => console.error("Failed to delete room row:", err));
+}
+
 export class RoomManager {
   readonly rooms = new Map<string, Room>();
 
+  /** Restore non-expired rooms from the DB and drop expired rows. */
+  async load(): Promise<void> {
+    await pool.query("DELETE FROM rooms WHERE created_at < now() - $1::interval", [
+      `${ROOM_TTL_MS} milliseconds`,
+    ]);
+    const { rows } = await pool.query(
+      "SELECT id, name, created_at FROM rooms"
+    );
+    for (const r of rows) {
+      this.rooms.set(
+        r.id,
+        new Room(r.id, r.name, new Date(r.created_at).getTime())
+      );
+    }
+  }
+
   create(name: string): Room {
     const id = Math.random().toString(36).slice(2, 9);
-    const room = new Room(id, name.trim().slice(0, 24) || "Race Room");
+    const room = new Room(id, name.trim().slice(0, 24) || "Race Room", Date.now());
     this.rooms.set(id, room);
+    pool
+      .query("INSERT INTO rooms (id, name, created_at) VALUES ($1, $2, $3)", [
+        room.id,
+        room.name,
+        new Date(room.createdAt),
+      ])
+      .catch((err) => console.error("Failed to persist room:", err));
     return room;
   }
 
@@ -93,8 +130,23 @@ export class RoomManager {
     if (!room) return null;
     room.players.delete(player.id);
     player.room = null;
-    if (room.players.size === 0) this.rooms.delete(room.id);
+    if (room.players.size === 0) {
+      this.rooms.delete(room.id);
+      deleteRow(room.id);
+    }
     return room;
+  }
+
+  /** Force-close a room: detach all players and delete it (memory + DB). */
+  close(room: Room): Player[] {
+    const kicked = [...room.players.values()];
+    for (const p of kicked) {
+      room.players.delete(p.id);
+      p.room = null;
+    }
+    this.rooms.delete(room.id);
+    deleteRow(room.id);
+    return kicked;
   }
 
   list(): RoomInfo[] {
