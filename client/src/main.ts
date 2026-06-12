@@ -1,6 +1,7 @@
 import "./style.css";
 import { Net } from "./net";
 import { Game } from "./game/game";
+import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
 
 const app = document.getElementById("app")!;
@@ -51,11 +52,15 @@ net.onMessage((msg) => {
   }
 });
 
+// Load models and connect in parallel; both must finish before a game can start.
+const modelsReady = preloadModels();
+
 try {
   const wsUrl = import.meta.env.DEV
     ? `ws://${location.hostname}:8080`
     : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   await net.connect(wsUrl);
+  await modelsReady;
 } catch {
   const err = document.createElement("div");
   err.className = "connect-error";

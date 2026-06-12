@@ -42,10 +42,12 @@ function buildRoad(): THREE.Mesh {
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     geo,
     new THREE.MeshLambertMaterial({ color: 0x2e2e36, side: THREE.DoubleSide })
   );
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
 /** Quad strip between consecutive samples at a lateral offset from the centerline. */
@@ -148,6 +150,8 @@ function buildBarriers(): THREE.Group {
   }
   red.count = redIdx;
   white.count = whiteIdx;
+  red.castShadow = white.castShadow = true;
+  red.receiveShadow = white.receiveShadow = true;
   group.add(red, white);
   return group;
 }
@@ -190,6 +194,7 @@ function buildStartGate(): THREE.Group {
   for (const side of [1, -1]) {
     const post = new THREE.Mesh(postGeo, postMat);
     post.position.set(side * width, 3.5, 0);
+    post.castShadow = true;
     group.add(post);
   }
   const banner = new THREE.Mesh(
@@ -197,6 +202,7 @@ function buildStartGate(): THREE.Group {
     new THREE.MeshLambertMaterial({ color: 0xd8453c })
   );
   banner.position.y = 6.6;
+  banner.castShadow = true;
   group.add(banner);
 
   group.position.set(s.x, 0, s.z);

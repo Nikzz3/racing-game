@@ -8,11 +8,11 @@ import {
 import type { Net } from "../net";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
-import { colorForPlayer, createCarMesh } from "./car";
+import { animateCar, createCarMesh } from "./car";
 import { Input, type CarInput } from "./input";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
-import { createScene, type SceneBundle } from "./scene";
+import { createScene, updateSun, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
@@ -59,7 +59,7 @@ export class Game {
     buildTrack(this.bundle.scene);
 
     this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);
-    this.carMesh = createCarMesh(colorForPlayer(myId));
+    this.carMesh = createCarMesh(myId);
     this.bundle.scene.add(this.carMesh);
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
@@ -128,9 +128,11 @@ export class Game {
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
+    animateCar(this.carMesh, this.car.speed, input.steer, dt);
 
-    this.remote.update();
+    this.remote.update(dt);
     this.updateCamera(dt);
+    updateSun(this.bundle.sun, this.car.x, this.car.z);
 
     this.hud.setSpeed(this.car.speed);
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { PlayerSnapshot } from "@racing/shared";
-import { colorForPlayer, createCarMesh } from "./car";
+import { animateCar, createCarMesh } from "./car";
 
 interface BufferedSnapshot {
   t: number; // local receive time (performance.now)
@@ -27,7 +27,7 @@ export class RemotePlayers {
     // Create meshes for new players, remove ones that left.
     for (const [id, p] of others) {
       if (!this.meshes.has(id)) {
-        const mesh = createCarMesh(colorForPlayer(id), p.name);
+        const mesh = createCarMesh(id, p.name);
         mesh.position.set(p.x, 0, p.z);
         mesh.rotation.y = p.rot;
         this.meshes.set(id, mesh);
@@ -42,7 +42,7 @@ export class RemotePlayers {
     }
   }
 
-  update(): void {
+  update(dt: number): void {
     if (this.snapshots.length === 0) return;
     const renderT = performance.now() - RENDER_DELAY_MS;
 
@@ -66,6 +66,7 @@ export class RemotePlayers {
         if (p) {
           mesh.position.set(p.x, 0, p.z);
           mesh.rotation.y = p.rot;
+          animateCar(mesh, p.speed, 0, dt);
         }
         continue;
       }
@@ -75,6 +76,7 @@ export class RemotePlayers {
         a.z + (b.z - a.z) * alpha
       );
       mesh.rotation.y = lerpAngle(a.rot, b.rot, alpha);
+      animateCar(mesh, a.speed + (b.speed - a.speed) * alpha, 0, dt);
     }
   }
 

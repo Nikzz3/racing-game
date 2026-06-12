@@ -1,18 +1,93 @@
 import * as THREE from "three";
 import { hashString } from "../util";
+import { CAR_VARIANTS, getModel } from "./models";
 
 const CAR_COLORS = [
   0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc9c, 0xfd79a8,
 ];
 
+const TARGET_LENGTH = 4.2;
+
+interface CarParts {
+  wheels: THREE.Object3D[];
+  frontWheels: THREE.Object3D[];
+  /** World-space wheel radius, for converting speed to spin. */
+  wheelRadius: number;
+  /** -1 when the model was rotated 180° to face +z, so wheels spin the right way. */
+  spinSign: number;
+}
+
 export function colorForPlayer(id: string): number {
   return CAR_COLORS[hashString(id) % CAR_COLORS.length];
 }
 
-/** Low-poly arcade car. Local forward is +z, so mesh.rotation.y = heading works directly. */
-export function createCarMesh(color: number, name?: string): THREE.Group {
+/**
+ * Car mesh for a player. Uses a Kenney Car Kit GLB (variant picked from the player id),
+ * falling back to a simple procedural car if the model failed to load.
+ * Local forward is +z, so mesh.rotation.y = heading works directly.
+ */
+export function createCarMesh(playerId: string, name?: string): THREE.Group {
+  const variant = CAR_VARIANTS[hashString(playerId) % CAR_VARIANTS.length];
+  const model = getModel(`car:${variant}`);
   const group = new THREE.Group();
 
+  if (model) {
+    const inner = model.clone(true);
+    inner.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(inner);
+    const length = box.max.z - box.min.z;
+    const scale = TARGET_LENGTH / length;
+    inner.scale.setScalar(scale);
+    inner.position.y = -box.min.y * scale;
+
+    const wheels: THREE.Object3D[] = [];
+    const frontWheels: THREE.Object3D[] = [];
+    let wheelRadius = 0.35;
+    inner.traverse((obj) => {
+      if (!obj.name.startsWith("wheel")) return;
+      obj.rotation.order = "YXZ"; // yaw for steering, then x-spin for rolling
+      wheels.push(obj);
+      if (obj.name.includes("front")) frontWheels.push(obj);
+      const wheelBox = new THREE.Box3().setFromObject(obj);
+      wheelRadius = ((wheelBox.max.y - wheelBox.min.y) / 2) * scale;
+    });
+
+    // If "front" wheels sit at -z, the model faces -z and needs a half turn.
+    let spinSign = 1;
+    if (frontWheels.length > 0 && frontWheels[0].position.z < 0) {
+      inner.rotation.y = Math.PI;
+      spinSign = -1;
+    }
+
+    group.add(inner);
+    group.userData.parts = { wheels, frontWheels, wheelRadius, spinSign } satisfies CarParts;
+  } else {
+    group.add(buildFallbackCar(colorForPlayer(playerId)));
+  }
+
+  if (name) {
+    group.add(createNameTag(name));
+  }
+  return group;
+}
+
+/** Spins the wheels with speed and yaws the front wheels with steering input. */
+export function animateCar(car: THREE.Group, speed: number, steer: number, dt: number): void {
+  const parts = car.userData.parts as CarParts | undefined;
+  if (!parts) return;
+  const spin = (speed / parts.wheelRadius) * dt * parts.spinSign;
+  for (const wheel of parts.wheels) wheel.rotation.x += spin;
+  for (const wheel of parts.frontWheels) wheel.rotation.y = steer * 0.45;
+}
+
+function buildFallbackCar(color: number): THREE.Group {
+  const group = new THREE.Group();
   const bodyMat = new THREE.MeshLambertMaterial({ color });
   const darkMat = new THREE.MeshLambertMaterial({ color: 0x16181f });
 
@@ -41,7 +116,6 @@ export function createCarMesh(color: number, name?: string): THREE.Group {
     group.add(wheel);
   }
 
-  // Fake contact shadow
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(2.1, 20),
     new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
@@ -50,9 +124,6 @@ export function createCarMesh(color: number, name?: string): THREE.Group {
   shadow.position.y = 0.02;
   group.add(shadow);
 
-  if (name) {
-    group.add(createNameTag(name));
-  }
   return group;
 }
 
