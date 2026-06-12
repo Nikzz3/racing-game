@@ -9,13 +9,18 @@ export interface SceneBundle {
   sun: THREE.DirectionalLight;
 }
 
-/** Sun offset from the followed car; matches the original light direction. */
-const SUN_OFFSET = new THREE.Vector3(-130, 150, -65);
+/**
+ * Sun offset from the followed car. Low elevation (~17 deg) for long sunset
+ * shadows; the visible sun disc in the sky dome uses this same direction.
+ */
+const SUN_OFFSET = new THREE.Vector3(-130, 45, -65);
+
+const HORIZON_COLOR = 0xf2a86e;
 
 export function createScene(container: HTMLElement): SceneBundle {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf2a86e);
-  scene.fog = new THREE.Fog(0xf2a86e, 250, 700);
+  scene.background = new THREE.Color(HORIZON_COLOR);
+  scene.fog = new THREE.Fog(HORIZON_COLOR, 250, 700);
 
   const camera = new THREE.PerspectiveCamera(
     70,
@@ -32,21 +37,24 @@ export function createScene(container: HTMLElement): SceneBundle {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  // Warm late-afternoon light
-  const hemi = new THREE.HemisphereLight(0xffd9b0, 0x3a5b3a, 0.95);
+  // Warm sunset light: low orange sun plus a dusky sky bounce.
+  const hemi = new THREE.HemisphereLight(0xe8b8a0, 0x3a4b46, 0.85);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffc080, 1.25);
+  const sun = new THREE.DirectionalLight(0xffa45e, 1.5);
   sun.position.copy(SUN_OFFSET);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -120;
-  sun.shadow.camera.right = 120;
-  sun.shadow.camera.top = 120;
-  sun.shadow.camera.bottom = -120;
+  // Slightly wider box than before: the low sun stretches shadows further.
+  sun.shadow.camera.left = -140;
+  sun.shadow.camera.right = 140;
+  sun.shadow.camera.top = 140;
+  sun.shadow.camera.bottom = -140;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 500;
   sun.shadow.bias = -0.0005;
   scene.add(sun, sun.target);
+
+  scene.add(createSkyDome());
 
   // Ground
   const ground = new THREE.Mesh(
@@ -66,6 +74,73 @@ export function createScene(container: HTMLElement): SceneBundle {
 export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): void {
   sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z);
   sun.target.position.set(x, 0, z);
+}
+
+/**
+ * Gradient sunset sky with a sun disc drawn exactly along SUN_OFFSET, so the
+ * visible sun sits where the shadows say it should be. The dome follows the
+ * camera each frame, making it behave like an infinitely distant sky.
+ */
+function createSkyDome(): THREE.Mesh {
+  const uniforms = {
+    sunDirection: { value: SUN_OFFSET.clone().normalize() },
+    topColor: { value: new THREE.Color(0x3b2e63) },
+    midColor: { value: new THREE.Color(0xc96a6a) },
+    horizonColor: { value: new THREE.Color(HORIZON_COLOR) },
+    sunCoreColor: { value: new THREE.Color(0xfff3d0) },
+    sunGlowColor: { value: new THREE.Color(0xffb36b) },
+  };
+
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    vertexShader: /* glsl */ `
+      varying vec3 vWorldPosition;
+      void main() {
+        vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 sunDirection;
+      uniform vec3 topColor;
+      uniform vec3 midColor;
+      uniform vec3 horizonColor;
+      uniform vec3 sunCoreColor;
+      uniform vec3 sunGlowColor;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec3 dir = normalize(vWorldPosition - cameraPosition);
+        float h = max(dir.y, 0.0);
+
+        // Horizon -> dusty pink -> dusk purple gradient.
+        vec3 sky = mix(horizonColor, midColor, smoothstep(0.0, 0.18, h));
+        sky = mix(sky, topColor, smoothstep(0.12, 0.55, h));
+
+        float cosAngle = clamp(dot(dir, sunDirection), 0.0, 1.0);
+        // Broad warm haze around the sun, tighter glow, then the disc itself.
+        sky += sunGlowColor * 0.25 * pow(cosAngle, 12.0);
+        sky += sunGlowColor * 0.5 * pow(cosAngle, 180.0);
+        sky = mix(sky, sunCoreColor, smoothstep(0.9994, 0.9998, cosAngle));
+
+        gl_FragColor = vec4(sky, 1.0);
+
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+  });
+
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), material);
+  sky.frustumCulled = false;
+  sky.onBeforeRender = (_renderer, _scene, camera) => {
+    sky.position.setFromMatrixPosition(camera.matrixWorld);
+    sky.updateMatrixWorld();
+  };
+  return sky;
 }
 
 interface ScatterSpec {
