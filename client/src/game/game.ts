@@ -10,6 +10,7 @@ import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh } from "./car";
 import { Input, type CarInput } from "./input";
+import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { createScene, updateSun, type SceneBundle } from "./scene";
@@ -22,7 +23,8 @@ const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 export class Game {
   private bundle: SceneBundle;
   private hud: Hud;
-  private input = new Input();
+  private input: Input;
+  private touch: TouchControls;
   private car = new CarPhysics();
   private carMesh: THREE.Group;
   private remote: RemotePlayers;
@@ -64,6 +66,8 @@ export class Game {
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
     this.hud = new Hud(parent, roomName, onLeave);
+    this.touch = new TouchControls(parent);
+    this.input = new Input(this.touch);
     this.input.attach();
     window.addEventListener("resize", this.onResize);
 
@@ -185,6 +189,7 @@ export class Game {
     this.running = false;
     clearInterval(this.sendTimer);
     this.input.detach();
+    this.touch.dispose();
     window.removeEventListener("resize", this.onResize);
     this.remote.dispose();
     this.hud.dispose();

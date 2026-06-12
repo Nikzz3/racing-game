@@ -1,3 +1,5 @@
+import type { TouchControls } from "./touch";
+
 export interface CarInput {
   throttle: number;
   brake: number;
@@ -7,6 +9,9 @@ export interface CarInput {
 export class Input {
   private keys = new Set<string>();
   private smoothSteer = 0;
+
+  constructor(private touch: TouchControls | null = null) {}
+
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
     this.keys.add(e.code);
@@ -34,10 +39,18 @@ export class Input {
     const step = 3.0 * dt;
     this.smoothSteer =
       Math.abs(diff) <= step ? targetSteer : this.smoothSteer + Math.sign(diff) * step;
-    return {
+    const kb: CarInput = {
       throttle: this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0,
       brake: this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0,
       steer: this.smoothSteer,
+    };
+    const t = this.touch?.read();
+    if (!t) return kb;
+    // Joystick steer is already analog, so it skips the keyboard smoothing.
+    return {
+      throttle: Math.max(kb.throttle, t.throttle),
+      brake: Math.max(kb.brake, t.brake),
+      steer: Math.max(-1, Math.min(1, kb.steer + t.steer)),
     };
   }
 }

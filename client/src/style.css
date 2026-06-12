@@ -766,3 +766,146 @@ input:focus {
     opacity: 0;
   }
 }
+
+/* ---------- Virtual joystick (touch devices) ---------- */
+
+.joystick {
+  display: none;
+  position: absolute;
+  bottom: 26px;
+  right: 22px;
+  width: 134px;
+  height: 134px;
+  border-radius: 50%;
+  background: rgba(12, 14, 24, 0.45);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 20;
+}
+
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  .joystick {
+    display: block;
+  }
+
+  /* Keep the bottom-right joystick area clear. */
+  .hud-speed {
+    left: 18px;
+    transform: none;
+    padding: 8px 18px;
+  }
+
+  .hud-speed .speed-value {
+    font-size: 32px;
+  }
+
+  .offtrack-warn {
+    left: 18px;
+    transform: none;
+    bottom: 92px;
+  }
+}
+
+/* ---------- Compact HUD for narrow screens ---------- */
+
+@media (max-width: 700px) {
+  .hud-top-left {
+    top: 10px;
+    left: 10px;
+    padding: 8px 10px;
+  }
+
+  .hud-room {
+    font-size: 10px;
+    max-width: 90px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hud-lap {
+    font-size: 15px;
+    margin: 2px 0 1px;
+  }
+
+  .hud-cp {
+    font-size: 10px;
+  }
+
+  .hud-leave {
+    margin-top: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .hud-timer {
+    top: 10px;
+    padding: 6px 14px 8px;
+  }
+
+  .hud-cur-lap {
+    font-size: 20px;
+  }
+
+  .hud-lap-small {
+    font-size: 10px;
+    gap: 10px;
+  }
+
+  /* Tuck the standings under the top-left stats so the three top panels
+     no longer overlap each other. */
+  .hud-standings {
+    top: 124px;
+    left: 10px;
+    right: auto;
+    min-width: 0;
+    max-width: 180px;
+    padding: 8px 10px;
+  }
+
+  .hud-standings h3 {
+    font-size: 9px;
+    margin-bottom: 4px;
+  }
+
+  .hud-standings table {
+    font-size: 11px;
+  }
+
+  .hud-standings td {
+    padding: 2px 3px;
+  }
+
+  .hud-standings td:nth-child(2) {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .toasts {
+    top: 76px;
+    width: 100%;
+  }
+
+  .toast {
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+}
