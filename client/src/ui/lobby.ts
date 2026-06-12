@@ -19,24 +19,36 @@ export class Lobby {
     this.root = document.createElement("div");
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
+      <div class="lobby-scene" aria-hidden="true">
+        <div class="scene-stars"></div>
+        <div class="scene-sun"></div>
+        <div class="scene-mountains"></div>
+        <div class="scene-grid-wrap"><div class="scene-grid"></div></div>
+        <div class="scene-haze"></div>
+      </div>
       <div class="lobby">
-        <h1>SUNSET <span>RIDGE</span></h1>
-        <p class="subtitle">3D MULTIPLAYER RACING — ${escapeHtml(TRACK_NAME.toUpperCase())}</p>
+        <div class="lobby-flag-strip"></div>
+        <header class="lobby-header">
+          <p class="lobby-kicker">// IGNITION SEQUENCE</p>
+          <h1 class="lobby-title">SUNSET<span>RIDGE</span></h1>
+          <p class="subtitle">3D MULTIPLAYER RACING — ${escapeHtml(TRACK_NAME.toUpperCase())}</p>
+        </header>
         <div class="name-row">
           <label for="driver-name">Driver</label>
-          <input id="driver-name" maxlength="16" placeholder="Your name" />
+          <input id="driver-name" maxlength="16" placeholder="Your name" autocomplete="off" />
+          <span class="name-tag">P1</span>
         </div>
         <div class="lobby-columns">
-          <section>
-            <h2>Rooms</h2>
+          <section class="panel-rooms">
+            <h2><i class="dot"></i>Starting Grid</h2>
             <div class="room-list"></div>
             <form class="create-form">
               <input maxlength="24" placeholder="New room name" />
               <button type="submit">Create &amp; Race</button>
             </form>
           </section>
-          <section>
-            <h2>Best Laps — All Time</h2>
+          <section class="panel-laps">
+            <h2><i class="dot gold"></i>Best Laps — All Time</h2>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
           </section>
