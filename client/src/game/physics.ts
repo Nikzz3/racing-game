@@ -7,13 +7,14 @@ import {
 import type { CarInput } from "./input";
 
 const MAX_SPEED = 90; // m/s, ~324 km/h
-const GRASS_MAX_SPEED = 16;
+const GRASS_MAX_SPEED = 9;
 const ENGINE_ACCEL = 65;
 const BRAKE_DECEL = 38;
 const REVERSE_MAX_SPEED = 14;
 const COAST_DECEL = 5;
 const DRAG = 0.01; // quadratic drag coefficient
-const GRASS_DECEL = 50; // extra slowdown while above grass speed limit
+const GRASS_DECEL = 110; // extra slowdown while above grass speed limit
+const GRASS_FRICTION = 6; // constant deceleration while any wheel is on grass
 const STEER_RATE = 1.8; // rad/s at full grip
 
 /** Cars are physically clamped just inside the barrier wall. */
@@ -56,6 +57,11 @@ export class CarPhysics {
     this.onTrack = before.dist <= ROAD_HALF_WIDTH + 0.6;
     const limit = this.onTrack ? MAX_SPEED : GRASS_MAX_SPEED;
     if (this.speed > limit) this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
+    if (!this.onTrack && this.speed !== 0) {
+      // Continuous grass drag, independent of the speed cap, so even slow cars feel the mud.
+      const f = GRASS_FRICTION * dt;
+      this.speed = Math.abs(this.speed) <= f ? 0 : this.speed - Math.sign(this.speed) * f;
+    }
     if (this.speed < -REVERSE_MAX_SPEED) this.speed = -REVERSE_MAX_SPEED;
 
     // Steering: no grip at standstill, reduced authority at high speed
