@@ -8,7 +8,7 @@ import type { CarInput } from "./input";
 
 const MAX_SPEED = 90; // m/s, ~324 km/h
 const GRASS_MAX_SPEED = 16;
-const ENGINE_ACCEL = 82;
+const ENGINE_ACCEL = 65;
 const BRAKE_DECEL = 38;
 const REVERSE_MAX_SPEED = 14;
 const COAST_DECEL = 5;
