@@ -1,3 +1,7 @@
+import { createServer } from "node:http";
+import { existsSync, createReadStream, statSync } from "node:fs";
+import { join, normalize, extname, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { ClientMessage, ServerMessage } from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
@@ -5,6 +9,10 @@ import { updateTiming } from "./timing";
 import { submitTime, topEntries } from "./leaderboard";
 
 const PORT = Number(process.env.PORT ?? 8080);
+const CLIENT_DIST = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../client/dist"
+);
 const SNAPSHOT_INTERVAL_MS = 50;
 
 const manager = new RoomManager();
@@ -89,7 +97,40 @@ function handleMessage(player: Player, msg: ClientMessage): void {
   }
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+const httpServer = createServer((req, res) => {
+  const urlPath = (req.url ?? "/").split("?")[0];
+  const safePath = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
+  let filePath = join(CLIENT_DIST, safePath);
+  if (!filePath.startsWith(CLIENT_DIST)) {
+    res.writeHead(403).end();
+    return;
+  }
+  if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+    filePath = join(CLIENT_DIST, "index.html");
+  }
+  if (!existsSync(filePath)) {
+    res.writeHead(404).end("Not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": MIME_TYPES[extname(filePath)] ?? "application/octet-stream",
+  });
+  createReadStream(filePath).pipe(res);
+});
+
+const wss = new WebSocketServer({ server: httpServer });
 
 wss.on("connection", (ws) => {
   const player = createPlayer(Math.random().toString(36).slice(2, 10), ws);
@@ -126,4 +167,6 @@ setInterval(() => {
   }
 }, SNAPSHOT_INTERVAL_MS);
 
-console.log(`Racing server listening on ws://localhost:${PORT}`);
+httpServer.listen(PORT, () => {
+  console.log(`Racing server listening on http://localhost:${PORT}`);
+});

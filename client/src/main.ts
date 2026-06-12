@@ -52,7 +52,10 @@ net.onMessage((msg) => {
 });
 
 try {
-  await net.connect(`ws://${location.hostname}:8080`);
+  const wsUrl = import.meta.env.DEV
+    ? `ws://${location.hostname}:8080`
+    : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+  await net.connect(wsUrl);
 } catch {
   const err = document.createElement("div");
   err.className = "connect-error";
