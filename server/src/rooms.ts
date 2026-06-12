@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { PlayerSnapshot, RoomInfo, ServerMessage } from "@racing/shared";
+import type { PlayerSnapshot, ReplayFrame, RoomInfo, ServerMessage } from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
 import { pool } from "./db";
 
@@ -16,6 +16,10 @@ export interface Player {
   rot: number;
   speed: number;
   timing: TimingState;
+  /** Buffered replay frames for the lap in progress. */
+  lapFrames: ReplayFrame[];
+  /** False once the recording exceeds the frame cap and must be discarded. */
+  lapFramesValid: boolean;
 }
 
 export function createPlayer(id: string, ws: WebSocket): Player {
@@ -30,6 +34,8 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     rot: 0,
     speed: 0,
     timing: createTiming(),
+    lapFrames: [],
+    lapFramesValid: true,
   };
 }
 
@@ -120,6 +126,8 @@ export class RoomManager {
     if (!room) return null;
     this.leave(player);
     player.timing = createTiming();
+    player.lapFrames = [];
+    player.lapFramesValid = true;
     room.players.set(player.id, player);
     player.room = room;
     return room;

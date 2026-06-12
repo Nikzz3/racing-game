@@ -24,13 +24,18 @@ export interface LeaderboardEntry {
   name: string;
   timeMs: number;
   date: string;
+  hasReplay: boolean;
 }
+
+/** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
+export type ReplayFrame = [number, number, number, number, number];
 
 export type ClientMessage =
   | { type: "hello"; name: string }
   | { type: "createRoom"; roomName: string }
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
+  | { type: "getReplay"; name: string }
   | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
 
 export type ServerMessage =
@@ -55,4 +60,5 @@ export type ServerMessage =
       isTrackRecord: boolean;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
+  | { type: "replay"; name: string; timeMs: number; frames: ReplayFrame[] }
   | { type: "error"; message: string };

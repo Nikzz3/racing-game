@@ -18,5 +18,11 @@ export async function initDb(): Promise<void> {
       time_ms INTEGER NOT NULL,
       date TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS replays (
+      name TEXT PRIMARY KEY,
+      time_ms INTEGER NOT NULL,
+      frames JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }

@@ -5,6 +5,7 @@ import { escapeHtml, formatMs } from "../util";
 export interface LobbyCallbacks {
   onCreate: (roomName: string) => void;
   onJoin: (roomId: string) => void;
+  onReplay: (name: string) => void;
 }
 
 const NAME_KEY = "racer-name";
@@ -84,6 +85,12 @@ export class Lobby {
       callbacks.onJoin(btn.dataset.room!);
     });
 
+    this.lbList.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
+      if (!btn) return;
+      callbacks.onReplay(btn.dataset.replay!);
+    });
+
     this.setRooms([]);
     this.setLeaderboard([]);
   }
@@ -118,6 +125,7 @@ export class Lobby {
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
+          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" title="Watch replay">▶</button>` : ""}
         </li>`
       )
       .join("");

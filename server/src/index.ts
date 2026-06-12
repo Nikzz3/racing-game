@@ -7,7 +7,8 @@ import type { ClientMessage, ServerMessage } from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
 import { updateTiming } from "./timing";
 import { initDb } from "./db";
-import { submitTime, topEntries } from "./leaderboard";
+import { topEntries } from "./leaderboard";
+import { getReplay, makeFrame, submitLap, MAX_REPLAY_FRAMES } from "./replay";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIST = join(
@@ -53,15 +54,44 @@ async function handleState(
   player.rot = msg.rot;
   player.speed = msg.speed;
 
-  const lap = updateTiming(player.timing, msg.x, msg.z, Date.now());
-  if (!lap) return;
+  const prevStart = player.timing.lapStartT;
+  const now = Date.now();
+  const lap = updateTiming(player.timing, msg.x, msg.z, now);
+
+  if (!lap) {
+    // No lap completed: keep recording the lap in progress.
+    if (player.timing.lapStartT !== null) {
+      if (prevStart === null) {
+        // First crossing of the start line this session.
+        player.lapFrames = [makeFrame(0, msg.x, msg.z, msg.rot, msg.speed)];
+        player.lapFramesValid = true;
+      } else if (player.lapFrames.length >= MAX_REPLAY_FRAMES) {
+        player.lapFramesValid = false;
+      } else {
+        player.lapFrames.push(
+          makeFrame(now - player.timing.lapStartT, msg.x, msg.z, msg.rot, msg.speed)
+        );
+      }
+    }
+    return;
+  }
+
+  // Lap completed: this sample is both the final frame and frame 0 of the next.
+  player.lapFrames.push(makeFrame(lap.lapTimeMs, msg.x, msg.z, msg.rot, msg.speed));
+  const frames =
+    player.lapFramesValid && player.lapFrames.length >= 2 ? player.lapFrames : null;
 
   const prevRecord = (await topEntries(1))[0]?.timeMs ?? Infinity;
   let isTrackRecord = false;
-  if (await submitTime(player.name, lap.lapTimeMs)) {
+  if (await submitLap(player.name, lap.lapTimeMs, frames)) {
     isTrackRecord = lap.lapTimeMs < prevRecord;
     broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
   }
+
+  // Seed the next lap's buffer with the boundary sample at t = 0.
+  player.lapFrames = [makeFrame(0, msg.x, msg.z, msg.rot, msg.speed)];
+  player.lapFramesValid = true;
+
   room.broadcast({
     type: "lap",
     playerId: player.id,
@@ -71,6 +101,21 @@ async function handleState(
     laps: player.timing.laps,
     isPersonalBest: lap.isPersonalBest,
     isTrackRecord,
+  });
+}
+
+async function handleGetReplay(player: Player, rawName: string): Promise<void> {
+  const name = rawName.trim().slice(0, 16);
+  const replay = name ? await getReplay(name) : null;
+  if (!replay) {
+    send(player.ws, { type: "error", message: `No replay available for ${name || "this driver"}` });
+    return;
+  }
+  send(player.ws, {
+    type: "replay",
+    name,
+    timeMs: replay.timeMs,
+    frames: replay.frames,
   });
 }
 
@@ -95,6 +140,11 @@ function handleMessage(player: Player, msg: ClientMessage): void {
     case "state":
       handleState(player, msg).catch((err) =>
         console.error("Failed to handle state:", err)
+      );
+      break;
+    case "getReplay":
+      handleGetReplay(player, msg.name).catch((err) =>
+        console.error("Failed to handle getReplay:", err)
       );
       break;
   }

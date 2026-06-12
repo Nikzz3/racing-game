@@ -1,6 +1,7 @@
 import "./style.css";
 import { Net } from "./net";
 import { Game } from "./game/game";
+import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
 
@@ -9,6 +10,7 @@ const net = new Net();
 
 let myId = "";
 let game: Game | null = null;
+let replay: ReplayViewer | null = null;
 
 const lobby = new Lobby(app, {
   onCreate: (roomName) => {
@@ -19,6 +21,7 @@ const lobby = new Lobby(app, {
     net.send({ type: "hello", name: lobby.playerName });
     net.send({ type: "joinRoom", roomId });
   },
+  onReplay: (name) => net.send({ type: "getReplay", name }),
 });
 
 net.onMessage((msg) => {
@@ -43,6 +46,15 @@ net.onMessage((msg) => {
       game?.dispose();
       game = null;
       lobby.show();
+      break;
+    case "replay":
+      if (game) break;
+      replay?.dispose();
+      lobby.hide();
+      replay = new ReplayViewer(app, msg.name, msg.timeMs, msg.frames, () => {
+        replay = null;
+        lobby.show();
+      });
       break;
     case "error":
       alert(msg.message);
