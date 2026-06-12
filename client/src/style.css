@@ -504,11 +504,19 @@ input:focus {
 
 .controls-hint {
   margin-top: 24px;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 6px;
   color: var(--text-dim);
   font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+.controls-hint span {
+  white-space: nowrap;
 }
 
 .controls-hint b {
@@ -805,6 +813,11 @@ input:focus {
     display: block;
   }
 
+  /* Keyboard hints are meaningless on touch devices. */
+  .controls-hint {
+    display: none;
+  }
+
   /* Keep the bottom-right joystick area clear. */
   .hud-speed {
     left: 18px;
@@ -907,5 +920,28 @@ input:focus {
   .toast {
     font-size: 13px;
     padding: 8px 14px;
+  }
+}
+
+/* On very narrow screens the centered timer collides with the top-left
+   stats, so pin it to the right and let the room name breathe. */
+@media (max-width: 500px) {
+  .hud-timer {
+    left: auto;
+    right: 10px;
+    transform: none;
+    text-align: right;
+  }
+
+  .hud-lap-small {
+    justify-content: flex-end;
+  }
+
+  .hud-standings {
+    max-width: 230px;
+  }
+
+  .hud-standings td:nth-child(2) {
+    max-width: 120px;
   }
 }

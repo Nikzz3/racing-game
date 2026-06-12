@@ -53,7 +53,7 @@ export class Lobby {
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
           </section>
         </div>
-        <p class="controls-hint"><b>W</b> throttle <b>S</b> brake <b>A</b><b>D</b> steer</p>
+        <p class="controls-hint"><span><b>W</b> throttle</span> <span><b>S</b> brake</span> <span><b>A</b><b>D</b> steer</span></p>
       </div>
     `;
     parent.appendChild(this.root);
