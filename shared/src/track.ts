@@ -11,24 +11,47 @@ export const NUM_CHECKPOINTS = 12;
 export const CHECKPOINT_RADIUS = 15;
 export const TRACK_DIVISIONS = 512;
 
-/** Control points [x, z] of the centerline, in order of travel. */
+/**
+ * Control points [x, z] of the centerline, in order of travel.
+ * Layout: start straight along the bottom, a fast right sweeper onto the right
+ * side, a left-right chicane, a blast up to the top-right corner, esses across
+ * the top, a downhill-style dive on the left into a double-apex sweep, and a
+ * bottom-left corner back onto the start straight.
+ */
 const CONTROL_POINTS: [number, number][] = [
-  [0, -170],
-  [90, -165],
-  [160, -120],
-  [175, -40],
-  [150, 40],
-  [180, 110],
-  [120, 165],
-  [30, 150],
-  [-40, 175],
-  [-120, 160],
-  [-165, 95],
-  [-120, 40],
-  [-85, -10],
-  [-150, -60],
-  [-170, -130],
-  [-90, -175],
+  [-40, -210],
+  [40, -213],
+  [110, -205],
+  // T1: fast right sweeper
+  [175, -180],
+  [215, -120],
+  // T2-T3: left-right chicane
+  [196, -58],
+  [157, -20],
+  [178, 32],
+  // run up the right side
+  [225, 85],
+  [235, 150],
+  // T4: top-right corner
+  [195, 200],
+  [125, 185],
+  // T5-T7: esses across the top
+  [70, 215],
+  [5, 185],
+  [-60, 215],
+  [-130, 205],
+  // T8: top-left corner
+  [-185, 155],
+  // T9: dive to the inside
+  [-150, 95],
+  [-100, 60],
+  [-105, -5],
+  // T10-T11: double-apex right sweep back to the outside
+  [-160, -35],
+  [-205, -80],
+  // T12: bottom-left corner onto the start straight
+  [-195, -150],
+  [-130, -195],
 ];
 
 export interface TrackSample {
