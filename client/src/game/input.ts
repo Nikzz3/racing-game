@@ -6,6 +6,7 @@ export interface CarInput {
 
 export class Input {
   private keys = new Set<string>();
+  private smoothSteer = 0;
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
     this.keys.add(e.code);
@@ -25,13 +26,18 @@ export class Input {
     this.keys.clear();
   }
 
-  read(): CarInput {
+  read(dt: number): CarInput {
+    const targetSteer =
+      (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0) -
+      (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0);
+    const diff = targetSteer - this.smoothSteer;
+    const step = 3.0 * dt;
+    this.smoothSteer =
+      Math.abs(diff) <= step ? targetSteer : this.smoothSteer + Math.sign(diff) * step;
     return {
       throttle: this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0,
       brake: this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0,
-      steer:
-        (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0) -
-        (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0),
+      steer: this.smoothSteer,
     };
   }
 }

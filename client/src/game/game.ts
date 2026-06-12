@@ -123,7 +123,7 @@ export class Game {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
     this.lastFrame = now;
 
-    const input = this.autopilot ? this.autopilotInput() : this.input.read();
+    const input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
     this.car.update(dt, input);
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);

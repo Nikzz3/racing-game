@@ -6,15 +6,15 @@ import {
 } from "@racing/shared";
 import type { CarInput } from "./input";
 
-const MAX_SPEED = 48; // m/s, ~173 km/h
+const MAX_SPEED = 90; // m/s, ~324 km/h
 const GRASS_MAX_SPEED = 16;
-const ENGINE_ACCEL = 24;
+const ENGINE_ACCEL = 82;
 const BRAKE_DECEL = 38;
 const REVERSE_MAX_SPEED = 14;
 const COAST_DECEL = 5;
 const DRAG = 0.01; // quadratic drag coefficient
-const GRASS_DECEL = 26; // extra slowdown while above grass speed limit
-const STEER_RATE = 2.5; // rad/s at full grip
+const GRASS_DECEL = 50; // extra slowdown while above grass speed limit
+const STEER_RATE = 1.8; // rad/s at full grip
 
 /** Cars are physically clamped just inside the barrier wall. */
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
