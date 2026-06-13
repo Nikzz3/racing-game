@@ -46,17 +46,27 @@ export function createCarMesh(playerId: string, name?: string): THREE.Group {
     inner.scale.setScalar(scale);
     inner.position.y = -box.min.y * scale;
 
-    const wheels: THREE.Object3D[] = [];
-    const frontWheels: THREE.Object3D[] = [];
+    const wheelObjs: THREE.Object3D[] = [];
     let wheelRadius = 0.35;
     inner.traverse((obj) => {
       if (!obj.name.startsWith("wheel")) return;
       obj.rotation.order = "YXZ"; // yaw for steering, then x-spin for rolling
-      wheels.push(obj);
-      if (obj.name.includes("front")) frontWheels.push(obj);
+      wheelObjs.push(obj);
       const wheelBox = new THREE.Box3().setFromObject(obj);
       wheelRadius = ((wheelBox.max.y - wheelBox.min.y) / 2) * scale;
     });
+
+    // Road wheels sit off to the left/right; a back-mounted spare wheel sits on the
+    // car's centerline. Only the off-center road wheels should roll while driving.
+    const maxAbsX = Math.max(0, ...wheelObjs.map((w) => Math.abs(w.position.x)));
+    const sideThreshold = maxAbsX * 0.5;
+    const wheels: THREE.Object3D[] = [];
+    const frontWheels: THREE.Object3D[] = [];
+    for (const obj of wheelObjs) {
+      if (Math.abs(obj.position.x) < sideThreshold) continue; // skip centerline spare
+      wheels.push(obj);
+      if (obj.name.includes("front")) frontWheels.push(obj);
+    }
 
     // If "front" wheels sit at -z, the model faces -z and needs a half turn.
     let spinSign = 1;
