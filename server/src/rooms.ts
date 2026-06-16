@@ -1,5 +1,12 @@
 import type { WebSocket } from "ws";
-import type { PlayerSnapshot, ReplayFrame, RoomInfo, ServerMessage } from "@racing/shared";
+import {
+  asDifficulty,
+  type Difficulty,
+  type PlayerSnapshot,
+  type ReplayFrame,
+  type RoomInfo,
+  type ServerMessage,
+} from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
 import { pool } from "./db";
 
@@ -45,7 +52,8 @@ export class Room {
   constructor(
     public readonly id: string,
     public readonly name: string,
-    public readonly createdAt: number
+    public readonly createdAt: number,
+    public readonly difficulty: Difficulty
   ) {}
 
   broadcast(msg: ServerMessage): void {
@@ -77,7 +85,12 @@ export class Room {
   }
 
   info(): RoomInfo {
-    return { id: this.id, name: this.name, players: this.players.size };
+    return {
+      id: this.id,
+      name: this.name,
+      players: this.players.size,
+      difficulty: this.difficulty,
+    };
   }
 }
 
@@ -96,26 +109,35 @@ export class RoomManager {
       `${ROOM_TTL_MS} milliseconds`,
     ]);
     const { rows } = await pool.query(
-      "SELECT id, name, created_at FROM rooms"
+      "SELECT id, name, created_at, difficulty FROM rooms"
     );
     for (const r of rows) {
       this.rooms.set(
         r.id,
-        new Room(r.id, r.name, new Date(r.created_at).getTime())
+        new Room(
+          r.id,
+          r.name,
+          new Date(r.created_at).getTime(),
+          asDifficulty(r.difficulty)
+        )
       );
     }
   }
 
-  create(name: string): Room {
+  create(name: string, difficulty: Difficulty): Room {
     const id = Math.random().toString(36).slice(2, 9);
-    const room = new Room(id, name.trim().slice(0, 24) || "Race Room", Date.now());
+    const room = new Room(
+      id,
+      name.trim().slice(0, 24) || "Race Room",
+      Date.now(),
+      difficulty
+    );
     this.rooms.set(id, room);
     pool
-      .query("INSERT INTO rooms (id, name, created_at) VALUES ($1, $2, $3)", [
-        room.id,
-        room.name,
-        new Date(room.createdAt),
-      ])
+      .query(
+        "INSERT INTO rooms (id, name, created_at, difficulty) VALUES ($1, $2, $3, $4)",
+        [room.id, room.name, new Date(room.createdAt), room.difficulty]
+      )
       .catch((err) => console.error("Failed to persist room:", err));
     return room;
   }

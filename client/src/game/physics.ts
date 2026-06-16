@@ -1,20 +1,40 @@
 import {
   BARRIER_OFFSET,
+  DEFAULT_DIFFICULTY,
+  type Difficulty,
   nearestCenterline,
   ROAD_HALF_WIDTH,
   TRACK_SAMPLES,
 } from "@racing/shared";
 import type { CarInput } from "./input";
 
-const MAX_SPEED = 90; // m/s, ~324 km/h
-const GRASS_MAX_SPEED = 9;
-const ENGINE_ACCEL = 65;
+/**
+ * The four knobs that vary per difficulty (see CONTEXT.md / ADR 0001). Medium
+ * equals the pre-feature tuning; Easy is slow & forgiving, Hard fast & punishing.
+ */
+interface DifficultyPhysics {
+  /** Top speed on track, m/s. */
+  maxSpeed: number;
+  /** Engine acceleration, m/s². */
+  engineAccel: number;
+  /** Hard speed cap while any wheel is on grass, m/s. */
+  grassMaxSpeed: number;
+  /** Constant deceleration applied every frame on grass, m/s². */
+  grassFriction: number;
+}
+
+const DIFFICULTY_PHYSICS: Record<Difficulty, DifficultyPhysics> = {
+  easy: { maxSpeed: 52, engineAccel: 38, grassMaxSpeed: 24, grassFriction: 1.5 },
+  medium: { maxSpeed: 90, engineAccel: 65, grassMaxSpeed: 9, grassFriction: 6 },
+  hard: { maxSpeed: 110, engineAccel: 80, grassMaxSpeed: 5, grassFriction: 10 },
+};
+
+// Fixed across all difficulties.
 const BRAKE_DECEL = 38;
 const REVERSE_MAX_SPEED = 14;
 const COAST_DECEL = 5;
 const DRAG = 0.01; // quadratic drag coefficient
 const GRASS_DECEL = 110; // extra slowdown while above grass speed limit
-const GRASS_FRICTION = 6; // constant deceleration while any wheel is on grass
 const STEER_RATE = 1.8; // rad/s at full grip
 
 /** Cars are physically clamped just inside the barrier wall. */
@@ -29,6 +49,11 @@ export class CarPhysics {
   /** Nearest centerline sample index, updated every frame (used by camera/autopilot). */
   centerIndex = 0;
   private touchingWall = false;
+  private readonly tuning: DifficultyPhysics;
+
+  constructor(difficulty: Difficulty = DEFAULT_DIFFICULTY) {
+    this.tuning = DIFFICULTY_PHYSICS[difficulty];
+  }
 
   spawnAtSample(index: number, lateralOffset: number): void {
     const s = TRACK_SAMPLES[index];
@@ -44,7 +69,7 @@ export class CarPhysics {
 
   update(dt: number, input: CarInput): void {
     // Throttle / brake / coast
-    if (input.throttle > 0) this.speed += ENGINE_ACCEL * input.throttle * dt;
+    if (input.throttle > 0) this.speed += this.tuning.engineAccel * input.throttle * dt;
     if (input.brake > 0) this.speed -= BRAKE_DECEL * input.brake * dt;
     if (input.throttle === 0 && input.brake === 0) {
       const c = COAST_DECEL * dt;
@@ -55,11 +80,11 @@ export class CarPhysics {
     // Surface limits
     const before = nearestCenterline(this.x, this.z);
     this.onTrack = before.dist <= ROAD_HALF_WIDTH + 0.6;
-    const limit = this.onTrack ? MAX_SPEED : GRASS_MAX_SPEED;
+    const limit = this.onTrack ? this.tuning.maxSpeed : this.tuning.grassMaxSpeed;
     if (this.speed > limit) this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
     if (!this.onTrack && this.speed !== 0) {
       // Continuous grass drag, independent of the speed cap, so even slow cars feel the mud.
-      const f = GRASS_FRICTION * dt;
+      const f = this.tuning.grassFriction * dt;
       this.speed = Math.abs(this.speed) <= f ? 0 : this.speed - Math.sign(this.speed) * f;
     }
     if (this.speed < -REVERSE_MAX_SPEED) this.speed = -REVERSE_MAX_SPEED;

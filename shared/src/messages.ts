@@ -1,7 +1,10 @@
+import type { Difficulty } from "./difficulty";
+
 export interface RoomInfo {
   id: string;
   name: string;
   players: number;
+  difficulty: Difficulty;
 }
 
 export interface PlayerSnapshot {
@@ -25,6 +28,7 @@ export interface LeaderboardEntry {
   timeMs: number;
   date: string;
   hasReplay: boolean;
+  difficulty: Difficulty;
 }
 
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
@@ -32,10 +36,10 @@ export type ReplayFrame = [number, number, number, number, number];
 
 export type ClientMessage =
   | { type: "hello"; name: string }
-  | { type: "createRoom"; roomName: string }
+  | { type: "createRoom"; roomName: string; difficulty: Difficulty }
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
-  | { type: "getReplay"; name: string }
+  | { type: "getReplay"; name: string; difficulty: Difficulty }
   | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
 
 export type ServerMessage =
@@ -46,7 +50,7 @@ export type ServerMessage =
       leaderboard: LeaderboardEntry[];
     }
   | { type: "rooms"; rooms: RoomInfo[] }
-  | { type: "joined"; roomId: string; roomName: string }
+  | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty }
   | { type: "left" }
   | { type: "snapshot"; t: number; players: PlayerSnapshot[] }
   | {

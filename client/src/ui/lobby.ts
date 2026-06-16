@@ -1,11 +1,17 @@
 import type { LeaderboardEntry, RoomInfo } from "@racing/shared";
-import { TRACK_NAME } from "@racing/shared";
+import {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTIES,
+  DIFFICULTY_LABELS,
+  type Difficulty,
+  TRACK_NAME,
+} from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
 
 export interface LobbyCallbacks {
-  onCreate: (roomName: string) => void;
+  onCreate: (roomName: string, difficulty: Difficulty) => void;
   onJoin: (roomId: string) => void;
-  onReplay: (name: string) => void;
+  onReplay: (name: string, difficulty: Difficulty) => void;
 }
 
 const NAME_KEY = "racer-name";
@@ -16,9 +22,23 @@ export class Lobby {
   private roomList: HTMLElement;
   private lbList: HTMLElement;
 
+  /** Difficulty chosen for the next created room. */
+  private createDifficulty: Difficulty = DEFAULT_DIFFICULTY;
+  /** Which difficulty's board is currently shown. */
+  private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
+  private entries: LeaderboardEntry[] = [];
+
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.root = document.createElement("div");
     this.root.className = "lobby-backdrop";
+    const difficultyOptions = DIFFICULTIES.map(
+      (d) =>
+        `<button type="button" class="diff-opt diff-${d}${d === this.createDifficulty ? " active" : ""}" data-create-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
+    ).join("");
+    const boardTabs = DIFFICULTIES.map(
+      (d) =>
+        `<button type="button" class="lb-tab diff-${d}${d === this.boardDifficulty ? " active" : ""}" data-board-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
+    ).join("");
     this.root.innerHTML = `
       <div class="lobby-scene" aria-hidden="true">
         <div class="scene-stars"></div>
@@ -45,11 +65,13 @@ export class Lobby {
             <div class="room-list"></div>
             <form class="create-form">
               <input maxlength="24" placeholder="New room name" />
+              <div class="diff-picker" role="radiogroup" aria-label="Difficulty">${difficultyOptions}</div>
               <button type="submit">Create &amp; Race</button>
             </form>
           </section>
           <section class="panel-laps">
             <h2><i class="dot gold"></i>Best Laps — All Time</h2>
+            <div class="lb-tabs">${boardTabs}</div>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
           </section>
@@ -71,11 +93,31 @@ export class Lobby {
 
     const form = this.root.querySelector<HTMLFormElement>(".create-form")!;
     const roomNameInput = form.querySelector<HTMLInputElement>("input")!;
+    const diffPicker = form.querySelector<HTMLElement>(".diff-picker")!;
+    diffPicker.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-create-diff]");
+      if (!btn) return;
+      this.createDifficulty = btn.dataset.createDiff as Difficulty;
+      diffPicker
+        .querySelectorAll<HTMLButtonElement>("button")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+    });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       localStorage.setItem(NAME_KEY, this.playerName);
-      callbacks.onCreate(roomNameInput.value.trim() || `${this.playerName}'s race`);
+      callbacks.onCreate(roomNameInput.value.trim() || `${this.playerName}'s race`, this.createDifficulty);
       roomNameInput.value = "";
+    });
+
+    const tabs = this.root.querySelector<HTMLElement>(".lb-tabs")!;
+    tabs.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-board-diff]");
+      if (!btn) return;
+      this.boardDifficulty = btn.dataset.boardDiff as Difficulty;
+      tabs
+        .querySelectorAll<HTMLButtonElement>("button")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+      this.renderBoard();
     });
 
     this.roomList.addEventListener("click", (e) => {
@@ -88,7 +130,7 @@ export class Lobby {
     this.lbList.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
       if (!btn) return;
-      callbacks.onReplay(btn.dataset.replay!);
+      callbacks.onReplay(btn.dataset.replay!, btn.dataset.diff as Difficulty);
     });
 
     this.setRooms([]);
@@ -107,8 +149,9 @@ export class Lobby {
     this.roomList.innerHTML = rooms
       .map(
         (r) => `
-        <div class="room-row">
+        <div class="room-row diff-edge-${r.difficulty}">
           <span class="room-name">${escapeHtml(r.name)}</span>
+          <span class="room-badge diff-${r.difficulty}">${DIFFICULTY_LABELS[r.difficulty]}</span>
           <span class="room-count">${r.players} racing</span>
           <button data-room="${escapeHtml(r.id)}">Join</button>
         </div>`
@@ -117,15 +160,22 @@ export class Lobby {
   }
 
   setLeaderboard(entries: LeaderboardEntry[]): void {
+    this.entries = entries;
+    this.renderBoard();
+  }
+
+  /** Render only the entries for the currently selected difficulty tab. */
+  private renderBoard(): void {
+    const shown = this.entries.filter((e) => e.difficulty === this.boardDifficulty);
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
-    empty.hidden = entries.length > 0;
-    this.lbList.innerHTML = entries
+    empty.hidden = shown.length > 0;
+    this.lbList.innerHTML = shown
       .map(
         (e) => `
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" title="Watch replay">▶</button>` : ""}
+          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-diff="${e.difficulty}" title="Watch replay">▶</button>` : ""}
         </li>`
       )
       .join("");

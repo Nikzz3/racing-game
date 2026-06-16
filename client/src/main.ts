@@ -13,15 +13,15 @@ let game: Game | null = null;
 let replay: ReplayViewer | null = null;
 
 const lobby = new Lobby(app, {
-  onCreate: (roomName) => {
+  onCreate: (roomName, difficulty) => {
     net.send({ type: "hello", name: lobby.playerName });
-    net.send({ type: "createRoom", roomName });
+    net.send({ type: "createRoom", roomName, difficulty });
   },
   onJoin: (roomId) => {
     net.send({ type: "hello", name: lobby.playerName });
     net.send({ type: "joinRoom", roomId });
   },
-  onReplay: (name) => net.send({ type: "getReplay", name }),
+  onReplay: (name, difficulty) => net.send({ type: "getReplay", name, difficulty }),
 });
 
 net.onMessage((msg) => {
@@ -40,7 +40,14 @@ net.onMessage((msg) => {
     case "joined":
       lobby.hide();
       game?.dispose();
-      game = new Game(app, net, myId, msg.roomName, () => net.send({ type: "leaveRoom" }));
+      game = new Game(
+        app,
+        net,
+        myId,
+        msg.roomName,
+        () => net.send({ type: "leaveRoom" }),
+        msg.difficulty
+      );
       break;
     case "left":
       game?.dispose();

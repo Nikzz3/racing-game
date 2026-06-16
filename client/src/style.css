@@ -396,7 +396,11 @@ input:focus {
 }
 
 .room-row .room-name {
+  flex: 1;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-row .room-count {
@@ -433,6 +437,7 @@ input:focus {
 
 .create-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -445,6 +450,74 @@ input:focus {
 .create-form input:focus {
   border-color: #ff4fd8;
   box-shadow: 0 0 14px rgba(255, 79, 216, 0.35);
+}
+
+/* Difficulty colors, shared by the create picker, board tabs and room badges. */
+.diff-easy {
+  --diff-color: #51e08a;
+}
+.diff-medium {
+  --diff-color: #4fd8ff;
+}
+.diff-hard {
+  --diff-color: #ff5e3a;
+}
+
+.diff-picker {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 6px;
+}
+
+.diff-opt,
+.lb-tab {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 7px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.diff-opt.active,
+.lb-tab.active {
+  color: var(--diff-color);
+  border-color: var(--diff-color);
+  background: color-mix(in srgb, var(--diff-color) 16%, transparent);
+}
+
+.lb-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.room-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--diff-color);
+  border: 1px solid var(--diff-color);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.room-row.diff-edge-easy {
+  border-left-color: #51e08a;
+}
+.room-row.diff-edge-medium {
+  border-left-color: #4fd8ff;
+}
+.room-row.diff-edge-hard {
+  border-left-color: #ff5e3a;
 }
 
 .lb-list {

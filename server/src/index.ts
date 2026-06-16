@@ -3,11 +3,16 @@ import { existsSync, createReadStream, statSync } from "node:fs";
 import { join, normalize, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientMessage, ServerMessage } from "@racing/shared";
+import {
+  asDifficulty,
+  type ClientMessage,
+  type Difficulty,
+  type ServerMessage,
+} from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
 import { updateTiming } from "./timing";
 import { initDb } from "./db";
-import { topEntries } from "./leaderboard";
+import { topEntries, bestTime } from "./leaderboard";
 import { getReplay, makeFrame, submitLap, MAX_REPLAY_FRAMES } from "./replay";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -38,7 +43,12 @@ function joinRoom(player: Player, roomId: string): void {
     send(player.ws, { type: "error", message: "Room no longer exists" });
     return;
   }
-  send(player.ws, { type: "joined", roomId: room.id, roomName: room.name });
+  send(player.ws, {
+    type: "joined",
+    roomId: room.id,
+    roomName: room.name,
+    difficulty: room.difficulty,
+  });
   broadcastRooms();
 }
 
@@ -81,9 +91,10 @@ async function handleState(
   const frames =
     player.lapFramesValid && player.lapFrames.length >= 2 ? player.lapFrames : null;
 
-  const prevRecord = (await topEntries(1))[0]?.timeMs ?? Infinity;
+  // Track records are per difficulty, so compare against this room's board only.
+  const prevRecord = (await bestTime(room.difficulty)) ?? Infinity;
   let isTrackRecord = false;
-  if (await submitLap(player.name, lap.lapTimeMs, frames)) {
+  if (await submitLap(player.name, room.difficulty, lap.lapTimeMs, frames)) {
     isTrackRecord = lap.lapTimeMs < prevRecord;
     broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
   }
@@ -104,9 +115,13 @@ async function handleState(
   });
 }
 
-async function handleGetReplay(player: Player, rawName: string): Promise<void> {
+async function handleGetReplay(
+  player: Player,
+  rawName: string,
+  difficulty: Difficulty
+): Promise<void> {
   const name = rawName.trim().slice(0, 16);
-  const replay = name ? await getReplay(name) : null;
+  const replay = name ? await getReplay(name, difficulty) : null;
   if (!replay) {
     send(player.ws, { type: "error", message: `No replay available for ${name || "this driver"}` });
     return;
@@ -125,7 +140,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       player.name = msg.name.trim().slice(0, 16) || "Racer";
       break;
     case "createRoom": {
-      const room = manager.create(msg.roomName);
+      const room = manager.create(msg.roomName, asDifficulty(msg.difficulty));
       joinRoom(player, room.id);
       break;
     }
@@ -143,7 +158,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       );
       break;
     case "getReplay":
-      handleGetReplay(player, msg.name).catch((err) =>
+      handleGetReplay(player, msg.name, asDifficulty(msg.difficulty)).catch((err) =>
         console.error("Failed to handle getReplay:", err)
       );
       break;

@@ -1,4 +1,4 @@
-import type { ReplayFrame } from "@racing/shared";
+import type { Difficulty, ReplayFrame } from "@racing/shared";
 import { pool } from "./db";
 
 /** Cap a recording at 20 Hz x 5 minutes; longer laps drop their replay. */
@@ -27,6 +27,7 @@ export function makeFrame(
  */
 export async function submitLap(
   name: string,
+  difficulty: Difficulty,
   timeMs: number,
   frames: ReplayFrame[] | null
 ): Promise<boolean> {
@@ -34,11 +35,11 @@ export async function submitLap(
   try {
     await client.query("BEGIN");
     const result = await client.query(
-      `INSERT INTO best_laps (name, time_ms, date)
-       VALUES ($1, $2, now())
-       ON CONFLICT (name) DO UPDATE SET time_ms = EXCLUDED.time_ms, date = EXCLUDED.date
+      `INSERT INTO best_laps (name, difficulty, time_ms, date)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (name, difficulty) DO UPDATE SET time_ms = EXCLUDED.time_ms, date = EXCLUDED.date
        WHERE best_laps.time_ms > EXCLUDED.time_ms`,
-      [name, timeMs]
+      [name, difficulty, timeMs]
     );
     const changed = (result.rowCount ?? 0) > 0;
     if (!changed) {
@@ -47,14 +48,17 @@ export async function submitLap(
     }
     if (frames) {
       await client.query(
-        `INSERT INTO replays (name, time_ms, frames, created_at)
-         VALUES ($1, $2, $3::jsonb, now())
-         ON CONFLICT (name) DO UPDATE
+        `INSERT INTO replays (name, difficulty, time_ms, frames, created_at)
+         VALUES ($1, $2, $3, $4::jsonb, now())
+         ON CONFLICT (name, difficulty) DO UPDATE
            SET time_ms = EXCLUDED.time_ms, frames = EXCLUDED.frames, created_at = EXCLUDED.created_at`,
-        [name, timeMs, JSON.stringify(frames)]
+        [name, difficulty, timeMs, JSON.stringify(frames)]
       );
     } else {
-      await client.query("DELETE FROM replays WHERE name = $1", [name]);
+      await client.query("DELETE FROM replays WHERE name = $1 AND difficulty = $2", [
+        name,
+        difficulty,
+      ]);
     }
     await client.query("COMMIT");
     return true;
@@ -67,11 +71,12 @@ export async function submitLap(
 }
 
 export async function getReplay(
-  name: string
+  name: string,
+  difficulty: Difficulty
 ): Promise<{ timeMs: number; frames: ReplayFrame[] } | null> {
   const { rows } = await pool.query(
-    "SELECT time_ms, frames FROM replays WHERE name = $1",
-    [name]
+    "SELECT time_ms, frames FROM replays WHERE name = $1 AND difficulty = $2",
+    [name, difficulty]
   );
   if (rows.length === 0) return null;
   return { timeMs: rows[0].time_ms, frames: rows[0].frames as ReplayFrame[] };

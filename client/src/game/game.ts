@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import {
+  DEFAULT_DIFFICULTY,
+  type Difficulty,
   TRACK_DIVISIONS,
   TRACK_SAMPLES,
   type PlayerSnapshot,
@@ -25,7 +27,7 @@ export class Game {
   private hud: Hud;
   private input: Input;
   private touch: TouchControls;
-  private car = new CarPhysics();
+  private car: CarPhysics;
   private carMesh: THREE.Group;
   private remote: RemotePlayers;
   private sendTimer: ReturnType<typeof setInterval>;
@@ -51,8 +53,10 @@ export class Game {
     private net: Net,
     private myId: string,
     roomName: string,
-    onLeave: () => void
+    onLeave: () => void,
+    difficulty: Difficulty = DEFAULT_DIFFICULTY
   ) {
+    this.car = new CarPhysics(difficulty);
     this.container = document.createElement("div");
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.appendChild(this.container);
