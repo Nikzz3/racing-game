@@ -12,12 +12,24 @@ let myId = "";
 let game: Game | null = null;
 let replay: ReplayViewer | null = null;
 
+function tryFullscreen(): void {
+  if (!window.matchMedia("(pointer: coarse)").matches) return;
+  const el = document.documentElement;
+  if (typeof el.requestFullscreen === "function") {
+    el.requestFullscreen().catch(() => {});
+  } else {
+    (el as unknown as { webkitRequestFullscreen?: () => void }).webkitRequestFullscreen?.();
+  }
+}
+
 const lobby = new Lobby(app, {
   onCreate: (roomName, difficulty) => {
+    tryFullscreen();
     net.send({ type: "hello", name: lobby.playerName });
     net.send({ type: "createRoom", roomName, difficulty });
   },
   onJoin: (roomId) => {
+    tryFullscreen();
     net.send({ type: "hello", name: lobby.playerName });
     net.send({ type: "joinRoom", roomId });
   },
@@ -52,6 +64,7 @@ net.onMessage((msg) => {
     case "left":
       game?.dispose();
       game = null;
+      document.exitFullscreen?.().catch(() => {});
       lobby.show();
       break;
     case "replay":
