@@ -6,17 +6,22 @@ const DEAD_ZONE = 0.15;
 const KNOB_TRAVEL = 0.6;
 
 /**
- * Virtual joystick for touch devices. Drag up = throttle, down = brake,
- * left/right = steer. Hidden on fine-pointer devices via CSS.
+ * Virtual joystick (steer left/right only) plus Gas and Brake buttons for
+ * touch devices. Hidden on fine-pointer devices via CSS.
  */
 export class TouchControls {
   private root: HTMLElement;
   private knob: HTMLElement;
+  private gasBtn: HTMLElement;
+  private brakeBtn: HTMLElement;
+  private orientOverlay: HTMLElement;
   private pointerId: number | null = null;
   private x = 0; // -1..1, right positive
-  private y = 0; // -1..1, down positive
+  private gasPressed = false;
+  private brakePressed = false;
 
   constructor(parent: HTMLElement) {
+    // Joystick (steer only)
     this.root = document.createElement("div");
     this.root.className = "joystick";
     this.knob = document.createElement("div");
@@ -28,6 +33,32 @@ export class TouchControls {
     this.root.addEventListener("pointermove", this.onMove);
     this.root.addEventListener("pointerup", this.onEnd);
     this.root.addEventListener("pointercancel", this.onEnd);
+
+    // Gas button (bottom-left)
+    this.gasBtn = document.createElement("div");
+    this.gasBtn.className = "gas-btn";
+    parent.appendChild(this.gasBtn);
+
+    this.gasBtn.addEventListener("pointerdown",   () => { this.gasPressed = true;  this.gasBtn.classList.add("pressed"); });
+    this.gasBtn.addEventListener("pointerup",     () => { this.gasPressed = false; this.gasBtn.classList.remove("pressed"); });
+    this.gasBtn.addEventListener("pointercancel", () => { this.gasPressed = false; this.gasBtn.classList.remove("pressed"); });
+    this.gasBtn.addEventListener("pointerleave",  () => { this.gasPressed = false; this.gasBtn.classList.remove("pressed"); });
+
+    // Brake button (bottom-left, right of gas)
+    this.brakeBtn = document.createElement("div");
+    this.brakeBtn.className = "brake-btn";
+    parent.appendChild(this.brakeBtn);
+
+    this.brakeBtn.addEventListener("pointerdown",   () => { this.brakePressed = true;  this.brakeBtn.classList.add("pressed"); });
+    this.brakeBtn.addEventListener("pointerup",     () => { this.brakePressed = false; this.brakeBtn.classList.remove("pressed"); });
+    this.brakeBtn.addEventListener("pointercancel", () => { this.brakePressed = false; this.brakeBtn.classList.remove("pressed"); });
+    this.brakeBtn.addEventListener("pointerleave",  () => { this.brakePressed = false; this.brakeBtn.classList.remove("pressed"); });
+
+    // Portrait-mode overlay (shown via CSS when orientation: portrait)
+    this.orientOverlay = document.createElement("div");
+    this.orientOverlay.className = "orient-overlay";
+    this.orientOverlay.textContent = "Rotate your device";
+    parent.appendChild(this.orientOverlay);
   }
 
   private onDown = (e: PointerEvent) => {
@@ -49,7 +80,6 @@ export class TouchControls {
     if (e.pointerId !== this.pointerId) return;
     this.pointerId = null;
     this.x = 0;
-    this.y = 0;
     this.knob.style.transform = "translate(-50%, -50%)";
   };
 
@@ -57,31 +87,28 @@ export class TouchControls {
     const rect = this.root.getBoundingClientRect();
     const radius = rect.width / 2;
     let dx = (e.clientX - (rect.left + radius)) / radius;
-    let dy = (e.clientY - (rect.top + radius)) / radius;
-    const mag = Math.hypot(dx, dy);
-    if (mag > 1) {
-      dx /= mag;
-      dy /= mag;
-    }
+    // Horizontal-only: clamp to [-1, 1], no vertical component.
+    dx = Math.max(-1, Math.min(1, dx));
     this.x = dx;
-    this.y = dy;
     const travel = radius * KNOB_TRAVEL;
     this.knob.style.transform =
-      `translate(-50%, -50%) translate(${dx * travel}px, ${dy * travel}px)`;
+      `translate(-50%, -50%) translate(${dx * travel}px, 0px)`;
   }
 
   /** Current stick input; all zeros when released. */
   read(): CarInput {
     return {
-      throttle: deadZone(Math.max(0, -this.y)),
-      brake: deadZone(Math.max(0, this.y)),
-      // Drag left = steer left (+1), matching the KeyA/ArrowLeft mapping.
-      steer: deadZone(-this.x),
+      throttle: this.gasPressed ? 1 : 0,
+      brake:    this.brakePressed ? 1 : 0,
+      steer:    deadZone(-this.x),
     };
   }
 
   dispose(): void {
     this.root.remove();
+    this.gasBtn.remove();
+    this.brakeBtn.remove();
+    this.orientOverlay.remove();
   }
 }
 

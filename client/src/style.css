@@ -938,7 +938,66 @@ input:focus {
   }
 }
 
-/* ---------- Virtual joystick (touch devices) ---------- */
+/* ---------- Virtual joystick + mobile buttons (touch devices) ---------- */
+
+.orient-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(10, 8, 20, 0.96);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.orient-overlay::before {
+  content: "⟳";
+  font-size: 56px;
+  opacity: 0.7;
+}
+
+.gas-btn,
+.brake-btn {
+  display: none;
+  position: absolute;
+  bottom: 26px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 20;
+  transition: filter 0.07s, transform 0.07s;
+}
+
+.gas-btn {
+  left: 22px;
+  background: rgba(40, 180, 80, 0.45);
+  box-shadow: 0 0 18px rgba(40, 180, 80, 0.3);
+}
+
+.brake-btn {
+  left: 138px; /* 22 + 100 + 16px gap */
+  background: rgba(220, 40, 40, 0.45);
+  box-shadow: 0 0 18px rgba(220, 40, 40, 0.3);
+}
+
+.gas-btn.pressed,
+.brake-btn.pressed {
+  filter: brightness(1.4);
+  transform: scale(0.92);
+}
 
 .joystick {
   display: none;
@@ -976,15 +1035,21 @@ input:focus {
     display: block;
   }
 
+  .gas-btn,
+  .brake-btn {
+    display: block;
+  }
+
   /* Keyboard hints are meaningless on touch devices. */
   .controls-hint {
     display: none;
   }
 
-  /* Keep the bottom-right joystick area clear. */
+  /* Center speed between the left buttons and right joystick. */
   .hud-speed {
-    left: 18px;
-    transform: none;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 22px;
     padding: 8px 18px;
   }
 
@@ -993,9 +1058,15 @@ input:focus {
   }
 
   .offtrack-warn {
-    left: 18px;
-    transform: none;
-    bottom: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 96px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  .orient-overlay {
+    display: flex;
   }
 }
 
