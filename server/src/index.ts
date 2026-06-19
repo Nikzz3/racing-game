@@ -10,7 +10,7 @@ import {
   type ServerMessage,
 } from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
-import { updateTiming } from "./timing";
+import { respawnTiming, updateTiming } from "./timing";
 import { initDb } from "./db";
 import { topEntries, bestTime } from "./leaderboard";
 import { getReplay, makeFrame, submitLap, MAX_REPLAY_FRAMES } from "./replay";
@@ -151,6 +151,13 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       manager.leave(player);
       send(player.ws, { type: "left" });
       broadcastRooms();
+      break;
+    case "respawn":
+      if (player.room) {
+        respawnTiming(player.timing);
+        player.lapFrames = [];
+        player.lapFramesValid = true;
+      }
       break;
     case "state":
       handleState(player, msg).catch((err) =>

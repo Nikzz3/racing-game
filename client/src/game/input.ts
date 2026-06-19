@@ -9,11 +9,17 @@ export interface CarInput {
 export class Input {
   private keys = new Set<string>();
   private smoothSteer = 0;
+  /** Optional one-shot trigger fired on KeyR keydown (not the held-keys set, so holds don't repeat-fire). */
+  onRespawn: (() => void) | null = null;
 
   constructor(private touch: TouchControls | null = null) {}
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
+    if (e.code === "KeyR" && !e.repeat) {
+      this.onRespawn?.();
+      return;
+    }
     this.keys.add(e.code);
   };
   private onKeyUp = (e: KeyboardEvent) => {

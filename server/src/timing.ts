@@ -13,6 +13,16 @@ export function createTiming(): TimingState {
   return { next: 0, lapStartT: null, laps: 0, lastLapMs: null, bestLapMs: null };
 }
 
+/**
+ * Mutate timing for a respawn: clear the in-progress lap and rewind checkpoint
+ * progress to the start line, but keep the driver's completed laps, last lap,
+ * and session best — those are facts that already happened.
+ */
+export function respawnTiming(t: TimingState): void {
+  t.next = 0;
+  t.lapStartT = null;
+}
+
 export interface LapResult {
   lapTimeMs: number;
   isPersonalBest: boolean;

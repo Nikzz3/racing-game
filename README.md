@@ -29,6 +29,7 @@ room (or join an existing one), and drive.
 - `W` — throttle
 - `S` — brake / reverse
 - `A` / `D` — steer
+- `R` — respawn (teleport back to the start, abandon the in-progress lap)
 
 ## How it works
 

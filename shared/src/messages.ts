@@ -39,6 +39,7 @@ export type ClientMessage =
   | { type: "createRoom"; roomName: string; difficulty: Difficulty }
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
+  | { type: "respawn" }
   | { type: "getReplay"; name: string; difficulty: Difficulty }
   | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
 

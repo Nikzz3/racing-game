@@ -72,6 +72,7 @@ export class Game {
     this.hud = new Hud(parent, roomName, onLeave);
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
+    this.input.onRespawn = () => this.respawn();
     this.input.attach();
     window.addEventListener("resize", this.onResize);
 
@@ -173,6 +174,22 @@ export class Game {
     const fz = Math.cos(this.car.heading);
     this.bundle.camera.position.set(this.car.x - fx * 10, 4.6, this.car.z - fz * 10);
     this.bundle.camera.lookAt(this.car.x + fx * 4, 1.4, this.car.z + fz * 4);
+  }
+
+  /**
+   * Respawn: teleport own car to spawn and abandon the in-progress lap. Server is
+   * authoritative for checkpoint progress, so we both reset locally (instant feel)
+   * and ask the server to rewind timing — otherwise the server would still expect
+   * a mid-track checkpoint and the lap clock would keep ticking through the teleport.
+   */
+  private respawn(): void {
+    this.net.send({ type: "respawn" });
+    this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);
+    this.carMesh.position.set(this.car.x, 0, this.car.z);
+    this.carMesh.rotation.y = this.car.heading;
+    this.snapCameraBehindCar();
+    this.curLapBaseMs = null;
+    this.hud.setCurrentLap(null);
   }
 
   private autopilotInput(): CarInput {
