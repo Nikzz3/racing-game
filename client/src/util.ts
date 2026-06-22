@@ -6,13 +6,10 @@ export function formatMs(ms: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, "0")}.${String(mil).padStart(3, "0")}`;
 }
 
-/** Signed split delta, e.g. "+0.234" / "−1.107" / "—" when no reference. */
+/** Signed split delta in milliseconds, e.g. "+234ms" / "−1107ms" / "—". */
 export function formatDelta(ms: number | null): { text: string; cssClass: string } {
   if (ms === null) return { text: "—", cssClass: "delta-none" };
-  const abs = Math.abs(ms);
-  const sec = Math.floor(abs / 1000);
-  const mil = Math.floor(abs % 1000);
-  const body = `${sec}.${String(mil).padStart(3, "0")}`;
+  const body = `${Math.round(Math.abs(ms))}ms`;
   if (ms < 0) return { text: `−${body}`, cssClass: "delta-faster" };
   return { text: `+${body}`, cssClass: "delta-slower" };
 }
