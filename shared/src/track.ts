@@ -11,6 +11,11 @@ export const NUM_CHECKPOINTS = 12;
 export const CHECKPOINT_RADIUS = 15;
 export const TRACK_DIVISIONS = 512;
 
+/** Three sectors per lap. S1 covers CPs 0–3, S2 covers 4–7, S3 covers 8–11. */
+export const NUM_SECTORS = 3;
+/** Checkpoint indices whose crossing ends a sector mid-lap. CP0 ends S3 via lap completion. */
+export const MID_LAP_SECTOR_BOUNDARIES: readonly number[] = [4, 8];
+
 /**
  * Control points [x, z] of the centerline, in order of travel.
  * Layout: start straight along the bottom, a fast right sweeper onto the right

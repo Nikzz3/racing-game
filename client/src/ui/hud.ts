@@ -1,6 +1,6 @@
 import type { PlayerSnapshot } from "@racing/shared";
 import { NUM_CHECKPOINTS } from "@racing/shared";
-import { escapeHtml, formatMs } from "../util";
+import { escapeHtml, formatDelta, formatMs } from "../util";
 
 export class Hud {
   private root: HTMLElement;
@@ -100,6 +100,57 @@ export class Hud {
     const el = document.createElement("div");
     el.className = record ? "toast record" : "toast";
     el.textContent = text;
+    this.toastsEl.appendChild(el);
+    setTimeout(() => el.remove(), 3800);
+  }
+
+  sectorToast(
+    sector: 1 | 2,
+    splitMs: number,
+    pbDeltaMs: number | null,
+    trDeltaMs: number | null
+  ): void {
+    const pb = formatDelta(pbDeltaMs);
+    const tr = formatDelta(trDeltaMs);
+    const el = document.createElement("div");
+    el.className = "toast sector-toast";
+    el.innerHTML = `
+      <div class="toast-title">SECTOR ${sector} &nbsp; ${formatMs(splitMs)}</div>
+      <div class="toast-row">
+        <span class="${pb.cssClass}">PB ${pb.text}</span>
+        <span class="${tr.cssClass}">TR ${tr.text}</span>
+      </div>
+    `;
+    this.toastsEl.appendChild(el);
+    setTimeout(() => el.remove(), 3800);
+  }
+
+  lapToast(opts: {
+    laps: number;
+    lapTimeMs: number;
+    isPersonalBest: boolean;
+    isTrackRecord: boolean;
+    s3SplitMs: number;
+    s3PbDeltaMs: number | null;
+    s3TrDeltaMs: number | null;
+  }): void {
+    const el = document.createElement("div");
+    el.className = opts.isTrackRecord ? "toast record" : "toast";
+    const suffix = opts.isTrackRecord
+      ? "  TRACK RECORD!"
+      : opts.isPersonalBest
+        ? "  Personal best!"
+        : "";
+    const pb = formatDelta(opts.s3PbDeltaMs);
+    const tr = formatDelta(opts.s3TrDeltaMs);
+    el.innerHTML = `
+      <div class="toast-title">Lap ${opts.laps} — ${formatMs(opts.lapTimeMs)}${escapeHtml(suffix)}</div>
+      <div class="toast-row">
+        <span>S3 ${formatMs(opts.s3SplitMs)}</span>
+        <span class="${pb.cssClass}">PB ${pb.text}</span>
+        <span class="${tr.cssClass}">TR ${tr.text}</span>
+      </div>
+    `;
     this.toastsEl.appendChild(el);
     setTimeout(() => el.remove(), 3800);
   }

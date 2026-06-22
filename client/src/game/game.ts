@@ -105,6 +105,9 @@ export class Game {
       if (me) this.applyMyProgress(me, msg.t);
     } else if (msg.type === "lap") {
       this.onLap(msg);
+    } else if (msg.type === "sector") {
+      // Sector messages are only ever sent to the driver they apply to.
+      this.hud.sectorToast(msg.sector, msg.splitMs, msg.pbDeltaMs, msg.trDeltaMs);
     }
   }
 
@@ -116,12 +119,15 @@ export class Game {
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
     if (msg.playerId === this.myId) {
-      const suffix = msg.isTrackRecord
-        ? "  TRACK RECORD!"
-        : msg.isPersonalBest
-          ? "  Personal best!"
-          : "";
-      this.hud.toast(`Lap ${msg.laps} — ${formatMs(msg.lapTimeMs)}${suffix}`, msg.isTrackRecord);
+      this.hud.lapToast({
+        laps: msg.laps,
+        lapTimeMs: msg.lapTimeMs,
+        isPersonalBest: msg.isPersonalBest,
+        isTrackRecord: msg.isTrackRecord,
+        s3SplitMs: msg.s3SplitMs,
+        s3PbDeltaMs: msg.s3PbDeltaMs,
+        s3TrDeltaMs: msg.s3TrDeltaMs,
+      });
     } else if (msg.isTrackRecord) {
       this.hud.toast(`${msg.name} set a track record: ${formatMs(msg.lapTimeMs)}`, true);
     }

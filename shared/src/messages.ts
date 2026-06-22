@@ -34,6 +34,13 @@ export interface LeaderboardEntry {
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
 export type ReplayFrame = [number, number, number, number, number];
 
+/** Time spent inside each sector of a lap. s1 + s2 + s3 = lap time. */
+export interface SectorSplits {
+  s1Ms: number;
+  s2Ms: number;
+  s3Ms: number;
+}
+
 export type ClientMessage =
   | { type: "hello"; name: string }
   | { type: "createRoom"; roomName: string; difficulty: Difficulty }
@@ -63,6 +70,20 @@ export type ServerMessage =
       laps: number;
       isPersonalBest: boolean;
       isTrackRecord: boolean;
+      /** Time spent in sector 3 (CP8 → CP0). */
+      s3SplitMs: number;
+      /** s3SplitMs minus the locked PB's S3 split. Null when no PB reference exists for the driver. */
+      s3PbDeltaMs: number | null;
+      /** s3SplitMs minus the locked TR's S3 split. Null when no TR reference exists or the driver is the TR holder. */
+      s3TrDeltaMs: number | null;
+    }
+  | {
+      type: "sector";
+      /** 1 = S1 completed at CP4, 2 = S2 completed at CP8. S3 is conveyed via the lap message. */
+      sector: 1 | 2;
+      splitMs: number;
+      pbDeltaMs: number | null;
+      trDeltaMs: number | null;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
   | { type: "replay"; name: string; timeMs: number; frames: ReplayFrame[] }

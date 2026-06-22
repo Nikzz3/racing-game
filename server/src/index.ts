@@ -10,10 +10,10 @@ import {
   type ServerMessage,
 } from "@racing/shared";
 import { createPlayer, RoomManager, type Player } from "./rooms";
-import { respawnTiming, updateTiming } from "./timing";
+import { respawnTiming, updateTiming, type LapResult, type SectorBoundary } from "./timing";
 import { initDb } from "./db";
-import { topEntries, bestTime } from "./leaderboard";
-import { getReplay, makeFrame, submitLap, MAX_REPLAY_FRAMES } from "./replay";
+import { topEntries, bestTime, loadReferences } from "./leaderboard";
+import { backfillSplits, getReplay, makeFrame, submitLap, MAX_REPLAY_FRAMES } from "./replay";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIST = join(
@@ -52,49 +52,46 @@ function joinRoom(player: Player, roomId: string): void {
   broadcastRooms();
 }
 
-async function handleState(
+function sectorRefMs(splits: { s1Ms: number; s2Ms: number } | null, sector: 1 | 2): number | null {
+  if (!splits) return null;
+  return sector === 1 ? splits.s1Ms : splits.s2Ms;
+}
+
+function emitSector(player: Player, boundary: SectorBoundary): void {
+  const pbRef = sectorRefMs(player.lockedPb, boundary.sector);
+  const trRef = sectorRefMs(player.lockedTr, boundary.sector);
+  send(player.ws, {
+    type: "sector",
+    sector: boundary.sector,
+    splitMs: boundary.splitMs,
+    pbDeltaMs: pbRef === null ? null : boundary.splitMs - pbRef,
+    trDeltaMs: trRef === null ? null : boundary.splitMs - trRef,
+  });
+}
+
+async function handleLapComplete(
   player: Player,
+  room: { difficulty: Difficulty; broadcast: (m: ServerMessage) => void },
+  lap: LapResult,
   msg: Extract<ClientMessage, { type: "state" }>
 ): Promise<void> {
-  const room = player.room;
-  if (!room) return;
-  player.x = msg.x;
-  player.y = msg.y;
-  player.z = msg.z;
-  player.rot = msg.rot;
-  player.speed = msg.speed;
-
-  const prevStart = player.timing.lapStartT;
-  const now = Date.now();
-  const lap = updateTiming(player.timing, msg.x, msg.z, now);
-
-  if (!lap) {
-    // No lap completed: keep recording the lap in progress.
-    if (player.timing.lapStartT !== null) {
-      if (prevStart === null) {
-        // First crossing of the start line this session.
-        player.lapFrames = [makeFrame(0, msg.x, msg.z, msg.rot, msg.speed)];
-        player.lapFramesValid = true;
-      } else if (player.lapFrames.length >= MAX_REPLAY_FRAMES) {
-        player.lapFramesValid = false;
-      } else {
-        player.lapFrames.push(
-          makeFrame(now - player.timing.lapStartT, msg.x, msg.z, msg.rot, msg.speed)
-        );
-      }
-    }
-    return;
-  }
-
   // Lap completed: this sample is both the final frame and frame 0 of the next.
   player.lapFrames.push(makeFrame(lap.lapTimeMs, msg.x, msg.z, msg.rot, msg.speed));
   const frames =
     player.lapFramesValid && player.lapFrames.length >= 2 ? player.lapFrames : null;
 
+  // S3 deltas use the references locked at this lap's start, before they're
+  // about to be refreshed by the lapStarted handler below.
+  const s3PbDeltaMs =
+    player.lockedPb === null ? null : lap.s3SplitMs - player.lockedPb.s3Ms;
+  const s3TrDeltaMs =
+    player.lockedTr === null ? null : lap.s3SplitMs - player.lockedTr.s3Ms;
+
   // Track records are per difficulty, so compare against this room's board only.
   const prevRecord = (await bestTime(room.difficulty)) ?? Infinity;
   let isTrackRecord = false;
-  if (await submitLap(player.name, room.difficulty, lap.lapTimeMs, frames)) {
+  const splits = { s1: lap.s1SplitMs, s2: lap.s2SplitMs, s3: lap.s3SplitMs };
+  if (await submitLap(player.name, room.difficulty, lap.lapTimeMs, frames, splits)) {
     isTrackRecord = lap.lapTimeMs < prevRecord;
     broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
   }
@@ -112,7 +109,64 @@ async function handleState(
     laps: player.timing.laps,
     isPersonalBest: lap.isPersonalBest,
     isTrackRecord,
+    s3SplitMs: lap.s3SplitMs,
+    s3PbDeltaMs,
+    s3TrDeltaMs,
   });
+}
+
+async function refreshReferences(player: Player, difficulty: Difficulty): Promise<void> {
+  const refs = await loadReferences(player.name, difficulty);
+  player.lockedPb = refs.pb;
+  player.lockedTr = refs.tr;
+}
+
+async function handleState(
+  player: Player,
+  msg: Extract<ClientMessage, { type: "state" }>
+): Promise<void> {
+  const room = player.room;
+  if (!room) return;
+  player.x = msg.x;
+  player.y = msg.y;
+  player.z = msg.z;
+  player.rot = msg.rot;
+  player.speed = msg.speed;
+
+  const prevStart = player.timing.lapStartT;
+  const now = Date.now();
+  const update = updateTiming(player.timing, msg.x, msg.z, now);
+
+  if (update.lap) {
+    await handleLapComplete(player, room, update.lap, msg);
+  } else if (update.sector) {
+    // Sector crossings happen mid-lap. The current sample is a regular frame
+    // for the lap in progress; record it as usual below.
+    emitSector(player, update.sector);
+  }
+
+  if (!update.lap) {
+    // No lap completed: keep recording the lap in progress.
+    if (player.timing.lapStartT !== null) {
+      if (prevStart === null) {
+        // First crossing of the start line this session.
+        player.lapFrames = [makeFrame(0, msg.x, msg.z, msg.rot, msg.speed)];
+        player.lapFramesValid = true;
+      } else if (player.lapFrames.length >= MAX_REPLAY_FRAMES) {
+        player.lapFramesValid = false;
+      } else {
+        player.lapFrames.push(
+          makeFrame(now - player.timing.lapStartT, msg.x, msg.z, msg.rot, msg.speed)
+        );
+      }
+    }
+  }
+
+  if (update.lapStarted) {
+    // Snapshot references for the lap that just began. Awaited so subsequent
+    // sector crossings (multi-second laps from now) see the fresh values.
+    await refreshReferences(player, room.difficulty);
+  }
 }
 
 async function handleGetReplay(
@@ -252,6 +306,12 @@ setInterval(() => {
 
 async function main(): Promise<void> {
   await initDb();
+  const { filled, unrecoverable } = await backfillSplits();
+  if (filled || unrecoverable) {
+    console.log(
+      `Sector splits backfill: filled ${filled}, unrecoverable ${unrecoverable}`
+    );
+  }
   await manager.load();
   httpServer.listen(PORT, () => {
     console.log(`Racing server listening on http://localhost:${PORT}`);

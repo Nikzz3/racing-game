@@ -5,6 +5,7 @@ import {
   type PlayerSnapshot,
   type ReplayFrame,
   type RoomInfo,
+  type SectorSplits,
   type ServerMessage,
 } from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
@@ -27,6 +28,10 @@ export interface Player {
   lapFrames: ReplayFrame[];
   /** False once the recording exceeds the frame cap and must be discarded. */
   lapFramesValid: boolean;
+  /** PB sector splits locked at this lap's start. Null until first lap begins or if no PB exists. */
+  lockedPb: SectorSplits | null;
+  /** TR sector splits locked at this lap's start. Null when no TR exists or this driver is the TR holder. */
+  lockedTr: SectorSplits | null;
 }
 
 export function createPlayer(id: string, ws: WebSocket): Player {
@@ -43,6 +48,8 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     timing: createTiming(),
     lapFrames: [],
     lapFramesValid: true,
+    lockedPb: null,
+    lockedTr: null,
   };
 }
 
@@ -150,6 +157,9 @@ export class RoomManager {
     player.timing = createTiming();
     player.lapFrames = [];
     player.lapFramesValid = true;
+    // Stale from any prior room/difficulty; will be loaded at the first lap start.
+    player.lockedPb = null;
+    player.lockedTr = null;
     room.players.set(player.id, player);
     player.room = room;
     return room;

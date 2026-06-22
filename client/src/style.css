@@ -924,6 +924,35 @@ input:focus {
   color: #ffd84d;
 }
 
+.toast .toast-title {
+  font-size: 16px;
+}
+
+.toast .toast-row {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  justify-content: center;
+}
+
+.toast.sector-toast {
+  border-left-color: #6cb6ff;
+}
+
+.delta-faster {
+  color: #4ade80;
+}
+
+.delta-slower {
+  color: #f87171;
+}
+
+.delta-none {
+  color: #888;
+}
+
 @keyframes toast-in {
   from {
     transform: translateY(-12px);

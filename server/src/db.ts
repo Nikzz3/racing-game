@@ -21,6 +21,9 @@ export async function initDb(): Promise<void> {
       time_ms INTEGER NOT NULL,
       date TIMESTAMPTZ NOT NULL DEFAULT now(),
       difficulty TEXT NOT NULL DEFAULT 'medium',
+      s1_ms INTEGER,
+      s2_ms INTEGER,
+      s3_ms INTEGER,
       PRIMARY KEY (name, difficulty)
     );
     CREATE TABLE IF NOT EXISTS replays (
@@ -44,5 +47,13 @@ export async function initDb(): Promise<void> {
     ALTER TABLE replays ADD COLUMN IF NOT EXISTS difficulty TEXT NOT NULL DEFAULT 'medium';
     ALTER TABLE replays DROP CONSTRAINT IF EXISTS replays_pkey;
     ALTER TABLE replays ADD PRIMARY KEY (name, difficulty);
+  `);
+
+  // Sector splits live alongside the lap time. Nullable so pre-replay rows can
+  // remain on the board with no derivable splits — see ADR 0002.
+  await pool.query(`
+    ALTER TABLE best_laps ADD COLUMN IF NOT EXISTS s1_ms INTEGER;
+    ALTER TABLE best_laps ADD COLUMN IF NOT EXISTS s2_ms INTEGER;
+    ALTER TABLE best_laps ADD COLUMN IF NOT EXISTS s3_ms INTEGER;
   `);
 }
