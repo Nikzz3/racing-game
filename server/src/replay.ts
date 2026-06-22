@@ -1,10 +1,13 @@
 import {
   CHECKPOINTS,
+  CHECKPOINT_RADIUS,
   type Difficulty,
   MID_LAP_SECTOR_BOUNDARIES,
   type ReplayFrame,
-} from "@racing/shared";
-import { pool } from "./db";
+} from '@racing/shared';
+import { pool } from './db';
+
+const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
 
 /** Cap a recording at 20 Hz x 5 minutes; longer laps drop their replay. */
 export const MAX_REPLAY_FRAMES = 6000;
@@ -19,40 +22,49 @@ export function makeFrame(
   x: number,
   z: number,
   rot: number,
-  speed: number
+  speed: number,
 ): ReplayFrame {
-  return [Math.round(t), round(x, 2), round(z, 2), round(rot, 3), round(speed, 2)];
+  return [
+    Math.round(t),
+    round(x, 2),
+    round(z, 2),
+    round(rot, 3),
+    round(speed, 2),
+  ];
 }
 
 /**
- * Approximate the sector splits of a stored lap from its replay frames. For each
- * mid-lap sector boundary checkpoint, finds the frame whose position is nearest
- * the checkpoint and reads its `t` (ms since lap start). Accuracy is bounded by
- * the ~50 ms frame interval, which is fine for splits shown to 0.1 s. Returns
- * null if the derived boundary times are not strictly monotonic — defensive
- * against corrupt or partial recordings.
+ * Derive sector splits of a stored lap from its replay frames. Matches the live
+ * timing rule: a sector boundary is the first frame whose position is inside the
+ * checkpoint radius (not the closest-to-center frame, which lags by up to
+ * radius / speed — ~500 ms at 30 m/s). Sector boundaries are searched in order
+ * so an early frame near a later checkpoint cannot be picked. Returns null if
+ * any boundary is missing or the derived times are not strictly monotonic —
+ * defensive against corrupt or partial recordings.
  */
 export function computeSplitsFromFrames(
   frames: ReplayFrame[],
-  lapTimeMs: number
+  lapTimeMs: number,
 ): { s1: number; s2: number; s3: number } | null {
   if (frames.length < 2) return null;
-  const boundaryTimes = MID_LAP_SECTOR_BOUNDARIES.map((cpIdx) => {
+  const boundaryTimes: number[] = [];
+  let cursor = 0;
+  for (const cpIdx of MID_LAP_SECTOR_BOUNDARIES) {
     const cp = CHECKPOINTS[cpIdx];
-    let bestT = -1;
-    let bestD2 = Infinity;
-    for (const f of frames) {
-      const [t, x, z] = f;
+    let hit = -1;
+    for (let i = cursor; i < frames.length; i++) {
+      const [t, x, z] = frames[i];
       const dx = x - cp.x;
       const dz = z - cp.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        bestT = t;
+      if (dx * dx + dz * dz <= R2) {
+        hit = t;
+        cursor = i + 1;
+        break;
       }
     }
-    return bestT;
-  });
+    if (hit < 0) return null;
+    boundaryTimes.push(hit);
+  }
   const [tCp4, tCp8] = boundaryTimes;
   if (tCp4 <= 0 || tCp8 <= tCp4 || tCp8 >= lapTimeMs) return null;
   return {
@@ -74,11 +86,11 @@ export async function submitLap(
   difficulty: Difficulty,
   timeMs: number,
   frames: ReplayFrame[] | null,
-  splits: { s1: number; s2: number; s3: number }
+  splits: { s1: number; s2: number; s3: number },
 ): Promise<boolean> {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO best_laps (name, difficulty, time_ms, s1_ms, s2_ms, s3_ms, date)
        VALUES ($1, $2, $3, $4, $5, $6, now())
@@ -89,11 +101,11 @@ export async function submitLap(
          s3_ms = EXCLUDED.s3_ms,
          date = EXCLUDED.date
        WHERE best_laps.time_ms > EXCLUDED.time_ms`,
-      [name, difficulty, timeMs, splits.s1, splits.s2, splits.s3]
+      [name, difficulty, timeMs, splits.s1, splits.s2, splits.s3],
     );
     const changed = (result.rowCount ?? 0) > 0;
     if (!changed) {
-      await client.query("COMMIT");
+      await client.query('COMMIT');
       return false;
     }
     if (frames) {
@@ -102,18 +114,18 @@ export async function submitLap(
          VALUES ($1, $2, $3, $4::jsonb, now())
          ON CONFLICT (name, difficulty) DO UPDATE
            SET time_ms = EXCLUDED.time_ms, frames = EXCLUDED.frames, created_at = EXCLUDED.created_at`,
-        [name, difficulty, timeMs, JSON.stringify(frames)]
+        [name, difficulty, timeMs, JSON.stringify(frames)],
       );
     } else {
-      await client.query("DELETE FROM replays WHERE name = $1 AND difficulty = $2", [
-        name,
-        difficulty,
-      ]);
+      await client.query(
+        'DELETE FROM replays WHERE name = $1 AND difficulty = $2',
+        [name, difficulty],
+      );
     }
-    await client.query("COMMIT");
+    await client.query('COMMIT');
     return true;
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     client.release();
@@ -122,11 +134,11 @@ export async function submitLap(
 
 export async function getReplay(
   name: string,
-  difficulty: Difficulty
+  difficulty: Difficulty,
 ): Promise<{ timeMs: number; frames: ReplayFrame[] } | null> {
   const { rows } = await pool.query(
-    "SELECT time_ms, frames FROM replays WHERE name = $1 AND difficulty = $2",
-    [name, difficulty]
+    'SELECT time_ms, frames FROM replays WHERE name = $1 AND difficulty = $2',
+    [name, difficulty],
   );
   if (rows.length === 0) return null;
   return { timeMs: rows[0].time_ms, frames: rows[0].frames as ReplayFrame[] };
@@ -135,20 +147,27 @@ export async function getReplay(
 /**
  * One-shot, idempotent backfill: for every `best_laps` row missing splits that
  * has a stored replay, derive the splits from the replay frames and write them
- * back. Rows without a replay (pre-replay-feature records) stay NULL forever.
- * See ADR 0002.
+ * back. Once a row has splits it is left alone — to recompute, null the
+ * relevant fields manually. Rows without a replay (pre-replay-feature records)
+ * stay NULL forever. See ADR 0002.
  */
-export async function backfillSplits(): Promise<{ filled: number; unrecoverable: number }> {
+export async function backfillSplits(): Promise<{
+  filled: number;
+  unrecoverable: number;
+}> {
   const { rows } = await pool.query(
     `SELECT b.name, b.difficulty, b.time_ms, r.frames
      FROM best_laps b
      JOIN replays r ON r.name = b.name AND r.difficulty = b.difficulty
-     WHERE b.s1_ms IS NULL OR b.s2_ms IS NULL OR b.s3_ms IS NULL`
+     WHERE b.s1_ms IS NULL OR b.s2_ms IS NULL OR b.s3_ms IS NULL`,
   );
   let filled = 0;
   let unrecoverable = 0;
   for (const row of rows) {
-    const splits = computeSplitsFromFrames(row.frames as ReplayFrame[], row.time_ms);
+    const splits = computeSplitsFromFrames(
+      row.frames as ReplayFrame[],
+      row.time_ms,
+    );
     if (!splits) {
       unrecoverable++;
       continue;
@@ -156,7 +175,7 @@ export async function backfillSplits(): Promise<{ filled: number; unrecoverable:
     await pool.query(
       `UPDATE best_laps SET s1_ms = $1, s2_ms = $2, s3_ms = $3
        WHERE name = $4 AND difficulty = $5`,
-      [splits.s1, splits.s2, splits.s3, row.name, row.difficulty]
+      [splits.s1, splits.s2, splits.s3, row.name, row.difficulty],
     );
     filled++;
   }
