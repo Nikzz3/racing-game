@@ -397,6 +397,7 @@ input:focus {
 
 .room-row .room-name {
   flex: 1;
+  min-width: 0;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -558,6 +559,7 @@ input:focus {
 
 .lb-list li .lb-name {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -757,6 +759,10 @@ input:focus {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hud-lap {
@@ -819,6 +825,13 @@ input:focus {
   right: 16px;
   padding: 12px 16px;
   min-width: 230px;
+  max-width: 280px;
+}
+
+.hud-standings td:nth-child(2) {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hud-standings h3 {
