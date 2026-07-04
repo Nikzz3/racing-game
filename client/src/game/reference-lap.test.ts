@@ -88,4 +88,28 @@ describe('buildReferenceLap', () => {
       }
     }
   }, 60_000);
+
+  it.skipIf(!policyExists)('frame spatial values match the timed-lap trajectory (rounded)', () => {
+    const policy = loadPolicy();
+    const lap = buildReferenceLap(policy);
+    const result = runPolicyLap(policy);
+    expect(lap).not.toBeNull();
+    expect(result).not.toBeNull();
+    if (!lap || !result) return;
+
+    const lapSteps = Math.round(result.lapTimeMs / DT_MS);
+    const lapTraj = result.trajectory.slice(result.steps - 1 - lapSteps);
+
+    expect(lap.frames.length).toBe(lapTraj.length);
+
+    for (let i = 0; i < lap.frames.length; i++) {
+      const frame = lap.frames[i];
+      const step = lapTraj[i];
+      // x and z: 2dp; heading (rot): 3dp; speed: 2dp — mirrors round() in reference-lap.ts
+      expect(frame[1]).toBe(Math.round(step.x * 100) / 100);
+      expect(frame[2]).toBe(Math.round(step.z * 100) / 100);
+      expect(frame[3]).toBe(Math.round(step.heading * 1000) / 1000);
+      expect(frame[4]).toBe(Math.round(step.speed * 100) / 100);
+    }
+  }, 120_000);
 });
