@@ -12,6 +12,7 @@ export interface LobbyCallbacks {
   onCreate: (roomName: string, difficulty: Difficulty) => void;
   onJoin: (roomId: string) => void;
   onReplay: (name: string, difficulty: Difficulty) => void;
+  onReferenceLap: () => void;
 }
 
 const NAME_KEY = "racer-name";
@@ -21,6 +22,7 @@ export class Lobby {
   private nameInput: HTMLInputElement;
   private roomList: HTMLElement;
   private lbList: HTMLElement;
+  private onReferenceLap: () => void;
 
   /** Difficulty chosen for the next created room. */
   private createDifficulty: Difficulty = DEFAULT_DIFFICULTY;
@@ -29,6 +31,7 @@ export class Lobby {
   private entries: LeaderboardEntry[] = [];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
+    this.onReferenceLap = callbacks.onReferenceLap;
     this.root = document.createElement("div");
     this.root.className = "lobby-backdrop";
     const difficultyOptions = DIFFICULTIES.map(
@@ -74,6 +77,9 @@ export class Lobby {
             <div class="lb-tabs">${boardTabs}</div>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
+            <div class="lb-ai-record" hidden>
+              <button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button>
+            </div>
           </section>
         </div>
         <p class="controls-hint"><span><b>W</b> throttle</span> <span><b>S</b> brake</span> <span><b>A</b><b>D</b> steer</span></p>
@@ -128,9 +134,14 @@ export class Lobby {
     });
 
     this.lbList.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
-      if (!btn) return;
-      callbacks.onReplay(btn.dataset.replay!, btn.dataset.diff as Difficulty);
+      const target = e.target as HTMLElement;
+      const replayBtn = target.closest<HTMLButtonElement>("button[data-replay]");
+      if (replayBtn) {
+        callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.diff as Difficulty);
+        return;
+      }
+      const aiBtn = target.closest<HTMLButtonElement>("button[data-ai-record]");
+      if (aiBtn) this.onReferenceLap();
     });
 
     this.setRooms([]);
@@ -179,6 +190,9 @@ export class Lobby {
         </li>`
       )
       .join("");
+    // AI Record button — Medium only (policy trained and validated on Medium).
+    const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
+    aiRecordEl.hidden = this.boardDifficulty !== "medium";
   }
 
   show(): void {

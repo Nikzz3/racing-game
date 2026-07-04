@@ -4,6 +4,8 @@ import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
+import { buildReferenceLap } from "./game/reference-lap";
+import policy from "../../rl/policy.json";
 
 const app = document.getElementById("app")!;
 const net = new Net();
@@ -22,6 +24,17 @@ const lobby = new Lobby(app, {
     net.send({ type: "joinRoom", roomId });
   },
   onReplay: (name, difficulty) => net.send({ type: "getReplay", name, difficulty }),
+  onReferenceLap: () => {
+    if (game) return;
+    const lap = buildReferenceLap(policy);
+    if (!lap) return;
+    replay?.dispose();
+    lobby.hide();
+    replay = new ReplayViewer(app, lap.name, lap.timeMs, lap.frames, () => {
+      replay = null;
+      lobby.show();
+    });
+  },
 });
 
 net.onMessage((msg) => {
