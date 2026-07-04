@@ -3,7 +3,7 @@ import { runPolicyLap, type PolicyWeights } from './harness';
 
 const DT_MS = 1000 / 60;
 
-function roundN(n: number, d: number): number {
+function round(n: number, d: number): number {
   const f = 10 ** d;
   return Math.round(n * f) / f;
 }
@@ -34,10 +34,10 @@ export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
 
   const frames: ReplayFrame[] = lapTrajectory.map((s, i) => [
     i * DT_MS,
-    roundN(s.x, 2),
-    roundN(s.z, 2),
-    roundN(s.heading, 3),
-    roundN(s.speed, 2),
+    round(s.x, 2),
+    round(s.z, 2),
+    round(s.heading, 3),
+    round(s.speed, 2),
   ]);
 
   return { name: 'AI Record', timeMs: result.lapTimeMs, frames };
