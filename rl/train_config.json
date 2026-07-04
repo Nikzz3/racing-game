@@ -68,5 +68,21 @@
     "autopilot_baseline_lap_time_s": 35.47,
     "speedup_vs_autopilot_pct": 30.2,
     "validation": "real TypeScript CarPhysics in Node, dt=1/60s, fixed spawn, Medium difficulty"
+  },
+
+  "plateau": {
+    "detected": true,
+    "detected_at_timesteps": 850000,
+    "window_size": 5,
+    "threshold_pct": 1.5,
+    "verdict": "Last 5 reward checkpoints (650k–850k steps) within 0.14% variation; training confirmed stable to 1M steps.",
+    "progress_file": "training_progress.json"
+  },
+
+  "record": {
+    "lap_time_s": 24.75,
+    "autopilot_baseline_s": 35.47,
+    "speedup_pct": 30.2,
+    "note": "PPO plateau record — Medium difficulty, fixed spawn, 1/60s dt, Node-validated against real TypeScript CarPhysics. SAC fallback available if further reduction is desired (no env-contract changes required)."
   }
 }
