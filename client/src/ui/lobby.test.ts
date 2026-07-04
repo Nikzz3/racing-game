@@ -16,15 +16,13 @@ function makeCallbacks(): LobbyCallbacks {
 describe('Lobby AI Record control', () => {
   let parent: HTMLElement;
   let cbs: LobbyCallbacks;
-  let lobby: Lobby;
 
   beforeEach(() => {
     parent = document.createElement('div');
     document.body.appendChild(parent);
     cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-    // suppress unused-var warning
-    void lobby;
+    // The constructor renders into `parent`; tests query that DOM directly.
+    new Lobby(parent, cbs);
   });
 
   afterEach(() => {
