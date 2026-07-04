@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { runPolicyLap, policyForward, type PolicyWeights } from './harness';
+import { runPolicyLap, runAutopilotLap, policyForward, type PolicyWeights } from './harness';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const POLICY_PATH = join(__dirname, '../../../rl/policy.json');
@@ -54,5 +54,27 @@ describe('runPolicyLap — Node validation against real TypeScript CarPhysics', 
       );
     },
     60_000,  // allow up to 60 s of wall-clock time
+  );
+
+  it.skipIf(!policyExists)(
+    'headline gate: policy lap beats the rule-based autopilot baseline (Medium, fixed spawn)',
+    () => {
+      const policy = loadPolicy();
+      const policyResult = runPolicyLap(policy, { maxSteps: 36000 });
+      const autopilotResult = runAutopilotLap({ maxSteps: 36000 });
+
+      expect(policyResult).not.toBeNull();
+      expect(autopilotResult).not.toBeNull();
+      if (policyResult === null || autopilotResult === null) return;
+
+      console.log(
+        `Headline gate — policy: ${(policyResult.lapTimeMs / 1000).toFixed(2)} s  ` +
+        `autopilot: ${(autopilotResult.lapTimeMs / 1000).toFixed(2)} s`
+      );
+
+      // The headline success criterion from PRD #7 issue #11.
+      expect(policyResult.lapTimeMs).toBeLessThan(autopilotResult.lapTimeMs);
+    },
+    120_000,  // allow up to 2 min for both laps
   );
 });

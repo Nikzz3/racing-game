@@ -1,0 +1,72 @@
+{
+  "_comment": "Hyperparameters and reward config that produced the policy.json beating the autopilot baseline. Re-run train.py with these settings to reproduce.",
+
+  "algorithm": "PPO",
+  "library": "stable-baselines3>=2.0",
+
+  "training": {
+    "timesteps": 1000000,
+    "n_envs": 8,
+    "vec_env_type": "SubprocVecEnv",
+    "vec_normalize": {
+      "norm_obs": true,
+      "norm_reward": true,
+      "clip_obs": 5.0
+    }
+  },
+
+  "ppo_hyperparameters": {
+    "n_steps": 1024,
+    "batch_size": 256,
+    "n_epochs": 10,
+    "gamma": 0.99,
+    "learning_rate": 3e-4,
+    "device": "cpu"
+  },
+
+  "policy": {
+    "net_arch": [64, 64],
+    "activation": "tanh"
+  },
+
+  "environment": {
+    "difficulty": "medium",
+    "max_steps_per_episode": 3600,
+    "dt": 0.016666666666666666,
+    "observation_dim": 7,
+    "action_dim": 2,
+    "obs_clip": 3.0,
+    "lookaheads": [5, 10, 20, 40]
+  },
+
+  "reward": {
+    "progress_scale": "arc_length_metres_per_step",
+    "wall_penalty": -2.0,
+    "offtrack_penalty": -0.5
+  },
+
+  "termination": {
+    "stuck_wall_steps": 60,
+    "reverse_window_steps": 60,
+    "reverse_net_threshold_samples": 3
+  },
+
+  "reset": {
+    "training": {
+      "sample_index": "uniform_random_over_track",
+      "lateral_offset_metres": "uniform[-2.0, 2.0]"
+    },
+    "eval": {
+      "sample_index": "SPAWN_SAMPLE (TRACK_DIVISIONS - 14)",
+      "lateral_offset_metres": 0.0
+    }
+  },
+
+  "results": {
+    "difficulty": "medium",
+    "policy_validated_lap_time_s": 24.75,
+    "autopilot_baseline_lap_time_s": 35.47,
+    "speedup_vs_autopilot_pct": 30.2,
+    "validation": "real TypeScript CarPhysics in Node, dt=1/60s, fixed spawn, Medium difficulty"
+  }
+}
