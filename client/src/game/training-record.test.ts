@@ -174,8 +174,8 @@ describe('train_config.json — hyperparameter record', () => {
     'results.policy_validated_lap_time_s is consistent with training_progress.json',
     () => {
       const { results } = loadConfig();
-      const progress = JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as { validated_record: { lap_time_s: number } };
-      expect(Math.abs(results.policy_validated_lap_time_s - progress.validated_record.lap_time_s)).toBeLessThan(0.1);
+      const { validated_record } = loadProgress();
+      expect(Math.abs(results.policy_validated_lap_time_s - validated_record.lap_time_s)).toBeLessThan(0.1);
     },
   );
 });
