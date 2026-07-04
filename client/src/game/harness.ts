@@ -12,12 +12,19 @@ import { CarPhysics } from './physics';
 const DT = 1 / 60;
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
+/** How many centerline samples ahead the autopilot aims for. */
+const AUTOPILOT_LOOKAHEAD = 12;
 
 export interface StepState {
   x: number;
   z: number;
   heading: number;
   speed: number;
+}
+
+/** Capture the car's current pose as a trajectory step. */
+function snapshot(car: CarPhysics): StepState {
+  return { x: car.x, z: car.z, heading: car.heading, speed: car.speed };
 }
 
 export interface RunResult {
@@ -55,10 +62,10 @@ export class CheckpointTracker {
   }
 }
 
-/** Rule-based autopilot: centerline follower with a 12-sample lookahead. */
+/** Rule-based autopilot: centerline follower with a fixed lookahead. */
 export function autopilotInput(car: CarPhysics): CarInput {
   const n = TRACK_SAMPLES.length;
-  const target = TRACK_SAMPLES[(car.centerIndex + 12) % n];
+  const target = TRACK_SAMPLES[(car.centerIndex + AUTOPILOT_LOOKAHEAD) % n];
   const desired = Math.atan2(target.x - car.x, target.z - car.z);
   let diff = (desired - car.heading) % (Math.PI * 2);
   if (diff > Math.PI) diff -= Math.PI * 2;
@@ -71,7 +78,7 @@ export function autopilotInput(car: CarPhysics): CarInput {
 }
 
 /**
- * Run an input-producing function from the fixed spawn until a valid lap completes.
+ * Drive the autopilot from the fixed spawn until a valid lap completes.
  * Returns null if the lap is not completed within maxSteps.
  */
 export function runAutopilotLap(
@@ -89,7 +96,7 @@ export function runAutopilotLap(
     const input = autopilotInput(car);
     inputs.push(input);
     car.update(DT, input);
-    trajectory.push({ x: car.x, z: car.z, heading: car.heading, speed: car.speed });
+    trajectory.push(snapshot(car));
 
     const lapMs = tracker.update(car.x, car.z, step);
     if (lapMs !== null) {
@@ -118,11 +125,11 @@ export function replayInputs(
 
   for (let step = 0; step < inputs.length; step++) {
     car.update(DT, inputs[step]);
-    trajectory.push({ x: car.x, z: car.z, heading: car.heading, speed: car.speed });
+    trajectory.push(snapshot(car));
 
     if (lapTimeMs === null) {
-      const result = tracker.update(car.x, car.z, step);
-      if (result !== null) lapTimeMs = result;
+      const lapMs = tracker.update(car.x, car.z, step);
+      if (lapMs !== null) lapTimeMs = lapMs;
     }
   }
 
