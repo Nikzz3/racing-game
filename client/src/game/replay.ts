@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { ReplayFrame } from "@racing/shared";
 import { formatMs, escapeHtml } from "../util";
 import { animateCar, createCarMesh } from "./car";
-import { createScene, updateSun, type SceneBundle } from "./scene";
+import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
 const FINISH_HOLD_MS = 1500;
@@ -136,24 +136,13 @@ export class ReplayViewer {
   }
 
   private updateCamera(dt: number): void {
-    const { camera } = this.bundle;
-    const heading = this.carMesh.rotation.y;
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
     const { x, z } = this.carMesh.position;
-    const target = new THREE.Vector3(x - fx * 10, 4.6, z - fz * 10);
-    const k = 1 - Math.exp(-6 * dt);
-    camera.position.lerp(target, k);
-    camera.lookAt(x + fx * 4, 1.4, z + fz * 4);
+    followCar(this.bundle.camera, x, z, this.carMesh.rotation.y, dt);
   }
 
   private snapCameraBehindCar(): void {
-    const heading = this.carMesh.rotation.y;
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
     const { x, z } = this.carMesh.position;
-    this.bundle.camera.position.set(x - fx * 10, 4.6, z - fz * 10);
-    this.bundle.camera.lookAt(x + fx * 4, 1.4, z + fz * 4);
+    snapBehindCar(this.bundle.camera, x, z, this.carMesh.rotation.y);
   }
 
   dispose(): void {

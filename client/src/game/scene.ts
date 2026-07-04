@@ -76,6 +76,41 @@ export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): vo
   sun.target.position.set(x, 0, z);
 }
 
+const CAM_BACK_DIST = 10;
+const CAM_EYE_HEIGHT = 4.6;
+const CAM_LOOK_AHEAD = 4;
+const CAM_LOOK_AT_HEIGHT = 1.4;
+const CAM_FOLLOW_RATE = 6;
+
+/** Instantly places the camera behind and above the car, facing the look-ahead point. */
+export function snapBehindCar(
+  camera: THREE.PerspectiveCamera,
+  x: number,
+  z: number,
+  heading: number
+): void {
+  const fx = Math.sin(heading);
+  const fz = Math.cos(heading);
+  camera.position.set(x - fx * CAM_BACK_DIST, CAM_EYE_HEIGHT, z - fz * CAM_BACK_DIST);
+  camera.lookAt(x + fx * CAM_LOOK_AHEAD, CAM_LOOK_AT_HEIGHT, z + fz * CAM_LOOK_AHEAD);
+}
+
+/** Smoothly follows the car each frame using exponential-decay lerp. */
+export function followCar(
+  camera: THREE.PerspectiveCamera,
+  x: number,
+  z: number,
+  heading: number,
+  dt: number
+): void {
+  const fx = Math.sin(heading);
+  const fz = Math.cos(heading);
+  const target = new THREE.Vector3(x - fx * CAM_BACK_DIST, CAM_EYE_HEIGHT, z - fz * CAM_BACK_DIST);
+  const k = 1 - Math.exp(-CAM_FOLLOW_RATE * dt);
+  camera.position.lerp(target, k);
+  camera.lookAt(x + fx * CAM_LOOK_AHEAD, CAM_LOOK_AT_HEIGHT, z + fz * CAM_LOOK_AHEAD);
+}
+
 /**
  * Gradient sunset sky with a sun disc drawn exactly along SUN_OFFSET, so the
  * visible sun sits where the shadows say it should be. The dome follows the

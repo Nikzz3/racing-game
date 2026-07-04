@@ -15,7 +15,7 @@ import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
-import { createScene, updateSun, type SceneBundle } from "./scene";
+import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
@@ -156,24 +156,11 @@ export class Game {
   };
 
   private updateCamera(dt: number): void {
-    const { camera } = this.bundle;
-    const fx = Math.sin(this.car.heading);
-    const fz = Math.cos(this.car.heading);
-    const target = new THREE.Vector3(
-      this.car.x - fx * 10,
-      4.6,
-      this.car.z - fz * 10
-    );
-    const k = 1 - Math.exp(-6 * dt);
-    camera.position.lerp(target, k);
-    camera.lookAt(this.car.x + fx * 4, 1.4, this.car.z + fz * 4);
+    followCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading, dt);
   }
 
   private snapCameraBehindCar(): void {
-    const fx = Math.sin(this.car.heading);
-    const fz = Math.cos(this.car.heading);
-    this.bundle.camera.position.set(this.car.x - fx * 10, 4.6, this.car.z - fz * 10);
-    this.bundle.camera.lookAt(this.car.x + fx * 4, 1.4, this.car.z + fz * 4);
+    snapBehindCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading);
   }
 
   /**
