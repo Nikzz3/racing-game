@@ -154,7 +154,7 @@ export interface PolicyWeights {
 const MEDIUM_MAX_SPEED = 90;
 const POLICY_LOOKAHEADS = [5, 10, 20, 40] as const;
 
-function _normalizeAngle(a: number): number {
+function normalizeAngle(a: number): number {
   while (a > Math.PI) a -= 2 * Math.PI;
   while (a < -Math.PI) a += 2 * Math.PI;
   return a;
@@ -169,14 +169,14 @@ function computePolicyObs(car: CarPhysics): number[] {
   const lateral = (s.dirX * dz - s.dirZ * dx) / ROAD_HALF_WIDTH;
 
   const trackHeading = Math.atan2(s.dirX, s.dirZ);
-  const headingErr = _normalizeAngle(car.heading - trackHeading) / Math.PI;
+  const headingErr = normalizeAngle(car.heading - trackHeading) / Math.PI;
   const speedNorm = car.speed / MEDIUM_MAX_SPEED;
 
   const n = TRACK_DIVISIONS;
   const curvatures = POLICY_LOOKAHEADS.map(offset => {
     const ahead = TRACK_SAMPLES[(car.centerIndex + offset) % n];
     const aheadH = Math.atan2(ahead.dirX, ahead.dirZ);
-    return _normalizeAngle(aheadH - trackHeading) / Math.PI;
+    return normalizeAngle(aheadH - trackHeading) / Math.PI;
   });
 
   const raw = [lateral, headingErr, speedNorm, ...curvatures];

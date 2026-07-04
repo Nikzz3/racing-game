@@ -15,7 +15,8 @@ Reward: arc-length progress per step - wall_penalty - offtrack_penalty
 
 Episode:
   - Capped at max_steps (truncation)
-  - Early terminated when stuck at wall ≥60 steps or reversing ≥120 steps
+  - Early terminated when stuck at wall ≥60 steps, or reversing (net
+    backward progress over a 60-step sliding window)
   - Randomized reset for training; fixed spawn (SPAWN_SAMPLE) for eval
 """
 
