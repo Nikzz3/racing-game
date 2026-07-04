@@ -2,6 +2,7 @@ import {
   CHECKPOINTS,
   CHECKPOINT_RADIUS,
   NUM_CHECKPOINTS,
+  ROAD_HALF_WIDTH,
   TRACK_DIVISIONS,
   TRACK_SAMPLES,
   type Difficulty,
@@ -134,4 +135,111 @@ export function replayInputs(
   }
 
   return { trajectory, lapTimeMs };
+}
+
+// ---------------------------------------------------------------------------
+// Policy forward pass (mirrors Python env._compute_obs + train.py export)
+// ---------------------------------------------------------------------------
+
+/** Exported policy weights from rl/train.py → rl/policy.json. */
+export interface PolicyWeights {
+  obs_mean: number[];
+  obs_var: number[];
+  net_arch: number[];
+  activation: string;
+  layers: Array<{ weight: number[][]; bias: number[] }>;
+}
+
+// Physics constants mirrored from Python env (medium difficulty)
+const MEDIUM_MAX_SPEED = 90;
+const POLICY_LOOKAHEADS = [5, 10, 20, 40] as const;
+
+function _normalizeAngle(a: number): number {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+/** Build the 7-dim observation vector; mirrors SunsetRidgeEnv._compute_obs in env.py. */
+function computePolicyObs(car: CarPhysics): number[] {
+  const s = TRACK_SAMPLES[car.centerIndex];
+  const dx = car.x - s.x;
+  const dz = car.z - s.z;
+  // Signed lateral: dirX*dz - dirZ*dx > 0 ⟹ car is left of track direction
+  const lateral = (s.dirX * dz - s.dirZ * dx) / ROAD_HALF_WIDTH;
+
+  const trackHeading = Math.atan2(s.dirX, s.dirZ);
+  const headingErr = _normalizeAngle(car.heading - trackHeading) / Math.PI;
+  const speedNorm = car.speed / MEDIUM_MAX_SPEED;
+
+  const n = TRACK_DIVISIONS;
+  const curvatures = POLICY_LOOKAHEADS.map(offset => {
+    const ahead = TRACK_SAMPLES[(car.centerIndex + offset) % n];
+    const aheadH = Math.atan2(ahead.dirX, ahead.dirZ);
+    return _normalizeAngle(aheadH - trackHeading) / Math.PI;
+  });
+
+  const raw = [lateral, headingErr, speedNorm, ...curvatures];
+  return raw.map(v => Math.max(-3, Math.min(3, v)));
+}
+
+/**
+ * Run a single forward pass through the exported MLP policy.
+ * Applies VecNormalize stats then runs tanh-MLP + output clip.
+ */
+export function policyForward(obs: number[], policy: PolicyWeights): number[] {
+  // Normalize observation using VecNormalize running stats
+  let x = obs.map((v, i) => (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8));
+
+  const numLayers = policy.layers.length;
+  for (let i = 0; i < numLayers; i++) {
+    const { weight, bias } = policy.layers[i];
+    const prev = x;
+    // Linear: W @ prev + b
+    x = weight.map((row, j) => row.reduce((s, w, k) => s + w * prev[k], 0) + bias[j]);
+    if (i < numLayers - 1) {
+      x = x.map(v => Math.tanh(v)); // hidden activation
+    }
+  }
+  return x.map(v => Math.max(-1, Math.min(1, v))); // clip to action space
+}
+
+/**
+ * Run the exported policy against the real TypeScript CarPhysics from the fixed
+ * spawn, timing the first valid lap.  Returns null if no lap completed within maxSteps.
+ */
+export function runPolicyLap(
+  policy: PolicyWeights,
+  options: { difficulty?: Difficulty; maxSteps?: number } = {}
+): RunResult | null {
+  const { difficulty = 'medium', maxSteps = 36000 } = options;
+  const car = new CarPhysics(difficulty);
+  car.spawnAtSample(SPAWN_SAMPLE, 0);
+
+  const tracker = new CheckpointTracker();
+  const trajectory: StepState[] = [];
+  const inputs: CarInput[] = [];
+
+  for (let step = 0; step < maxSteps; step++) {
+    const obs = computePolicyObs(car);
+    const action = policyForward(obs, policy);
+
+    const steer = action[0];
+    const longitudinal = action[1];
+    const input: CarInput = {
+      steer,
+      throttle: Math.max(0, longitudinal),
+      brake: Math.max(0, -longitudinal),
+    };
+    inputs.push(input);
+    car.update(DT, input);
+    trajectory.push(snapshot(car));
+
+    const lapMs = tracker.update(car.x, car.z, step);
+    if (lapMs !== null) {
+      return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
+    }
+  }
+
+  return null;
 }
