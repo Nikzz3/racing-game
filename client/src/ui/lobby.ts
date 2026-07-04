@@ -134,14 +134,12 @@ export class Lobby {
     });
 
     this.lbList.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      const replayBtn = target.closest<HTMLButtonElement>("button[data-replay]");
-      if (replayBtn) {
-        callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.diff as Difficulty);
-        return;
-      }
-      const aiBtn = target.closest<HTMLButtonElement>("button[data-ai-record]");
-      if (aiBtn) this.onReferenceLap();
+      const replayBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
+      if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.diff as Difficulty);
+    });
+
+    this.root.querySelector<HTMLElement>(".lb-ai-record")!.addEventListener("click", () => {
+      this.onReferenceLap();
     });
 
     this.setRooms([]);
