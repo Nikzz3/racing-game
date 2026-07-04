@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install RL package with test dependencies
+        run: pip install -e "./rl[dev]"
       - name: Run golden fidelity tests
         run: python -m pytest rl/tests/ -v

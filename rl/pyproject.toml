@@ -13,5 +13,10 @@ dependencies = ["numpy>=1.26", "gymnasium>=1.0"]
 train = ["stable-baselines3>=2.0", "onnxruntime>=1.15"]
 dev   = ["pytest>=7"]
 
+# Flat layout: the physics port, env, and trainer are top-level modules (not a
+# package), so discovery must be explicit or setuptools refuses to build.
+[tool.setuptools]
+py-modules = ["physics", "env", "train"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
