@@ -44,13 +44,17 @@ interface TrainingProgress {
 
 const progressExists = existsSync(PROGRESS_PATH);
 
+function loadProgress(): TrainingProgress {
+  return JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as TrainingProgress;
+}
+
 describe('training_progress.json — plateau record', () => {
   it('exists at rl/training_progress.json', () => {
     expect(progressExists).toBe(true);
   });
 
   it.skipIf(!progressExists)('has all required top-level keys', () => {
-    const data = JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as TrainingProgress;
+    const data = loadProgress();
     expect(data).toHaveProperty('training_run');
     expect(data).toHaveProperty('reward_log');
     expect(data).toHaveProperty('eval_laps');
@@ -59,7 +63,7 @@ describe('training_progress.json — plateau record', () => {
   });
 
   it.skipIf(!progressExists)('reward_log has ordered checkpoints with overall improvement', () => {
-    const { reward_log } = JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as TrainingProgress;
+    const { reward_log } = loadProgress();
     expect(reward_log.length).toBeGreaterThan(5);
     for (let i = 1; i < reward_log.length; i++) {
       expect(reward_log[i].timesteps).toBeGreaterThan(reward_log[i - 1].timesteps);
@@ -70,9 +74,7 @@ describe('training_progress.json — plateau record', () => {
   });
 
   it.skipIf(!progressExists)('plateau_analysis confirms plateau was detected', () => {
-    const { plateau_analysis } = JSON.parse(
-      readFileSync(PROGRESS_PATH, 'utf-8')
-    ) as TrainingProgress;
+    const { plateau_analysis } = loadProgress();
     expect(plateau_analysis.detected).toBe(true);
     expect(plateau_analysis.detected_at_timesteps).toBeGreaterThan(0);
     expect(typeof plateau_analysis.verdict).toBe('string');
@@ -80,7 +82,7 @@ describe('training_progress.json — plateau record', () => {
   });
 
   it.skipIf(!progressExists)('eval_laps show improving Python-env lap times across training', () => {
-    const { eval_laps } = JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as TrainingProgress;
+    const { eval_laps } = loadProgress();
     const completed = eval_laps.filter(e => e.mean_lap_time_s !== null);
     expect(completed.length).toBeGreaterThan(0);
     const first = completed[0].mean_lap_time_s!;
@@ -89,9 +91,7 @@ describe('training_progress.json — plateau record', () => {
   });
 
   it.skipIf(!progressExists)('validated_record beats the autopilot baseline', () => {
-    const { validated_record } = JSON.parse(
-      readFileSync(PROGRESS_PATH, 'utf-8')
-    ) as TrainingProgress;
+    const { validated_record } = loadProgress();
     expect(validated_record.lap_time_s).toBeGreaterThan(0);
     expect(validated_record.autopilot_baseline_s).toBeGreaterThan(0);
     expect(validated_record.lap_time_s).toBeLessThan(validated_record.autopilot_baseline_s);
@@ -101,9 +101,7 @@ describe('training_progress.json — plateau record', () => {
   it.skipIf(!progressExists || !existsSync(POLICY_PATH))(
     'documented record matches the actual Node-validated lap time within 0.1 s',
     () => {
-      const { validated_record } = JSON.parse(
-        readFileSync(PROGRESS_PATH, 'utf-8')
-      ) as TrainingProgress;
+      const { validated_record } = loadProgress();
       const policy = JSON.parse(readFileSync(POLICY_PATH, 'utf-8')) as PolicyWeights;
       const result = runPolicyLap(policy, { maxSteps: 36000 });
 

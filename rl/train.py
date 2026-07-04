@@ -52,8 +52,8 @@ def detect_plateau(
     worst = min(recent)
     if best <= 0:
         return False
-    improvement_pct = (best - worst) / best * 100.0
-    return improvement_pct < threshold_pct
+    variation_pct = (best - worst) / best * 100.0
+    return variation_pct < threshold_pct
 
 
 # ---------------------------------------------------------------------------
@@ -102,8 +102,12 @@ def export_policy(model, vec_env, output_path: str) -> None:
 # Eval lap (Python env proxy)
 # ---------------------------------------------------------------------------
 
+# Number of eval episodes averaged per eval checkpoint.
+N_EVAL_LAPS = 5
+
+
 def eval_policy_lap(
-    model, vec_env, n_eval: int = 5
+    model, vec_env, n_eval: int = N_EVAL_LAPS
 ) -> tuple[float | None, int]:
     """Run n_eval eval episodes from the fixed spawn; return (mean_lap_time_s, n_laps_completed).
 
@@ -204,12 +208,12 @@ def train(
             # Eval lap checkpoint every eval_freq steps
             if self.num_timesteps - self._eval_last >= eval_freq:
                 self._eval_last = self.num_timesteps
-                print(f"  [eval] Running {5} eval laps at {self.num_timesteps:,} steps…")
-                lap_s, n = eval_policy_lap(self.model, self.training_env, n_eval=5)
+                print(f"  [eval] Running {N_EVAL_LAPS} eval laps at {self.num_timesteps:,} steps…")
+                lap_s, n = eval_policy_lap(self.model, self.training_env, n_eval=N_EVAL_LAPS)
                 if lap_s is not None:
                     print(f"  [eval] mean lap = {lap_s:.2f} s  ({n} laps completed)")
                 else:
-                    print(f"  [eval] no laps completed yet")
+                    print("  [eval] no laps completed yet")
                 eval_laps.append({
                     "timesteps": self.num_timesteps,
                     "mean_lap_time_s": round(lap_s, 2) if lap_s is not None else None,
