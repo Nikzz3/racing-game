@@ -42,3 +42,28 @@ room (or join an existing one), and drive.
 Laps only count when all checkpoints are passed in order (validated server-side), so
 cutting the track does not pay off. Best lap times are saved in the database and survive
 restarts. Rooms also survive restarts but are automatically closed 1 hour after creation.
+
+## Using Sandcastle
+
+Changes to this repo can be delivered by **Sandcastle**, an AI coding agent that picks up
+GitHub issues and opens pull requests for them. You don't touch a branch yourself — you
+describe the work in an issue and review the result.
+
+1. **File an issue.** Open a GitHub issue describing the change you want, as concretely as
+   possible (what should change, and how you'll know it's done). Add the `Sandcastle`
+   label so the agent picks it up. To scope a large effort, link the issue to a parent
+   PRD; the agent reads the parent for context but only implements the issue it's assigned.
+
+2. **The agent works the issue.** For issue `<N>`, Sandcastle works on a branch named
+   `sandcastle/issue-<N>`. It explores the repo, makes the change (test-first where a test
+   harness applies), and runs the project's feedback loops — for this repo that's
+   `npm run typecheck` (there is currently no `npm test`). Each commit message is prefixed
+   `RALPH:` and records what was done, key decisions, the files changed, and notes for the
+   next iteration.
+
+3. **Review the pull request.** When the work is ready the agent opens a PR from its
+   branch. Review it like any other PR. The agent leaves the issue open and comments its
+   progress; closing the issue is a human step after the PR is merged.
+
+Tips for good results: keep one unit of work per issue, spell out acceptance criteria, and
+point the agent at relevant files or ADRs (`docs/adr/`) when context matters.
