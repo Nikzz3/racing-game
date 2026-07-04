@@ -8,7 +8,7 @@ Sources mirrored exactly:
 Public API:
   TRACK_SAMPLES              list[dict]  512 {x, z, dirX, dirZ} samples
   nearest_centerline(x, z)  -> {index, dist}
-  spawn_at_sample(index, lateral_offset, difficulty) -> PhysicsState
+  spawn_at_sample(index, lateral_offset)            -> PhysicsState
   step(state, action, dt, difficulty)               -> PhysicsState
 """
 
@@ -121,9 +121,7 @@ class PhysicsState:
     touching_wall: bool = False
 
 
-def spawn_at_sample(
-    index: int, lateral_offset: float, difficulty: str = "medium"
-) -> PhysicsState:
+def spawn_at_sample(index: int, lateral_offset: float) -> PhysicsState:
     """
     Mirror of CarPhysics.spawnAtSample.
     Left-pointing normal of the direction of travel offsets the spawn position.

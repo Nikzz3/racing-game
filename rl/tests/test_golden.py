@@ -62,7 +62,7 @@ def _replay_python(inputs: list[dict], difficulty: str) -> list[dict]:
 
     SPAWN_SAMPLE = 512 - 14  # matches harness.ts SPAWN_SAMPLE
 
-    state = spawn_at_sample(SPAWN_SAMPLE, 0.0, difficulty)
+    state = spawn_at_sample(SPAWN_SAMPLE, 0.0)
     trajectory = []
     for inp in inputs:
         state = step(state, inp, 1 / 60, difficulty)
