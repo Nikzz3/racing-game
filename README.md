@@ -10,7 +10,7 @@ Requires a Postgres database (rooms and the best-lap leaderboard are stored ther
 For local development, start one with Docker or Podman:
 
 ```bash
-podman compose up -d
+docker compose up -d   # or: podman compose up -d
 npm install
 npm run dev
 ```
