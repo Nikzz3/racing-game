@@ -6,6 +6,7 @@ import { runPolicyLap, type PolicyWeights } from './harness';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROGRESS_PATH = join(__dirname, '../../../rl/training_progress.json');
+const CONFIG_PATH = join(__dirname, '../../../rl/train_config.json');
 const POLICY_PATH = join(__dirname, '../../../rl/policy.json');
 
 interface RewardCheckpoint {
@@ -119,5 +120,62 @@ describe('training_progress.json — plateau record', () => {
       );
     },
     60_000,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// train_config.json — hyperparameter and results document
+// ---------------------------------------------------------------------------
+
+interface TrainConfigResults {
+  difficulty: string;
+  policy_validated_lap_time_s: number;
+  autopilot_baseline_lap_time_s: number;
+  speedup_vs_autopilot_pct: number;
+  validation: string;
+}
+
+interface TrainConfig {
+  algorithm: string;
+  results: TrainConfigResults;
+}
+
+const configExists = existsSync(CONFIG_PATH);
+
+function loadConfig(): TrainConfig {
+  return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as TrainConfig;
+}
+
+describe('train_config.json — hyperparameter record', () => {
+  it('exists at rl/train_config.json', () => {
+    expect(configExists).toBe(true);
+  });
+
+  it.skipIf(!configExists)('algorithm is PPO', () => {
+    expect(loadConfig().algorithm).toBe('PPO');
+  });
+
+  it.skipIf(!configExists)('results.difficulty is medium', () => {
+    expect(loadConfig().results.difficulty).toBe('medium');
+  });
+
+  it.skipIf(!configExists)('results.policy_validated_lap_time_s beats the autopilot baseline', () => {
+    const { results } = loadConfig();
+    expect(results.policy_validated_lap_time_s).toBeGreaterThan(0);
+    expect(results.autopilot_baseline_lap_time_s).toBeGreaterThan(0);
+    expect(results.policy_validated_lap_time_s).toBeLessThan(results.autopilot_baseline_lap_time_s);
+  });
+
+  it.skipIf(!configExists)('speedup_vs_autopilot_pct is at least 25%', () => {
+    expect(loadConfig().results.speedup_vs_autopilot_pct).toBeGreaterThanOrEqual(25);
+  });
+
+  it.skipIf(!configExists || !existsSync(PROGRESS_PATH))(
+    'results.policy_validated_lap_time_s is consistent with training_progress.json',
+    () => {
+      const { results } = loadConfig();
+      const progress = JSON.parse(readFileSync(PROGRESS_PATH, 'utf-8')) as { validated_record: { lap_time_s: number } };
+      expect(Math.abs(results.policy_validated_lap_time_s - progress.validated_record.lap_time_s)).toBeLessThan(0.1);
+    },
   );
 });
