@@ -3,3 +3,9 @@ dist/
 server/data/
 *.log
 .DS_Store
+
+# Python (rl/)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
