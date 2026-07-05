@@ -35,16 +35,19 @@ function trackViewBox(track: Track): string {
   return `${(minX - pad).toFixed(0)} ${(minZ - pad).toFixed(0)} ${(maxX - minX + 2 * pad).toFixed(0)} ${(maxZ - minZ + 2 * pad).toFixed(0)}`;
 }
 
-function trackCardHtml(track: Track, active: boolean): string {
+/** Top-down SVG outline of a track's centerline, sized to its bounding box. */
+function trackOutlineSvg(track: Track, className: string): string {
   const vb = trackViewBox(track);
   const path = trackPath(track);
-  return `<button type="button" class="track-card${active ? " active" : ""}" data-track="${escapeHtml(track.id)}"><svg class="track-outline" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg><span class="track-card-name">${escapeHtml(track.name)}</span></button>`;
+  return `<svg class="${className}" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg>`;
+}
+
+function trackCardHtml(track: Track, active: boolean): string {
+  return `<button type="button" class="track-card${active ? " active" : ""}" data-track="${escapeHtml(track.id)}">${trackOutlineSvg(track, "track-outline")}<span class="track-card-name">${escapeHtml(track.name)}</span></button>`;
 }
 
 function trackThumbHtml(track: Track): string {
-  const vb = trackViewBox(track);
-  const path = trackPath(track);
-  return `<svg class="room-track-thumb" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg>`;
+  return trackOutlineSvg(track, "room-track-thumb");
 }
 
 export class Lobby {
