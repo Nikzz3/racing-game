@@ -1034,6 +1034,36 @@ input:focus {
   opacity: 1;
 }
 
+.cp-miss-warn {
+  position: absolute;
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: #ff5e3a;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.cp-miss-warn span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 94, 58, 0.8);
+  margin-top: 2px;
+}
+
+.cp-miss-warn.visible {
+  opacity: 1;
+}
+
 .toasts {
   position: absolute;
   top: 110px;

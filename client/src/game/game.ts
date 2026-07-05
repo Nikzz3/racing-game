@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
+  nearestCenterline,
   resolveTrack,
   TRACK_DIVISIONS,
   type Difficulty,
@@ -9,6 +10,7 @@ import {
   type ServerMessage,
   type Track,
 } from "@racing/shared";
+import { checkpointMissed } from "./checkpoint-miss";
 import type { Net } from "../net";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
@@ -23,6 +25,8 @@ import { buildTrack } from "./trackMesh";
 const SEND_INTERVAL_MS = 50;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
+/** Tolerance in samples before declaring a checkpoint missed (~1.5× CHECKPOINT_RADIUS). */
+const CP_MISS_MARGIN_SAMPLES = 8;
 
 export class Game {
   private bundle: SceneBundle;
@@ -41,6 +45,10 @@ export class Game {
   // Current-lap clock derived from server snapshots (no clock sync needed).
   private curLapBaseMs: number | null = null;
   private curLapReceivedAt = 0;
+
+  private lastMe: PlayerSnapshot | null = null;
+  /** Sample index of each checkpoint, pre-computed for checkpointMissed. */
+  private checkpointSampleIndices: number[];
 
   private autopilot = false;
 
@@ -61,6 +69,9 @@ export class Game {
     trackSlug: string = DEFAULT_TRACK_SLUG
   ) {
     this.track = resolveTrack(trackSlug);
+    this.checkpointSampleIndices = this.track.checkpoints.map(
+      (cp) => nearestCenterline(cp.x, cp.z, this.track.samples).index
+    );
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container = document.createElement("div");
     this.container.style.cssText = "position:absolute;inset:0;";
@@ -114,6 +125,7 @@ export class Game {
   }
 
   private applyMyProgress(me: PlayerSnapshot, serverT: number): void {
+    this.lastMe = me;
     this.hud.setMyProgress(me);
     this.curLapBaseMs = me.lapStartT === null ? null : serverT - me.lapStartT;
     this.curLapReceivedAt = performance.now();
@@ -150,6 +162,18 @@ export class Game {
 
     this.hud.setSpeed(this.car.speed);
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
+
+    const lapActive = this.curLapBaseMs !== null && this.lastMe !== null;
+    this.hud.setCheckpointMissed(
+      lapActive &&
+        checkpointMissed(
+          this.car.centerIndex,
+          this.checkpointSampleIndices[this.lastMe!.nextCheckpoint],
+          this.track.samples.length,
+          CP_MISS_MARGIN_SAMPLES
+        )
+    );
+
     this.hud.setCurrentLap(
       this.curLapBaseMs === null
         ? null
