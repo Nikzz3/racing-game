@@ -107,18 +107,20 @@ describe('track registry', () => {
     const THRESHOLD = 0.8;
 
     for (let k = 0; k < cps.length; k++) {
-      const i = cpIndices[k];
-      const j = cpIndices[(k + 1) % cps.length];
+      const kNext = (k + 1) % cps.length;
       const cp1 = cps[k];
-      const cp2 = cps[(k + 1) % cps.length];
+      const cp2 = cps[kNext];
       const chord = Math.hypot(cp2.x - cp1.x, cp2.z - cp1.z);
 
+      // Walk the centerline from this checkpoint's sample to the next, summing segment lengths.
+      const startIdx = cpIndices[k];
+      const endIdx = cpIndices[kNext];
       let arc = 0;
-      let idx = i;
-      while (idx !== j) {
-        const next = (idx + 1) % n;
-        arc += Math.hypot(samples[next].x - samples[idx].x, samples[next].z - samples[idx].z);
-        idx = next;
+      let idx = startIdx;
+      while (idx !== endIdx) {
+        const nextIdx = (idx + 1) % n;
+        arc += Math.hypot(samples[nextIdx].x - samples[idx].x, samples[nextIdx].z - samples[idx].z);
+        idx = nextIdx;
       }
 
       if (arc === 0) continue; // degenerate: two CPs at same sample
