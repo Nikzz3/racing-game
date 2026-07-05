@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   asDifficulty,
-  asTrackSlug,
-  DEFAULT_TRACK_SLUG,
   type ClientMessage,
   type Difficulty,
   type ServerMessage,
@@ -146,7 +144,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       const room = manager.create(
         msg.roomName,
         asDifficulty(msg.difficulty),
-        asTrackSlug(msg.track ?? DEFAULT_TRACK_SLUG)
+        msg.track
       );
       joinRoom(player, room.id);
       break;

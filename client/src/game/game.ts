@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
   DEFAULT_DIFFICULTY,
-  getTrack,
+  resolveTrack,
   SUNSET_RIDGE,
   type Difficulty,
   type PlayerSnapshot,
@@ -59,7 +59,7 @@ export class Game {
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
     trackSlug: string = SUNSET_RIDGE.id
   ) {
-    this.track = getTrack(trackSlug) ?? SUNSET_RIDGE;
+    this.track = resolveTrack(trackSlug);
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container = document.createElement("div");
     this.container.style.cssText = "position:absolute;inset:0;";

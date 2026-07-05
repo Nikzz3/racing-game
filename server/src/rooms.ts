@@ -1,10 +1,8 @@
 import type { WebSocket } from "ws";
 import {
   asDifficulty,
-  asTrackSlug,
   DEFAULT_TRACK_SLUG,
-  getTrack,
-  SUNSET_RIDGE,
+  resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
   type ReplayFrame,
@@ -119,7 +117,7 @@ export class RoomManager {
       "SELECT id, name, created_at, difficulty FROM rooms"
     );
     for (const r of rows) {
-      const track = getTrack(asTrackSlug(r.track)) ?? SUNSET_RIDGE;
+      const track = resolveTrack(r.track);
       this.rooms.set(
         r.id,
         new Room(
@@ -134,7 +132,7 @@ export class RoomManager {
   }
 
   create(name: string, difficulty: Difficulty, trackSlug: string = DEFAULT_TRACK_SLUG): Room {
-    const track = getTrack(asTrackSlug(trackSlug)) ?? SUNSET_RIDGE;
+    const track = resolveTrack(trackSlug);
     const id = Math.random().toString(36).slice(2, 9);
     const room = new Room(
       id,

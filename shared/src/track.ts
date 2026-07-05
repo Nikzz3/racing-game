@@ -183,16 +183,7 @@ export function asTrackSlug(value: unknown): TrackSlug {
   return DEFAULT_TRACK_SLUG;
 }
 
-// ---- Backward-compat aliases ------------------------------------------------
-// These point at Sunset Ridge and let existing callers (test files, etc.)
-// continue to compile without changes.  Consumer code paths that are being
-// refactored (physics, timing, track-mesh) should use the Track directly.
-
-/** @deprecated Use SUNSET_RIDGE.samples */
-export const TRACK_SAMPLES: TrackSample[] = SUNSET_RIDGE.samples;
-
-/** @deprecated Use SUNSET_RIDGE.checkpoints */
-export const CHECKPOINTS: { x: number; z: number }[] = SUNSET_RIDGE.checkpoints;
-
-/** @deprecated Use SUNSET_RIDGE.name */
-export const TRACK_NAME = SUNSET_RIDGE.name;
+/** Resolve arbitrary input to a registered Track, falling back to the default. */
+export function resolveTrack(value: unknown): Track {
+  return getTrack(asTrackSlug(value)) ?? SUNSET_RIDGE;
+}

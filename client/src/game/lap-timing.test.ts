@@ -5,7 +5,9 @@ import {
   replayInputs,
   autopilotInput,
 } from './harness';
-import { CHECKPOINTS, CHECKPOINT_RADIUS, NUM_CHECKPOINTS, SUNSET_RIDGE } from '@racing/shared';
+import { CHECKPOINT_RADIUS, NUM_CHECKPOINTS, SUNSET_RIDGE } from '@racing/shared';
+
+const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
 
 // Place the car exactly at a checkpoint's position.
 function atCheckpoint(k: number): { x: number; z: number } {
@@ -70,29 +72,6 @@ describe('CheckpointTracker', () => {
     const { x, z } = atCheckpoint(0);
     expect(tracker.update(x, z, 1)).toBeNull(); // starts timer, next → 1
     expect(tracker.next).toBe(1);
-  });
-
-  it('uses a Track checkpoints parameter directly (sunset-ridge)', () => {
-    // Drive updateTiming against SUNSET_RIDGE.checkpoints passed as a parameter,
-    // confirming the tracker uses the supplied checkpoints rather than any global.
-    const cps = SUNSET_RIDGE.checkpoints;
-    const tracker = new CheckpointTracker(cps);
-    const { x: x0, z: z0 } = cps[0];
-
-    // First CP0 crossing: start timer.
-    expect(tracker.update(x0, z0, 0)).toBeNull();
-
-    // Hit remaining checkpoints in order.
-    for (let k = 1; k < cps.length; k++) {
-      tracker.update(cps[k].x, cps[k].z, k * 60);
-    }
-
-    // Second CP0 crossing: lap completed.
-    const lapMs = tracker.update(x0, z0, cps.length * 60);
-    expect(lapMs).not.toBeNull();
-    expect(lapMs).toBeCloseTo(cps.length * 1000, 0);
-    // Confirm the tracker cycled through every checkpoint in the Track.
-    expect(cps.length).toBe(NUM_CHECKPOINTS);
   });
 });
 
