@@ -163,12 +163,13 @@ export class Game {
     this.hud.setSpeed(this.car.speed);
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
 
-    const lapActive = this.curLapBaseMs !== null && this.lastMe !== null;
+    const me = this.lastMe;
     this.hud.setCheckpointMissed(
-      lapActive &&
+      this.curLapBaseMs !== null &&
+        me !== null &&
         checkpointMissed(
           this.car.centerIndex,
-          this.checkpointSampleIndices[this.lastMe!.nextCheckpoint],
+          this.checkpointSampleIndices[me.nextCheckpoint],
           this.track.samples.length,
           CP_MISS_MARGIN_SAMPLES
         )
