@@ -1,11 +1,9 @@
 {
   "_comment": "Hyperparameters and reward config that produced the policy.json beating the autopilot baseline. Re-run train.py with these settings to reproduce.",
-
   "algorithm": "PPO",
   "library": "stable-baselines3>=2.0",
-
   "training": {
-    "timesteps": 1000000,
+    "timesteps": 2000000,
     "n_envs": 8,
     "vec_env_type": "SubprocVecEnv",
     "vec_normalize": {
@@ -14,21 +12,21 @@
       "clip_obs": 5.0
     }
   },
-
   "ppo_hyperparameters": {
     "n_steps": 1024,
     "batch_size": 256,
     "n_epochs": 10,
     "gamma": 0.99,
-    "learning_rate": 3e-4,
+    "learning_rate": 0.0003,
     "device": "cpu"
   },
-
   "policy": {
-    "net_arch": [64, 64],
+    "net_arch": [
+      64,
+      64
+    ],
     "activation": "tanh"
   },
-
   "environment": {
     "difficulty": "medium",
     "max_steps_per_episode": 3600,
@@ -36,21 +34,23 @@
     "observation_dim": 7,
     "action_dim": 2,
     "obs_clip": 3.0,
-    "lookaheads": [5, 10, 20, 40]
+    "lookaheads": [
+      5,
+      10,
+      20,
+      40
+    ]
   },
-
   "reward": {
     "progress_scale": "arc_length_metres_per_step",
     "wall_penalty": -2.0,
     "offtrack_penalty": -0.5
   },
-
   "termination": {
     "stuck_wall_steps": 60,
     "reverse_window_steps": 60,
     "reverse_net_threshold_samples": 3
   },
-
   "reset": {
     "training": {
       "sample_index": "uniform_random_over_track",
@@ -61,28 +61,25 @@
       "lateral_offset_metres": 0.0
     }
   },
-
   "results": {
     "difficulty": "medium",
-    "policy_validated_lap_time_s": 24.75,
+    "policy_validated_lap_time_s": 23.82,
     "autopilot_baseline_lap_time_s": 35.47,
-    "speedup_vs_autopilot_pct": 30.2,
+    "speedup_vs_autopilot_pct": 32.8,
     "validation": "real TypeScript CarPhysics in Node, dt=1/60s, fixed spawn, Medium difficulty"
   },
-
   "plateau": {
     "detected": true,
-    "detected_at_timesteps": 850000,
+    "detected_at_timesteps": 1050000,
     "window_size": 5,
     "threshold_pct": 1.5,
-    "verdict": "Last 5 reward checkpoints (650k–850k steps) within 0.14% variation; training confirmed stable to 1M steps.",
+    "verdict": "Plateau confirmed: last 5 reward checkpoints (800000\u20131050000 steps) within 0.84% variation (threshold 1.5%); training continued to 2,000,000 steps to confirm stability.",
     "progress_file": "training_progress.json"
   },
-
   "record": {
-    "lap_time_s": 24.75,
+    "lap_time_s": 23.82,
     "autopilot_baseline_s": 35.47,
-    "speedup_pct": 30.2,
-    "note": "PPO plateau record — Medium difficulty, fixed spawn, 1/60s dt, Node-validated against real TypeScript CarPhysics. SAC fallback available if further reduction is desired (no env-contract changes required)."
+    "speedup_pct": 32.8,
+    "note": "PPO record \u2014 Medium difficulty, fixed spawn, 1/60s dt, Node-validated against real TypeScript CarPhysics. 2M-step run; supersedes the earlier 24.75s / 1M-step record. SAC fallback available if further reduction is desired (no env-contract changes required)."
   }
 }

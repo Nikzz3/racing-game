@@ -600,6 +600,34 @@ input:focus {
   padding: 10px 4px;
 }
 
+/* "Watch AI Record" — a section-level call to action under the board. */
+.lb-ai-record {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lb-ai-record-btn {
+  width: 100%;
+  padding: 11px 16px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #061016;
+  background: linear-gradient(120deg, #4fd8ff, #9be8ff);
+  border-radius: 0;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  box-shadow: 0 0 0 1px rgba(79, 216, 255, 0.4), 0 6px 20px rgba(79, 216, 255, 0.2);
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+
+.lb-ai-record-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 0 1px rgba(79, 216, 255, 0.6), 0 0 22px rgba(79, 216, 255, 0.5);
+}
+
 .replay-hud {
   position: absolute;
   inset: 0;

@@ -63,7 +63,10 @@ def detect_plateau(
 def _make_env(difficulty: str = "medium", max_steps: int = 3600):
     def _init():
         from env import SunsetRidgeEnv
-        return SunsetRidgeEnv(difficulty=difficulty, eval_mode=False, max_steps=max_steps)
+        from stable_baselines3.common.monitor import Monitor
+        # Monitor adds info["episode"] on episode end, which populates PPO's
+        # ep_info_buffer — the source for reward_log and plateau detection.
+        return Monitor(SunsetRidgeEnv(difficulty=difficulty, eval_mode=False, max_steps=max_steps))
     return _init
 
 

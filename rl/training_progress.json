@@ -1,66 +1,235 @@
 {
-  "_note": "Training progress from the 1M-step PPO run that produced policy.json. Reward log reconstructed from PlateauCallback output (50k-step intervals); eval_laps are Python-env proxy laps measured at 200k-step intervals (approximate physics — expect ~1 s delta vs. Node-validated). The authoritative plateau record is validated_record, confirmed against real TypeScript CarPhysics in Node (runPolicyLap, dt=1/60s, Medium, fixed spawn).",
-
+  "_note": "Training progress for the PPO run that produced policy.json. Reward log captured from PlateauCallback every 50k steps; eval_laps are Python-env proxy laps (approximate physics). The authoritative record is validated_record, run against the real TypeScript CarPhysics in Node.",
   "training_run": {
     "algorithm": "PPO",
-    "total_timesteps": 1000000,
-    "n_envs": 8,
-    "vec_env": "SubprocVecEnv + VecNormalize(norm_obs=True, norm_reward=True, clip_obs=5.0)",
-    "ppo_hyperparameters": {
-      "n_steps": 1024,
-      "batch_size": 256,
-      "n_epochs": 10,
-      "gamma": 0.99,
-      "learning_rate": 3e-4,
-      "net_arch": [64, 64],
-      "activation": "tanh",
-      "device": "cpu"
-    }
+    "total_timesteps": 2000000,
+    "n_envs": 8
   },
-
   "reward_log": [
-    { "timesteps":   50000, "mean_episode_reward":  14.8 },
-    { "timesteps":  100000, "mean_episode_reward":  43.2 },
-    { "timesteps":  150000, "mean_episode_reward":  72.6 },
-    { "timesteps":  200000, "mean_episode_reward":  97.4 },
-    { "timesteps":  250000, "mean_episode_reward": 119.8 },
-    { "timesteps":  300000, "mean_episode_reward": 140.3 },
-    { "timesteps":  350000, "mean_episode_reward": 157.1 },
-    { "timesteps":  400000, "mean_episode_reward": 171.4 },
-    { "timesteps":  450000, "mean_episode_reward": 183.0 },
-    { "timesteps":  500000, "mean_episode_reward": 191.5 },
-    { "timesteps":  550000, "mean_episode_reward": 197.8 },
-    { "timesteps":  600000, "mean_episode_reward": 202.6 },
-    { "timesteps":  650000, "mean_episode_reward": 205.7 },
-    { "timesteps":  700000, "mean_episode_reward": 207.4 },
-    { "timesteps":  750000, "mean_episode_reward": 208.1 },
-    { "timesteps":  800000, "mean_episode_reward": 208.4 },
-    { "timesteps":  850000, "mean_episode_reward": 208.5 },
-    { "timesteps":  900000, "mean_episode_reward": 208.6 },
-    { "timesteps":  950000, "mean_episode_reward": 208.6 },
-    { "timesteps": 1000000, "mean_episode_reward": 208.7 }
+    {
+      "timesteps": 50000,
+      "mean_episode_reward": -134.77
+    },
+    {
+      "timesteps": 100000,
+      "mean_episode_reward": 25.99
+    },
+    {
+      "timesteps": 150000,
+      "mean_episode_reward": 261.7
+    },
+    {
+      "timesteps": 200000,
+      "mean_episode_reward": 701.28
+    },
+    {
+      "timesteps": 250000,
+      "mean_episode_reward": 1155.46
+    },
+    {
+      "timesteps": 300000,
+      "mean_episode_reward": 1551.02
+    },
+    {
+      "timesteps": 350000,
+      "mean_episode_reward": 2060.44
+    },
+    {
+      "timesteps": 400000,
+      "mean_episode_reward": 2541.05
+    },
+    {
+      "timesteps": 450000,
+      "mean_episode_reward": 2949.85
+    },
+    {
+      "timesteps": 500000,
+      "mean_episode_reward": 3415.86
+    },
+    {
+      "timesteps": 550000,
+      "mean_episode_reward": 3594.33
+    },
+    {
+      "timesteps": 600000,
+      "mean_episode_reward": 3716.54
+    },
+    {
+      "timesteps": 650000,
+      "mean_episode_reward": 3799.6
+    },
+    {
+      "timesteps": 700000,
+      "mean_episode_reward": 3868.12
+    },
+    {
+      "timesteps": 750000,
+      "mean_episode_reward": 3885.47
+    },
+    {
+      "timesteps": 800000,
+      "mean_episode_reward": 3923.32
+    },
+    {
+      "timesteps": 850000,
+      "mean_episode_reward": 3956.64
+    },
+    {
+      "timesteps": 900000,
+      "mean_episode_reward": 3982.61
+    },
+    {
+      "timesteps": 950000,
+      "mean_episode_reward": 3995.04
+    },
+    {
+      "timesteps": 1000000,
+      "mean_episode_reward": 3951.8
+    },
+    {
+      "timesteps": 1050000,
+      "mean_episode_reward": 3950.99
+    },
+    {
+      "timesteps": 1100000,
+      "mean_episode_reward": 3988.31
+    },
+    {
+      "timesteps": 1150000,
+      "mean_episode_reward": 4023.19
+    },
+    {
+      "timesteps": 1200000,
+      "mean_episode_reward": 4034.42
+    },
+    {
+      "timesteps": 1250000,
+      "mean_episode_reward": 4042.09
+    },
+    {
+      "timesteps": 1300000,
+      "mean_episode_reward": 4041.59
+    },
+    {
+      "timesteps": 1350000,
+      "mean_episode_reward": 4086.91
+    },
+    {
+      "timesteps": 1400000,
+      "mean_episode_reward": 4109.96
+    },
+    {
+      "timesteps": 1450000,
+      "mean_episode_reward": 4113.61
+    },
+    {
+      "timesteps": 1500000,
+      "mean_episode_reward": 4118.28
+    },
+    {
+      "timesteps": 1550000,
+      "mean_episode_reward": 4103.36
+    },
+    {
+      "timesteps": 1600000,
+      "mean_episode_reward": 4094.18
+    },
+    {
+      "timesteps": 1650000,
+      "mean_episode_reward": 4093.07
+    },
+    {
+      "timesteps": 1700000,
+      "mean_episode_reward": 4100.27
+    },
+    {
+      "timesteps": 1750000,
+      "mean_episode_reward": 4104.42
+    },
+    {
+      "timesteps": 1800000,
+      "mean_episode_reward": 4101.18
+    },
+    {
+      "timesteps": 1850000,
+      "mean_episode_reward": 4104.17
+    },
+    {
+      "timesteps": 1900000,
+      "mean_episode_reward": 4120.56
+    },
+    {
+      "timesteps": 1950000,
+      "mean_episode_reward": 4134.67
+    },
+    {
+      "timesteps": 2000000,
+      "mean_episode_reward": 4099.8
+    }
   ],
-
   "eval_laps": [
-    { "timesteps":  200000, "mean_lap_time_s": null, "n_laps": 0 },
-    { "timesteps":  400000, "mean_lap_time_s": 43.8,  "n_laps": 2 },
-    { "timesteps":  600000, "mean_lap_time_s": 30.4,  "n_laps": 5 },
-    { "timesteps":  800000, "mean_lap_time_s": 26.2,  "n_laps": 5 },
-    { "timesteps": 1000000, "mean_lap_time_s": 25.3,  "n_laps": 5 }
+    {
+      "timesteps": 200000,
+      "mean_lap_time_s": 28.73,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 400000,
+      "mean_lap_time_s": 25.98,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 600000,
+      "mean_lap_time_s": 25.3,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 800000,
+      "mean_lap_time_s": 25.22,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 1000000,
+      "mean_lap_time_s": 24.85,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 1200000,
+      "mean_lap_time_s": 24.67,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 1400000,
+      "mean_lap_time_s": 24.58,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 1600000,
+      "mean_lap_time_s": 24.58,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 1800000,
+      "mean_lap_time_s": 24.55,
+      "n_laps": 5
+    },
+    {
+      "timesteps": 2000000,
+      "mean_lap_time_s": 24.52,
+      "n_laps": 5
+    }
   ],
-
   "plateau_analysis": {
     "detected": true,
-    "detected_at_timesteps": 850000,
+    "detected_at_timesteps": 1050000,
     "window_size": 5,
     "threshold_pct": 1.5,
-    "verdict": "Plateau confirmed: last 5 reward checkpoints (650k–850k steps) within 0.14% variation (208.5 vs 208.7 max; threshold 1.5%). Training continued to 1M steps to confirm stability — no meaningful improvement observed in the final 150k steps."
+    "verdict": "Plateau confirmed: last 5 reward checkpoints (800000\u20131050000 steps) within 0.84% variation (threshold 1.5%); training continued to 2,000,000 steps to confirm stability."
   },
-
   "validated_record": {
-    "lap_time_s": 24.75,
+    "lap_time_s": 23.82,
     "autopilot_baseline_s": 35.47,
-    "speedup_pct": 30.2,
-    "validation": "Real TypeScript CarPhysics in Node, dt=1/60s, fixed spawn (SPAWN_SAMPLE), Medium difficulty — runPolicyLap in policy-lap.test.ts"
+    "speedup_pct": 32.8,
+    "validation": "Real TypeScript CarPhysics in Node, dt=1/60s, fixed spawn (SPAWN_SAMPLE), Medium difficulty \u2014 runPolicyLap in policy-lap.test.ts"
   }
 }
