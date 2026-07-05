@@ -27,9 +27,9 @@ function openReplay(name: string, timeMs: number, frames: ReplayFrame[]): void {
 }
 
 const lobby = new Lobby(app, {
-  onCreate: (roomName, difficulty) => {
+  onCreate: (roomName, track, difficulty) => {
     net.send({ type: "hello", name: lobby.playerName });
-    net.send({ type: "createRoom", roomName, difficulty, track: "sunset-ridge" });
+    net.send({ type: "createRoom", roomName, difficulty, track });
   },
   onJoin: (roomId) => {
     net.send({ type: "hello", name: lobby.playerName });

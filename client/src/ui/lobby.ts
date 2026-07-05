@@ -1,21 +1,51 @@
-import type { LeaderboardEntry, RoomInfo, TrackSlug } from "@racing/shared";
+import type { LeaderboardEntry, RoomInfo, Track, TrackSlug } from "@racing/shared";
 import {
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
   DIFFICULTY_LABELS,
+  TRACKS,
+  resolveTrack,
+  trackPath,
   type Difficulty,
 } from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
 
 export interface LobbyCallbacks {
-  onCreate: (roomName: string, difficulty: Difficulty) => void;
+  onCreate: (roomName: string, track: TrackSlug, difficulty: Difficulty) => void;
   onJoin: (roomId: string) => void;
   onReplay: (name: string, track: TrackSlug, difficulty: Difficulty) => void;
   onReferenceLap: () => void;
 }
 
+/** Track slugs that have a trained AI policy (Reference Lap available). */
+const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
+
 const NAME_KEY = "racer-name";
+
+function trackViewBox(track: Track): string {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const s of track.samples) {
+    if (s.x < minX) minX = s.x;
+    if (s.x > maxX) maxX = s.x;
+    if (s.z < minZ) minZ = s.z;
+    if (s.z > maxZ) maxZ = s.z;
+  }
+  const pad = 20;
+  return `${(minX - pad).toFixed(0)} ${(minZ - pad).toFixed(0)} ${(maxX - minX + 2 * pad).toFixed(0)} ${(maxZ - minZ + 2 * pad).toFixed(0)}`;
+}
+
+function trackCardHtml(track: Track, active: boolean): string {
+  const vb = trackViewBox(track);
+  const path = trackPath(track);
+  return `<button type="button" class="track-card${active ? " active" : ""}" data-track="${escapeHtml(track.id)}"><svg class="track-outline" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg><span class="track-card-name">${escapeHtml(track.name)}</span></button>`;
+}
+
+function trackThumbHtml(track: Track): string {
+  const vb = trackViewBox(track);
+  const path = trackPath(track);
+  return `<svg class="room-track-thumb" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg>`;
+}
 
 export class Lobby {
   private root: HTMLElement;
@@ -24,26 +54,23 @@ export class Lobby {
   private lbList: HTMLElement;
   private onReferenceLap: () => void;
 
-  /** Difficulty chosen for the next created room. */
-  private createDifficulty: Difficulty = DEFAULT_DIFFICULTY;
-  /** Which difficulty's board is currently shown. */
-  private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
-  /** Which track's board is currently shown (fixed to sunset-ridge until multi-track). */
-  private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
+  /** Currently selected track — drives both create-Room and leaderboard. */
+  private selectedTrack: TrackSlug = DEFAULT_TRACK_SLUG;
+  /** Currently selected difficulty — drives both create-Room and leaderboard. */
+  private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
     this.root = document.createElement("div");
     this.root.className = "lobby-backdrop";
+
+    const trackCards = TRACKS.map((t) => trackCardHtml(t, t.id === DEFAULT_TRACK_SLUG)).join("");
     const difficultyOptions = DIFFICULTIES.map(
       (d) =>
-        `<button type="button" class="diff-opt diff-${d}${d === this.createDifficulty ? " active" : ""}" data-create-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
+        `<button type="button" class="diff-opt diff-${d}${d === this.selectedDifficulty ? " active" : ""}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
     ).join("");
-    const boardTabs = DIFFICULTIES.map(
-      (d) =>
-        `<button type="button" class="lb-tab diff-${d}${d === this.boardDifficulty ? " active" : ""}" data-board-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
-    ).join("");
+
     this.root.innerHTML = `
       <div class="lobby-scene" aria-hidden="true">
         <div class="scene-stars"></div>
@@ -64,19 +91,19 @@ export class Lobby {
           <input id="driver-name" maxlength="16" placeholder="Your name" autocomplete="off" />
           <span class="name-tag">P1</span>
         </div>
+        <div class="track-selector" role="radiogroup" aria-label="Track">${trackCards}</div>
+        <div class="diff-picker" role="radiogroup" aria-label="Difficulty">${difficultyOptions}</div>
         <div class="lobby-columns">
           <section class="panel-rooms">
             <h2><i class="dot"></i>Starting Grid</h2>
             <div class="room-list"></div>
             <form class="create-form">
               <input maxlength="24" placeholder="New room name" />
-              <div class="diff-picker" role="radiogroup" aria-label="Difficulty">${difficultyOptions}</div>
               <button type="submit">Create &amp; Race</button>
             </form>
           </section>
           <section class="panel-laps">
             <h2><i class="dot gold"></i>Best Laps — All Time</h2>
-            <div class="lb-tabs">${boardTabs}</div>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
             <div class="lb-ai-record" hidden>
@@ -101,28 +128,34 @@ export class Lobby {
 
     const form = this.root.querySelector<HTMLFormElement>(".create-form")!;
     const roomNameInput = form.querySelector<HTMLInputElement>("input")!;
-    const diffPicker = form.querySelector<HTMLElement>(".diff-picker")!;
-    diffPicker.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-create-diff]");
-      if (!btn) return;
-      this.createDifficulty = btn.dataset.createDiff as Difficulty;
-      diffPicker
-        .querySelectorAll<HTMLButtonElement>("button")
-        .forEach((b) => b.classList.toggle("active", b === btn));
-    });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       localStorage.setItem(NAME_KEY, this.playerName);
-      callbacks.onCreate(roomNameInput.value.trim() || `${this.playerName}'s race`, this.createDifficulty);
+      callbacks.onCreate(
+        roomNameInput.value.trim() || `${this.playerName}'s race`,
+        this.selectedTrack,
+        this.selectedDifficulty
+      );
       roomNameInput.value = "";
     });
 
-    const tabs = this.root.querySelector<HTMLElement>(".lb-tabs")!;
-    tabs.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-board-diff]");
+    const trackSelector = this.root.querySelector<HTMLElement>(".track-selector")!;
+    trackSelector.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-track]");
       if (!btn) return;
-      this.boardDifficulty = btn.dataset.boardDiff as Difficulty;
-      tabs
+      this.selectedTrack = btn.dataset.track as TrackSlug;
+      trackSelector
+        .querySelectorAll<HTMLButtonElement>("button")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+      this.renderBoard();
+    });
+
+    const diffPicker = this.root.querySelector<HTMLElement>(".diff-picker")!;
+    diffPicker.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-diff]");
+      if (!btn) return;
+      this.selectedDifficulty = btn.dataset.diff as Difficulty;
+      diffPicker
         .querySelectorAll<HTMLButtonElement>("button")
         .forEach((b) => b.classList.toggle("active", b === btn));
       this.renderBoard();
@@ -158,15 +191,11 @@ export class Lobby {
       return;
     }
     this.roomList.innerHTML = rooms
-      .map(
-        (r) => `
-        <div class="room-row diff-edge-${r.difficulty}">
-          <span class="room-name">${escapeHtml(r.name)}</span>
-          <span class="room-badge diff-${r.difficulty}">${DIFFICULTY_LABELS[r.difficulty]}</span>
-          <span class="room-count">${r.players} racing</span>
-          <button data-room="${escapeHtml(r.id)}">Join</button>
-        </div>`
-      )
+      .map((r) => {
+        const track = resolveTrack(r.track);
+        const thumb = trackThumbHtml(track);
+        return `<div class="room-row diff-edge-${r.difficulty}">${thumb}<span class="room-track-name">${escapeHtml(track.name)}</span><span class="room-name">${escapeHtml(r.name)}</span><span class="room-badge diff-${r.difficulty}">${DIFFICULTY_LABELS[r.difficulty]}</span><span class="room-count">${r.players} racing</span><button data-room="${escapeHtml(r.id)}">Join</button></div>`;
+      })
       .join("");
   }
 
@@ -175,10 +204,9 @@ export class Lobby {
     this.renderBoard();
   }
 
-  /** Render only the entries for the currently selected (track, difficulty) pair. */
   private renderBoard(): void {
     const shown = this.entries.filter(
-      (e) => e.track === this.boardTrack && e.difficulty === this.boardDifficulty
+      (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
     );
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
     empty.hidden = shown.length > 0;
@@ -192,9 +220,10 @@ export class Lobby {
         </li>`
       )
       .join("");
-    // AI Record button — Medium only (policy trained and validated on Medium).
+    // AI Record: only for tracks that have a trained policy (Sunset Ridge), medium difficulty only.
     const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
-    aiRecordEl.hidden = this.boardDifficulty !== "medium";
+    aiRecordEl.hidden =
+      !TRACKS_WITH_POLICY.has(this.selectedTrack) || this.selectedDifficulty !== "medium";
   }
 
   show(): void {
