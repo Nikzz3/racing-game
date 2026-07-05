@@ -49,17 +49,22 @@ def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
     )
 
 
-def _sample_track(divisions: int = TRACK_DIVISIONS) -> list[dict]:
-    n = len(_CONTROL_POINTS)
+def _sample_track(
+    control_points: list[tuple[float, float]] = None,  # type: ignore[assignment]
+    divisions: int = TRACK_DIVISIONS,
+) -> list[dict]:
+    if control_points is None:
+        control_points = _CONTROL_POINTS
+    n = len(control_points)
     pts: list[tuple[float, float]] = []
     for s in range(divisions):
         u = (s / divisions) * n
         i = int(u)
         t = u - i
-        p0 = _CONTROL_POINTS[(i - 1) % n]
-        p1 = _CONTROL_POINTS[i % n]
-        p2 = _CONTROL_POINTS[(i + 1) % n]
-        p3 = _CONTROL_POINTS[(i + 2) % n]
+        p0 = control_points[(i - 1) % n]
+        p1 = control_points[i % n]
+        p2 = control_points[(i + 1) % n]
+        p3 = control_points[(i + 2) % n]
         x = _catmull_rom(p0[0], p1[0], p2[0], p3[0], t)
         z = _catmull_rom(p0[1], p1[1], p2[1], p3[1], t)
         pts.append((x, z))
@@ -75,6 +80,25 @@ def _sample_track(divisions: int = TRACK_DIVISIONS) -> list[dict]:
 
 
 TRACK_SAMPLES: list[dict] = _sample_track()
+
+# ---------------------------------------------------------------------------
+# Stormhaven Circuit  (shared/src/track.ts — STORMHAVEN_CONTROL_POINTS)
+# ---------------------------------------------------------------------------
+
+_STORMHAVEN_CONTROL_POINTS: list[tuple[float, float]] = [
+    (15, -220), (80, -220), (150, -205),
+    (205, -158), (232, -82),
+    (220, 0), (210, 80),
+    (228, 160), (198, 215),
+    (118, 232), (38, 215),
+    (-38, 232), (-108, 210), (-172, 232),
+    (-215, 182), (-232, 102), (-215, 28),
+    (-232, -52), (-200, -118),
+    (-220, -170), (-195, -202), (-155, -218),
+    (-100, -222), (-45, -220),
+]
+
+STORMHAVEN_SAMPLES: list[dict] = _sample_track(_STORMHAVEN_CONTROL_POINTS)
 
 
 def nearest_centerline(x: float, z: float) -> dict:

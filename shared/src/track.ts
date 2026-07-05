@@ -168,10 +168,67 @@ export const SUNSET_RIDGE: Track = {
   checkpoints: _sunsetRidgeCheckpoints,
 };
 
+// ---- Stormhaven Circuit -----------------------------------------------------
+
+/**
+ * Control points [x, z] of the Stormhaven Circuit centerline.
+ * Layout inspired by Spa-Francorchamps (fast right-hand complex, Blanchimont-style
+ * sweeper, Bus Stop chicane) and Suzuka (flowing esses).
+ * Original layout: not a 1:1 trace of any trademarked circuit.
+ *
+ * Sectors:
+ *   S1: Start/finish straight → fast right complex (T1, Eau Rouge-style)
+ *   S2: Back straight → T2 chicane → sweeping top-right hairpin (T3)
+ *   S3: Flowing esses (T4-T6) → Blanchimont-style left sweeper (T7)
+ *   S4: Bus Stop chicane (T8) → slow bottom-left hairpin (T9) → return straight
+ */
+const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
+  [15, -220],    // T0 – start/finish line
+  [80, -220],    // S/F straight right
+  [150, -205],   // T1 braking zone
+  [205, -158],   // T1 – fast right entry (Eau Rouge-inspired)
+  [232, -82],    // T1 apex (Raidillon-style)
+  [220, 0],      // T1 exit / Kemmel-straight
+  [210, 80],     // Kemmel straight continuing
+  [228, 160],    // T2 chicane peak
+  [198, 215],    // T3 entry
+  [118, 232],    // T3 – top-right sweeper apex (Pouhon-inspired)
+  [38, 215],     // T3 exit
+  [-38, 232],    // Esses T4 peak
+  [-108, 210],   // Esses T5 trough
+  [-172, 232],   // Esses T6 peak
+  [-215, 182],   // T7 – Blanchimont-inspired left sweeper entry
+  [-232, 102],   // T7 apex
+  [-215, 28],    // T7 exit
+  [-232, -52],   // T8 chicane left (Bus Stop-inspired)
+  [-200, -118],  // T8 chicane right
+  [-220, -170],  // T9 hairpin entry
+  [-195, -202],  // T9 hairpin apex
+  [-155, -218],  // T9 exit
+  [-100, -222],  // return straight approach
+  [-45, -220],   // return straight → loop closes back to T0
+];
+
+const _stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
+const _stormhavenCheckpoints = deriveCheckpoints(
+  _stormhavenSamples,
+  NUM_CHECKPOINTS,
+  TRACK_DIVISIONS
+);
+
+/** Second circuit: Stormhaven Circuit. */
+export const STORMHAVEN: Track = {
+  id: "stormhaven",
+  name: "Stormhaven Circuit",
+  controlPoints: STORMHAVEN_CONTROL_POINTS,
+  samples: _stormhavenSamples,
+  checkpoints: _stormhavenCheckpoints,
+};
+
 // ---- Registry ---------------------------------------------------------------
 
 /** All registered Tracks; add future circuits here. */
-export const TRACKS: Track[] = [SUNSET_RIDGE];
+export const TRACKS: Track[] = [SUNSET_RIDGE, STORMHAVEN];
 
 export function getTrack(slug: string): Track | undefined {
   return TRACKS.find((t) => t.id === slug);
@@ -186,4 +243,24 @@ export function asTrackSlug(value: unknown): TrackSlug {
 /** Resolve arbitrary input to a registered Track, falling back to the default. */
 export function resolveTrack(value: unknown): Track {
   return getTrack(asTrackSlug(value)) ?? SUNSET_RIDGE;
+}
+
+/**
+ * Convert a Track's centerline samples into a closed 2D SVG path string.
+ * World x maps to SVG x; world z maps to SVG y (top-down view, z+ is up in world).
+ * Returns the outline path followed by a short start/finish tick marker at sample 0.
+ */
+export function trackPath(track: Track): string {
+  const { samples } = track;
+  const outline = samples
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.z.toFixed(1)}`)
+    .join(" ");
+  // Perpendicular tick at sample 0 = start/finish marker
+  const s0 = samples[0];
+  const tickLen = 12;
+  const mx1 = (s0.x - s0.dirZ * tickLen).toFixed(1);
+  const mz1 = (s0.z + s0.dirX * tickLen).toFixed(1);
+  const mx2 = (s0.x + s0.dirZ * tickLen).toFixed(1);
+  const mz2 = (s0.z - s0.dirX * tickLen).toFixed(1);
+  return `${outline} Z M${mx1},${mz1}L${mx2},${mz2}`;
 }

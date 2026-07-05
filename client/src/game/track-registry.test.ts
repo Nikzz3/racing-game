@@ -5,7 +5,9 @@ import {
   getTrack,
   NUM_CHECKPOINTS,
   SUNSET_RIDGE,
+  STORMHAVEN,
   TRACKS,
+  trackPath,
 } from '@racing/shared';
 
 describe('track registry', () => {
@@ -53,5 +55,58 @@ describe('track registry', () => {
 
   it('SUNSET_RIDGE samples array has the expected length', () => {
     expect(SUNSET_RIDGE.samples.length).toBe(512);
+  });
+
+  it('TRACKS contains exactly two entries', () => {
+    expect(TRACKS.length).toBe(2);
+  });
+
+  it('getTrack returns STORMHAVEN for stormhaven', () => {
+    expect(getTrack('stormhaven')).toBe(STORMHAVEN);
+  });
+
+  it('asTrackSlug passes through stormhaven unchanged', () => {
+    expect(asTrackSlug('stormhaven')).toBe('stormhaven');
+  });
+
+  it('STORMHAVEN has the correct id and name', () => {
+    expect(STORMHAVEN.id).toBe('stormhaven');
+    expect(STORMHAVEN.name).toBe('Stormhaven Circuit');
+  });
+
+  it('STORMHAVEN derives the correct global number of checkpoints', () => {
+    expect(STORMHAVEN.checkpoints.length).toBe(NUM_CHECKPOINTS);
+  });
+
+  it('STORMHAVEN samples array has 512 entries', () => {
+    expect(STORMHAVEN.samples.length).toBe(512);
+  });
+
+  it('STORMHAVEN has 24 control points', () => {
+    expect(STORMHAVEN.controlPoints.length).toBe(24);
+  });
+});
+
+describe('trackPath', () => {
+  it('returns a string starting with M (moveto)', () => {
+    const path = trackPath(SUNSET_RIDGE);
+    expect(path.startsWith('M')).toBe(true);
+  });
+
+  it('returns a closed path containing Z', () => {
+    const path = trackPath(SUNSET_RIDGE);
+    expect(path).toContain('Z');
+  });
+
+  it('works for Stormhaven Circuit too', () => {
+    const path = trackPath(STORMHAVEN);
+    expect(path.startsWith('M')).toBe(true);
+    expect(path).toContain('Z');
+  });
+
+  it('includes a start/finish marker after Z', () => {
+    const path = trackPath(SUNSET_RIDGE);
+    const afterZ = path.split('Z')[1] ?? '';
+    expect(afterZ.trimStart().startsWith('M')).toBe(true);
   });
 });

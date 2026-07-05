@@ -25,6 +25,7 @@ import pytest
 # --- repo root so 'npx' resolves the workspace node_modules ---
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GEN_GOLDEN = REPO_ROOT / "rl" / "gen_golden.ts"
+GEN_STORMHAVEN = REPO_ROOT / "rl" / "gen_stormhaven_samples.ts"
 
 
 # Numerical tolerance: both JS and Python use IEEE 754 float64; the same
@@ -176,3 +177,51 @@ class TestDifficultyVariants:
         assert speeds["easy"] < speeds["medium"] < speeds["hard"], (
             f"Expected easy < medium < hard max speed; got {speeds}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stormhaven Circuit TS↔Python sample parity
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def stormhaven_ts_samples() -> list[dict]:
+    """Run gen_stormhaven_samples.ts once; cache in memory."""
+    result = subprocess.run(
+        ["npx", "tsx", str(GEN_STORMHAVEN)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+class TestStormhavenSampleParity:
+    """TS and Python must derive identical Stormhaven Circuit samples from the same control points."""
+
+    def test_sample_count_matches(self, stormhaven_ts_samples):
+        sys.path.insert(0, str(REPO_ROOT / "rl"))
+        from physics import STORMHAVEN_SAMPLES  # noqa: PLC0415
+
+        assert len(stormhaven_ts_samples) == len(STORMHAVEN_SAMPLES), (
+            f"TS produced {len(stormhaven_ts_samples)} samples; "
+            f"Python produced {len(STORMHAVEN_SAMPLES)} samples"
+        )
+
+    def test_all_samples_match(self, stormhaven_ts_samples):
+        sys.path.insert(0, str(REPO_ROOT / "rl"))
+        from physics import STORMHAVEN_SAMPLES  # noqa: PLC0415
+
+        ref = stormhaven_ts_samples
+        got = STORMHAVEN_SAMPLES
+        for i, (r, g) in enumerate(zip(ref, got)):
+            for key in ("x", "z", "dirX", "dirZ"):
+                diff = abs(r[key] - g[key])
+                assert diff <= POS_TOL, (
+                    f"Stormhaven sample {i} key '{key}': "
+                    f"TS={r[key]:.15g}, Python={g[key]:.15g}, diff={diff:.3e} > tol={POS_TOL:.0e}"
+                )
+
+    def test_stormhaven_has_512_samples(self, stormhaven_ts_samples):
+        assert len(stormhaven_ts_samples) == 512
