@@ -13,8 +13,13 @@ import { CarPhysics } from './physics';
 const DT = 1 / 60;
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
-/** How many centerline samples ahead the autopilot aims for. */
-const AUTOPILOT_LOOKAHEAD = 12;
+/**
+ * How many centerline samples ahead the autopilot aims for. Kept low enough that
+ * the follower hugs the centerline through tight sections (Stormhaven's esse
+ * snake) instead of chord-cutting across the apexes onto the grass — at a larger
+ * lookahead it strays >8 units off those gates and can't clear CHECKPOINT_RADIUS.
+ */
+const AUTOPILOT_LOOKAHEAD = 8;
 
 export interface StepState {
   x: number;

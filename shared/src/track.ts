@@ -8,7 +8,7 @@ export const ROAD_HALF_WIDTH = 7;
 /** Distance from road edge to the physical barrier wall. */
 export const BARRIER_OFFSET = 6;
 export const NUM_CHECKPOINTS = 12;
-export const CHECKPOINT_RADIUS = 15;
+export const CHECKPOINT_RADIUS = 8;
 export const TRACK_DIVISIONS = 512;
 
 // ---- Core types -------------------------------------------------------------
