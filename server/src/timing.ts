@@ -1,4 +1,4 @@
-import { CHECKPOINTS, CHECKPOINT_RADIUS, NUM_CHECKPOINTS } from "@racing/shared";
+import { CHECKPOINT_RADIUS } from "@racing/shared";
 
 export interface TimingState {
   /** Index of the next checkpoint the player must pass. */
@@ -39,9 +39,10 @@ export function updateTiming(
   t: TimingState,
   x: number,
   z: number,
-  now: number
+  now: number,
+  checkpoints: { x: number; z: number }[]
 ): LapResult | null {
-  const cp = CHECKPOINTS[t.next];
+  const cp = checkpoints[t.next];
   const dx = x - cp.x;
   const dz = z - cp.z;
   if (dx * dx + dz * dz > R2) return null;
@@ -58,6 +59,6 @@ export function updateTiming(
     }
     t.lapStartT = now;
   }
-  t.next = (t.next + 1) % NUM_CHECKPOINTS;
+  t.next = (t.next + 1) % checkpoints.length;
   return result;
 }

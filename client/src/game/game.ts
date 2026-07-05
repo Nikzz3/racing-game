@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import {
   DEFAULT_DIFFICULTY,
+  getTrack,
+  SUNSET_RIDGE,
   type Difficulty,
-  TRACK_DIVISIONS,
-  TRACK_SAMPLES,
   type PlayerSnapshot,
   type ServerMessage,
+  type Track,
 } from "@racing/shared";
 import type { Net } from "../net";
 import { Hud } from "../ui/hud";
@@ -20,7 +21,7 @@ import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
-const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
+const SPAWN_SAMPLE = SUNSET_RIDGE.samples.length - 14;
 
 export class Game {
   private bundle: SceneBundle;
@@ -34,6 +35,7 @@ export class Game {
   private running = true;
   private lastFrame = performance.now();
   private container: HTMLElement;
+  private track: Track;
 
   // Current-lap clock derived from server snapshots (no clock sync needed).
   private curLapBaseMs: number | null = null;
@@ -54,15 +56,17 @@ export class Game {
     private myId: string,
     roomName: string,
     onLeave: () => void,
-    difficulty: Difficulty = DEFAULT_DIFFICULTY
+    difficulty: Difficulty = DEFAULT_DIFFICULTY,
+    trackSlug: string = SUNSET_RIDGE.id
   ) {
-    this.car = new CarPhysics(difficulty);
+    this.track = getTrack(trackSlug) ?? SUNSET_RIDGE;
+    this.car = new CarPhysics(difficulty, this.track.samples);
     this.container = document.createElement("div");
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.appendChild(this.container);
 
     this.bundle = createScene(this.container);
-    buildTrack(this.bundle.scene);
+    buildTrack(this.bundle.scene, this.track.samples);
 
     this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);
     this.carMesh = createCarMesh(myId);
@@ -180,8 +184,9 @@ export class Game {
   }
 
   private autopilotInput(): CarInput {
-    const n = TRACK_SAMPLES.length;
-    const target = TRACK_SAMPLES[(this.car.centerIndex + 12) % n];
+    const samples = this.track.samples;
+    const n = samples.length;
+    const target = samples[(this.car.centerIndex + 12) % n];
     const desired = Math.atan2(target.x - this.car.x, target.z - this.car.z);
     let diff = (desired - this.car.heading) % (Math.PI * 2);
     if (diff > Math.PI) diff -= Math.PI * 2;

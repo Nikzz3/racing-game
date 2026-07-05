@@ -1,11 +1,16 @@
 import type { WebSocket } from "ws";
 import {
   asDifficulty,
+  asTrackSlug,
+  DEFAULT_TRACK_SLUG,
+  getTrack,
+  SUNSET_RIDGE,
   type Difficulty,
   type PlayerSnapshot,
   type ReplayFrame,
   type RoomInfo,
   type ServerMessage,
+  type Track,
 } from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
 import { pool } from "./db";
@@ -53,7 +58,8 @@ export class Room {
     public readonly id: string,
     public readonly name: string,
     public readonly createdAt: number,
-    public readonly difficulty: Difficulty
+    public readonly difficulty: Difficulty,
+    public readonly track: Track
   ) {}
 
   broadcast(msg: ServerMessage): void {
@@ -90,6 +96,7 @@ export class Room {
       name: this.name,
       players: this.players.size,
       difficulty: this.difficulty,
+      track: this.track.id,
     };
   }
 }
@@ -112,25 +119,29 @@ export class RoomManager {
       "SELECT id, name, created_at, difficulty FROM rooms"
     );
     for (const r of rows) {
+      const track = getTrack(asTrackSlug(r.track)) ?? SUNSET_RIDGE;
       this.rooms.set(
         r.id,
         new Room(
           r.id,
           r.name,
           new Date(r.created_at).getTime(),
-          asDifficulty(r.difficulty)
+          asDifficulty(r.difficulty),
+          track
         )
       );
     }
   }
 
-  create(name: string, difficulty: Difficulty): Room {
+  create(name: string, difficulty: Difficulty, trackSlug: string = DEFAULT_TRACK_SLUG): Room {
+    const track = getTrack(asTrackSlug(trackSlug)) ?? SUNSET_RIDGE;
     const id = Math.random().toString(36).slice(2, 9);
     const room = new Room(
       id,
       name.trim().slice(0, 24) || "Race Room",
       Date.now(),
-      difficulty
+      difficulty,
+      track
     );
     this.rooms.set(id, room);
     pool

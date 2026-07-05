@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { nearestCenterline, ROAD_HALF_WIDTH } from "@racing/shared";
+import { nearestCenterline, ROAD_HALF_WIDTH, SUNSET_RIDGE } from "@racing/shared";
 import { getModel, instancedFromModel } from "./models";
 
 export interface SceneBundle {
@@ -228,7 +228,7 @@ function addEnvironment(scene: THREE.Scene): void {
       attempts++;
       const x = (Math.random() - 0.5) * 780;
       const z = (Math.random() - 0.5) * 780;
-      if (nearestCenterline(x, z).dist < ROAD_HALF_WIDTH + spec.minClearance) continue;
+      if (nearestCenterline(x, z, SUNSET_RIDGE.samples).dist < ROAD_HALF_WIDTH + spec.minClearance) continue;
       const s = spec.scaleMin + Math.random() * (spec.scaleMax - spec.scaleMin);
       pos.set(x, 0, z);
       quat.setFromAxisAngle(up, Math.random() * Math.PI * 2);
@@ -260,7 +260,7 @@ function addFallbackTrees(scene: THREE.Scene): void {
     attempts++;
     const x = (Math.random() - 0.5) * 760;
     const z = (Math.random() - 0.5) * 760;
-    if (nearestCenterline(x, z).dist < ROAD_HALF_WIDTH + 18) continue;
+    if (nearestCenterline(x, z, SUNSET_RIDGE.samples).dist < ROAD_HALF_WIDTH + 18) continue;
     positions.push({ x, z, s: 0.7 + Math.random() * 0.8 });
   }
 

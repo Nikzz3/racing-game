@@ -4,7 +4,6 @@ import {
   DIFFICULTIES,
   DIFFICULTY_LABELS,
   type Difficulty,
-  TRACK_NAME,
 } from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
 
@@ -55,7 +54,7 @@ export class Lobby {
         <header class="lobby-header">
           <p class="lobby-kicker">// IGNITION SEQUENCE</p>
           <h1 class="lobby-title">SUNSET<span>RIDGE</span></h1>
-          <p class="subtitle">3D MULTIPLAYER RACING — ${escapeHtml(TRACK_NAME.toUpperCase())}</p>
+          <p class="subtitle">3D MULTIPLAYER RACING</p>
         </header>
         <div class="name-row">
           <label for="driver-name">Driver</label>

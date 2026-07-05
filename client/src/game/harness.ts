@@ -1,11 +1,11 @@
 import {
-  CHECKPOINTS,
   CHECKPOINT_RADIUS,
-  NUM_CHECKPOINTS,
   ROAD_HALF_WIDTH,
+  SUNSET_RIDGE,
   TRACK_DIVISIONS,
-  TRACK_SAMPLES,
   type Difficulty,
+  type Track,
+  type TrackSample,
 } from '@racing/shared';
 import type { CarInput } from './input';
 import { CarPhysics } from './physics';
@@ -44,9 +44,14 @@ export interface RunResult {
 export class CheckpointTracker {
   next = 0;
   private lapStartStep: number | null = null;
+  private readonly checkpoints: { x: number; z: number }[];
+
+  constructor(checkpoints: { x: number; z: number }[]) {
+    this.checkpoints = checkpoints;
+  }
 
   update(x: number, z: number, step: number): number | null {
-    const cp = CHECKPOINTS[this.next];
+    const cp = this.checkpoints[this.next];
     const dx = x - cp.x;
     const dz = z - cp.z;
     if (dx * dx + dz * dz > R2) return null;
@@ -58,15 +63,15 @@ export class CheckpointTracker {
       }
       this.lapStartStep = step;
     }
-    this.next = (this.next + 1) % NUM_CHECKPOINTS;
+    this.next = (this.next + 1) % this.checkpoints.length;
     return lapMs;
   }
 }
 
 /** Rule-based autopilot: centerline follower with a fixed lookahead. */
-export function autopilotInput(car: CarPhysics): CarInput {
-  const n = TRACK_SAMPLES.length;
-  const target = TRACK_SAMPLES[(car.centerIndex + AUTOPILOT_LOOKAHEAD) % n];
+export function autopilotInput(car: CarPhysics, samples: TrackSample[]): CarInput {
+  const n = samples.length;
+  const target = samples[(car.centerIndex + AUTOPILOT_LOOKAHEAD) % n];
   const desired = Math.atan2(target.x - car.x, target.z - car.z);
   let diff = (desired - car.heading) % (Math.PI * 2);
   if (diff > Math.PI) diff -= Math.PI * 2;
@@ -83,18 +88,18 @@ export function autopilotInput(car: CarPhysics): CarInput {
  * Returns null if the lap is not completed within maxSteps.
  */
 export function runAutopilotLap(
-  options: { difficulty?: Difficulty; maxSteps?: number } = {}
+  options: { difficulty?: Difficulty; maxSteps?: number; track?: Track } = {}
 ): RunResult | null {
-  const { difficulty = 'medium', maxSteps = 36000 } = options;
-  const car = new CarPhysics(difficulty);
+  const { difficulty = 'medium', maxSteps = 36000, track = SUNSET_RIDGE } = options;
+  const car = new CarPhysics(difficulty, track.samples);
   car.spawnAtSample(SPAWN_SAMPLE, 0);
 
-  const tracker = new CheckpointTracker();
+  const tracker = new CheckpointTracker(track.checkpoints);
   const trajectory: StepState[] = [];
   const inputs: CarInput[] = [];
 
   for (let step = 0; step < maxSteps; step++) {
-    const input = autopilotInput(car);
+    const input = autopilotInput(car, track.samples);
     inputs.push(input);
     car.update(DT, input);
     trajectory.push(snapshot(car));
@@ -114,13 +119,13 @@ export function runAutopilotLap(
  */
 export function replayInputs(
   inputs: CarInput[],
-  options: { difficulty?: Difficulty } = {}
+  options: { difficulty?: Difficulty; track?: Track } = {}
 ): { trajectory: StepState[]; lapTimeMs: number | null } {
-  const { difficulty = 'medium' } = options;
-  const car = new CarPhysics(difficulty);
+  const { difficulty = 'medium', track = SUNSET_RIDGE } = options;
+  const car = new CarPhysics(difficulty, track.samples);
   car.spawnAtSample(SPAWN_SAMPLE, 0);
 
-  const tracker = new CheckpointTracker();
+  const tracker = new CheckpointTracker(track.checkpoints);
   const trajectory: StepState[] = [];
   let lapTimeMs: number | null = null;
 
@@ -161,8 +166,8 @@ function normalizeAngle(a: number): number {
 }
 
 /** Build the 7-dim observation vector; mirrors SunsetRidgeEnv._compute_obs in env.py. */
-function computePolicyObs(car: CarPhysics): number[] {
-  const s = TRACK_SAMPLES[car.centerIndex];
+function computePolicyObs(car: CarPhysics, samples: TrackSample[]): number[] {
+  const s = samples[car.centerIndex];
   const dx = car.x - s.x;
   const dz = car.z - s.z;
   // Signed lateral: dirX*dz - dirZ*dx > 0 ⟹ car is left of track direction
@@ -172,9 +177,9 @@ function computePolicyObs(car: CarPhysics): number[] {
   const headingErr = normalizeAngle(car.heading - trackHeading) / Math.PI;
   const speedNorm = car.speed / MEDIUM_MAX_SPEED;
 
-  const n = TRACK_DIVISIONS;
+  const n = samples.length;
   const curvatures = POLICY_LOOKAHEADS.map(offset => {
-    const ahead = TRACK_SAMPLES[(car.centerIndex + offset) % n];
+    const ahead = samples[(car.centerIndex + offset) % n];
     const aheadH = Math.atan2(ahead.dirX, ahead.dirZ);
     return normalizeAngle(aheadH - trackHeading) / Math.PI;
   });
@@ -210,18 +215,18 @@ export function policyForward(obs: number[], policy: PolicyWeights): number[] {
  */
 export function runPolicyLap(
   policy: PolicyWeights,
-  options: { difficulty?: Difficulty; maxSteps?: number } = {}
+  options: { difficulty?: Difficulty; maxSteps?: number; track?: Track } = {}
 ): RunResult | null {
-  const { difficulty = 'medium', maxSteps = 36000 } = options;
-  const car = new CarPhysics(difficulty);
+  const { difficulty = 'medium', maxSteps = 36000, track = SUNSET_RIDGE } = options;
+  const car = new CarPhysics(difficulty, track.samples);
   car.spawnAtSample(SPAWN_SAMPLE, 0);
 
-  const tracker = new CheckpointTracker();
+  const tracker = new CheckpointTracker(track.checkpoints);
   const trajectory: StepState[] = [];
   const inputs: CarInput[] = [];
 
   for (let step = 0; step < maxSteps; step++) {
-    const obs = computePolicyObs(car);
+    const obs = computePolicyObs(car, track.samples);
     const action = policyForward(obs, policy);
 
     const steer = action[0];

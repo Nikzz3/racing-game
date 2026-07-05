@@ -5,7 +5,7 @@ import {
   replayInputs,
   autopilotInput,
 } from './harness';
-import { CHECKPOINTS, NUM_CHECKPOINTS, CHECKPOINT_RADIUS } from '@racing/shared';
+import { CHECKPOINTS, CHECKPOINT_RADIUS, NUM_CHECKPOINTS, SUNSET_RIDGE } from '@racing/shared';
 
 // Place the car exactly at a checkpoint's position.
 function atCheckpoint(k: number): { x: number; z: number } {
@@ -14,7 +14,7 @@ function atCheckpoint(k: number): { x: number; z: number } {
 
 describe('CheckpointTracker', () => {
   it('records a lap time when all checkpoints are passed in order', () => {
-    const tracker = new CheckpointTracker();
+    const tracker = new CheckpointTracker(CHECKPOINTS);
 
     // First pass over CP0 starts the timer (returns null).
     const { x: x0, z: z0 } = atCheckpoint(0);
@@ -35,7 +35,7 @@ describe('CheckpointTracker', () => {
   });
 
   it('does not count a lap when a checkpoint is skipped', () => {
-    const tracker = new CheckpointTracker();
+    const tracker = new CheckpointTracker(CHECKPOINTS);
 
     const { x: x0, z: z0 } = atCheckpoint(0);
     tracker.update(x0, z0, 0); // start timer
@@ -56,20 +56,43 @@ describe('CheckpointTracker', () => {
   });
 
   it('does not count the very first crossing of CP0 as a lap', () => {
-    const tracker = new CheckpointTracker();
+    const tracker = new CheckpointTracker(CHECKPOINTS);
     const { x, z } = atCheckpoint(0);
     // Fresh tracker — no lapStartStep yet, so crossing CP0 just starts the timer.
     expect(tracker.update(x, z, 0)).toBeNull();
   });
 
   it('ignores a position that is outside checkpoint radius', () => {
-    const tracker = new CheckpointTracker();
+    const tracker = new CheckpointTracker(CHECKPOINTS);
     // Far from any checkpoint.
     expect(tracker.update(9999, 9999, 0)).toBeNull();
     // Tracker's next pointer must not have advanced.
     const { x, z } = atCheckpoint(0);
     expect(tracker.update(x, z, 1)).toBeNull(); // starts timer, next → 1
     expect(tracker.next).toBe(1);
+  });
+
+  it('uses a Track checkpoints parameter directly (sunset-ridge)', () => {
+    // Drive updateTiming against SUNSET_RIDGE.checkpoints passed as a parameter,
+    // confirming the tracker uses the supplied checkpoints rather than any global.
+    const cps = SUNSET_RIDGE.checkpoints;
+    const tracker = new CheckpointTracker(cps);
+    const { x: x0, z: z0 } = cps[0];
+
+    // First CP0 crossing: start timer.
+    expect(tracker.update(x0, z0, 0)).toBeNull();
+
+    // Hit remaining checkpoints in order.
+    for (let k = 1; k < cps.length; k++) {
+      tracker.update(cps[k].x, cps[k].z, k * 60);
+    }
+
+    // Second CP0 crossing: lap completed.
+    const lapMs = tracker.update(x0, z0, cps.length * 60);
+    expect(lapMs).not.toBeNull();
+    expect(lapMs).toBeCloseTo(cps.length * 1000, 0);
+    // Confirm the tracker cycled through every checkpoint in the Track.
+    expect(cps.length).toBe(NUM_CHECKPOINTS);
   });
 });
 

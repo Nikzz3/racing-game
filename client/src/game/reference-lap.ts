@@ -1,4 +1,5 @@
 import type { ReplayFrame } from '@racing/shared';
+import { SUNSET_RIDGE } from '@racing/shared';
 import { runPolicyLap, type PolicyWeights } from './harness';
 
 const DT_MS = 1000 / 60;
@@ -22,7 +23,7 @@ export interface ReferenceLap {
  * Returns null if the policy fails to complete a lap within maxSteps.
  */
 export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
-  const result = runPolicyLap(policy);
+  const result = runPolicyLap(policy, { track: SUNSET_RIDGE });
   if (!result) return null;
 
   // Trim trajectory to the timed-lap portion only.

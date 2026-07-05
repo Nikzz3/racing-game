@@ -1,10 +1,12 @@
 import type { Difficulty } from "./difficulty";
+import type { TrackSlug } from "./track";
 
 export interface RoomInfo {
   id: string;
   name: string;
   players: number;
   difficulty: Difficulty;
+  track: TrackSlug;
 }
 
 export interface PlayerSnapshot {
@@ -36,7 +38,7 @@ export type ReplayFrame = [number, number, number, number, number];
 
 export type ClientMessage =
   | { type: "hello"; name: string }
-  | { type: "createRoom"; roomName: string; difficulty: Difficulty }
+  | { type: "createRoom"; roomName: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
   | { type: "respawn" }
@@ -51,7 +53,7 @@ export type ServerMessage =
       leaderboard: LeaderboardEntry[];
     }
   | { type: "rooms"; rooms: RoomInfo[] }
-  | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty }
+  | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "left" }
   | { type: "snapshot"; t: number; players: PlayerSnapshot[] }
   | {

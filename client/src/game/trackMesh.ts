@@ -2,19 +2,18 @@ import * as THREE from "three";
 import {
   BARRIER_OFFSET,
   ROAD_HALF_WIDTH,
-  TRACK_SAMPLES,
   type TrackSample,
 } from "@racing/shared";
 
 /** Builds the full track (road, markings, barriers, start gate) and adds it to the scene. */
-export function buildTrack(scene: THREE.Scene): THREE.Group {
+export function buildTrack(scene: THREE.Scene, samples: TrackSample[]): THREE.Group {
   const group = new THREE.Group();
-  group.add(buildRoad());
-  group.add(buildEdgeLines());
-  group.add(buildCenterDashes());
-  group.add(buildBarriers());
-  group.add(buildStartLine());
-  group.add(buildStartGate());
+  group.add(buildRoad(samples));
+  group.add(buildEdgeLines(samples));
+  group.add(buildCenterDashes(samples));
+  group.add(buildBarriers(samples));
+  group.add(buildStartLine(samples));
+  group.add(buildStartGate(samples));
   scene.add(group);
   return group;
 }
@@ -23,12 +22,12 @@ function leftNormal(s: TrackSample): { nx: number; nz: number } {
   return { nx: -s.dirZ, nz: s.dirX };
 }
 
-function buildRoad(): THREE.Mesh {
-  const n = TRACK_SAMPLES.length;
+function buildRoad(samples: TrackSample[]): THREE.Mesh {
+  const n = samples.length;
   const positions = new Float32Array(n * 2 * 3);
   const indices: number[] = [];
   for (let i = 0; i < n; i++) {
-    const s = TRACK_SAMPLES[i];
+    const s = samples[i];
     const { nx, nz } = leftNormal(s);
     positions.set([s.x + nx * ROAD_HALF_WIDTH, 0.02, s.z + nz * ROAD_HALF_WIDTH], i * 6);
     positions.set([s.x - nx * ROAD_HALF_WIDTH, 0.02, s.z - nz * ROAD_HALF_WIDTH], i * 6 + 3);
@@ -58,11 +57,12 @@ function addStripSegment(
   toIdx: number,
   offset: number,
   width: number,
-  y: number
+  y: number,
+  samples: TrackSample[]
 ): void {
-  const n = TRACK_SAMPLES.length;
+  const n = samples.length;
   for (let i = fromIdx; i <= toIdx; i++) {
-    const s = TRACK_SAMPLES[i % n];
+    const s = samples[i % n];
     const { nx, nz } = leftNormal(s);
     const base = positions.length / 3;
     positions.push(
@@ -86,29 +86,29 @@ function stripsToMesh(positions: number[], indices: number[], color: number): TH
   );
 }
 
-function buildEdgeLines(): THREE.Mesh {
+function buildEdgeLines(samples: TrackSample[]): THREE.Mesh {
   const positions: number[] = [];
   const indices: number[] = [];
-  const n = TRACK_SAMPLES.length;
+  const n = samples.length;
   for (const offset of [ROAD_HALF_WIDTH - 0.5, -(ROAD_HALF_WIDTH - 0.5)]) {
-    addStripSegment(positions, indices, 0, n, offset, 0.35, 0.04);
+    addStripSegment(positions, indices, 0, n, offset, 0.35, 0.04, samples);
   }
   return stripsToMesh(positions, indices, 0xe8e8e8);
 }
 
-function buildCenterDashes(): THREE.Mesh {
+function buildCenterDashes(samples: TrackSample[]): THREE.Mesh {
   const positions: number[] = [];
   const indices: number[] = [];
-  const n = TRACK_SAMPLES.length;
+  const n = samples.length;
   for (let i = 0; i < n; i += 8) {
-    addStripSegment(positions, indices, i, Math.min(i + 3, n - 1), 0, 0.3, 0.04);
+    addStripSegment(positions, indices, i, Math.min(i + 3, n - 1), 0, 0.3, 0.04, samples);
   }
   return stripsToMesh(positions, indices, 0xcccccc);
 }
 
-function buildBarriers(): THREE.Group {
+function buildBarriers(samples: TrackSample[]): THREE.Group {
   const group = new THREE.Group();
-  const n = TRACK_SAMPLES.length;
+  const n = samples.length;
   const step = 2;
   const segCount = Math.floor(n / step);
   const segLen = 5.4;
@@ -132,7 +132,7 @@ function buildBarriers(): THREE.Group {
   const wallDist = ROAD_HALF_WIDTH + BARRIER_OFFSET;
 
   for (let k = 0; k < segCount; k++) {
-    const s = TRACK_SAMPLES[k * step];
+    const s = samples[k * step];
     const { nx, nz } = leftNormal(s);
     const yaw = Math.atan2(s.dirX, s.dirZ);
     q.setFromAxisAngle(up, yaw);
@@ -156,7 +156,7 @@ function buildBarriers(): THREE.Group {
   return group;
 }
 
-function buildStartLine(): THREE.Group {
+function buildStartLine(samples: TrackSample[]): THREE.Group {
   const canvas = document.createElement("canvas");
   canvas.width = 128;
   canvas.height = 32;
@@ -170,7 +170,7 @@ function buildStartLine(): THREE.Group {
   }
   const tex = new THREE.CanvasTexture(canvas);
 
-  const s = TRACK_SAMPLES[0];
+  const s = samples[0];
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(ROAD_HALF_WIDTH * 2, 3.4),
     new THREE.MeshBasicMaterial({ map: tex })
@@ -184,9 +184,9 @@ function buildStartLine(): THREE.Group {
   return holder;
 }
 
-function buildStartGate(): THREE.Group {
+function buildStartGate(samples: TrackSample[]): THREE.Group {
   const group = new THREE.Group();
-  const s = TRACK_SAMPLES[0];
+  const s = samples[0];
   const postMat = new THREE.MeshLambertMaterial({ color: 0x222630 });
   const postGeo = new THREE.CylinderGeometry(0.35, 0.35, 7, 10);
   const width = ROAD_HALF_WIDTH + 2.5;

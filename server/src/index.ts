@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   asDifficulty,
+  asTrackSlug,
+  DEFAULT_TRACK_SLUG,
   type ClientMessage,
   type Difficulty,
   type ServerMessage,
@@ -48,6 +50,7 @@ function joinRoom(player: Player, roomId: string): void {
     roomId: room.id,
     roomName: room.name,
     difficulty: room.difficulty,
+    track: room.track.id,
   });
   broadcastRooms();
 }
@@ -66,7 +69,7 @@ async function handleState(
 
   const prevStart = player.timing.lapStartT;
   const now = Date.now();
-  const lap = updateTiming(player.timing, msg.x, msg.z, now);
+  const lap = updateTiming(player.timing, msg.x, msg.z, now, room.track.checkpoints);
 
   if (!lap) {
     // No lap completed: keep recording the lap in progress.
@@ -140,7 +143,11 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       player.name = msg.name.trim().slice(0, 16) || "Racer";
       break;
     case "createRoom": {
-      const room = manager.create(msg.roomName, asDifficulty(msg.difficulty));
+      const room = manager.create(
+        msg.roomName,
+        asDifficulty(msg.difficulty),
+        asTrackSlug(msg.track ?? DEFAULT_TRACK_SLUG)
+      );
       joinRoom(player, room.id);
       break;
     }

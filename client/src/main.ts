@@ -29,7 +29,7 @@ function openReplay(name: string, timeMs: number, frames: ReplayFrame[]): void {
 const lobby = new Lobby(app, {
   onCreate: (roomName, difficulty) => {
     net.send({ type: "hello", name: lobby.playerName });
-    net.send({ type: "createRoom", roomName, difficulty });
+    net.send({ type: "createRoom", roomName, difficulty, track: "sunset-ridge" });
   },
   onJoin: (roomId) => {
     net.send({ type: "hello", name: lobby.playerName });
@@ -65,7 +65,8 @@ net.onMessage((msg) => {
         myId,
         msg.roomName,
         () => net.send({ type: "leaveRoom" }),
-        msg.difficulty
+        msg.difficulty,
+        msg.track
       );
       break;
     case "left":

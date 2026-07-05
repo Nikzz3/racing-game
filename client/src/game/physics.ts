@@ -4,7 +4,7 @@ import {
   type Difficulty,
   nearestCenterline,
   ROAD_HALF_WIDTH,
-  TRACK_SAMPLES,
+  type TrackSample,
 } from "@racing/shared";
 import type { CarInput } from "./input";
 
@@ -50,13 +50,15 @@ export class CarPhysics {
   centerIndex = 0;
   private touchingWall = false;
   private readonly tuning: DifficultyPhysics;
+  private readonly samples: TrackSample[];
 
-  constructor(difficulty: Difficulty = DEFAULT_DIFFICULTY) {
+  constructor(difficulty: Difficulty = DEFAULT_DIFFICULTY, samples: TrackSample[]) {
     this.tuning = DIFFICULTY_PHYSICS[difficulty];
+    this.samples = samples;
   }
 
   spawnAtSample(index: number, lateralOffset: number): void {
-    const s = TRACK_SAMPLES[index];
+    const s = this.samples[index];
     // Left-pointing normal of the direction of travel.
     const nx = -s.dirZ;
     const nz = s.dirX;
@@ -78,7 +80,7 @@ export class CarPhysics {
     this.speed -= this.speed * Math.abs(this.speed) * DRAG * dt;
 
     // Surface limits
-    const before = nearestCenterline(this.x, this.z);
+    const before = nearestCenterline(this.x, this.z, this.samples);
     this.onTrack = before.dist <= ROAD_HALF_WIDTH + 0.6;
     const limit = this.onTrack ? this.tuning.maxSpeed : this.tuning.grassMaxSpeed;
     if (this.speed > limit) this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
@@ -98,10 +100,10 @@ export class CarPhysics {
     this.z += Math.cos(this.heading) * this.speed * dt;
 
     // Barrier collision: clamp to the wall, pay a one-time speed penalty per contact
-    const after = nearestCenterline(this.x, this.z);
+    const after = nearestCenterline(this.x, this.z, this.samples);
     this.centerIndex = after.index;
     if (after.dist > WALL_DIST) {
-      const s = TRACK_SAMPLES[after.index];
+      const s = this.samples[after.index];
       const inv = 1 / after.dist;
       this.x = s.x + (this.x - s.x) * inv * WALL_DIST;
       this.z = s.z + (this.z - s.z) * inv * WALL_DIST;

@@ -3,6 +3,7 @@ import type { ReplayFrame } from "@racing/shared";
 import { formatMs, escapeHtml } from "../util";
 import { animateCar, createCarMesh } from "./car";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
+import { SUNSET_RIDGE } from "@racing/shared";
 import { buildTrack } from "./trackMesh";
 
 const FINISH_HOLD_MS = 1500;
@@ -40,7 +41,7 @@ export class ReplayViewer {
     parent.appendChild(this.container);
 
     this.bundle = createScene(this.container);
-    buildTrack(this.bundle.scene);
+    buildTrack(this.bundle.scene, SUNSET_RIDGE.samples);
 
     this.carMesh = createCarMesh(name, name);
     this.bundle.scene.add(this.carMesh);
