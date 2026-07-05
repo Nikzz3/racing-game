@@ -35,6 +35,7 @@ from env import (
     _STUCK_THRESHOLD,
     _REVERSE_WINDOW,
     _REVERSE_NET_THRESHOLD,
+    WALL_PENALTY_COEF,
     DT,
 )
 from physics import (
@@ -149,6 +150,7 @@ class TestReward:
             env.step(np.array([0.0, 1.0], dtype=np.float32))
 
         prev_index = env._state.center_index
+        approach_speed = env._state.speed  # pre-step speed drives the wall penalty
         _, reward, _, _, info = env.step(np.array([0.0, 1.0], dtype=np.float32))
 
         new_index = info["center_index"]
@@ -156,7 +158,10 @@ class TestReward:
         if delta > TRACK_DIVISIONS // 2:
             delta -= TRACK_DIVISIONS
         expected_progress = delta * AVG_ARC_LENGTH
-        wall_penalty = -2.0 if info["touching_wall"] else 0.0
+        wall_penalty = (
+            -WALL_PENALTY_COEF * approach_speed * approach_speed
+            if info["touching_wall"] else 0.0
+        )
         offtrack_penalty = -0.5 if not info["on_track"] else 0.0
         expected_reward = expected_progress + wall_penalty + offtrack_penalty
 
@@ -165,7 +170,7 @@ class TestReward:
         )
 
     def test_wall_contact_incurs_penalty(self):
-        """Steps with touching_wall=True have reward 2.0 lower than equivalent progress."""
+        """Steps with touching_wall=True are penalised by -WALL_PENALTY_COEF * v²."""
         env = TimeTrialEnv(eval_mode=True)
         env.reset()
         wall_touched = False
@@ -206,6 +211,79 @@ class TestReward:
 
         if not offtrack_found:
             pytest.skip("Could not drive car off-track in this test scenario")
+
+
+# ---------------------------------------------------------------------------
+# Oracle-line proximity reward
+# ---------------------------------------------------------------------------
+
+
+class TestLineReward:
+    def test_default_coef_leaves_reward_untouched(self):
+        """With the default (coef=0) no line target is loaded and reward is unchanged."""
+        env = TimeTrialEnv(eval_mode=True)
+        assert env._line_target is None
+        assert env.line_reward_coef == 0.0
+
+        env.reset()
+        for _ in range(120):
+            env.step(np.array([0.0, 1.0], dtype=np.float32))
+
+        prev_index = env._state.center_index
+        approach_speed = env._state.speed
+        _, reward, _, _, info = env.step(np.array([0.0, 1.0], dtype=np.float32))
+
+        delta = (info["center_index"] - prev_index) % TRACK_DIVISIONS
+        if delta > TRACK_DIVISIONS // 2:
+            delta -= TRACK_DIVISIONS
+        expected = delta * AVG_ARC_LENGTH
+        expected += (
+            -WALL_PENALTY_COEF * approach_speed * approach_speed
+            if info["touching_wall"] else 0.0
+        )
+        expected += -0.5 if not info["on_track"] else 0.0
+        assert abs(reward - expected) < 1e-5
+
+    def test_positive_coef_loads_target_and_rewards_line_proximity(self):
+        """With coef>0 the reward equals base + coef·exp(-(err/σ)²), a bounded bonus."""
+        coef = 0.3
+        sigma = 3.0
+        env = TimeTrialEnv(
+            eval_mode=True, line_reward_coef=coef, line_reward_sigma=sigma
+        )
+        assert env._line_target is not None
+        assert env._line_target.shape[0] == TRACK_DIVISIONS
+
+        env.reset()
+        for _ in range(120):
+            env.step(np.array([0.0, 1.0], dtype=np.float32))
+
+        prev_index = env._state.center_index
+        approach_speed = env._state.speed
+        _, reward, _, _, info = env.step(np.array([0.3, 1.0], dtype=np.float32))
+
+        delta = (info["center_index"] - prev_index) % TRACK_DIVISIONS
+        if delta > TRACK_DIVISIONS // 2:
+            delta -= TRACK_DIVISIONS
+        base = delta * AVG_ARC_LENGTH
+        base += (
+            -WALL_PENALTY_COEF * approach_speed * approach_speed
+            if info["touching_wall"] else 0.0
+        )
+        base += -0.5 if not info["on_track"] else 0.0
+
+        # Recompute the signed lateral (metres) with the same convention as env
+        idx = env._state.center_index
+        s = TRACK_SAMPLES[idx]
+        dx = env._state.x - s["x"]
+        dz = env._state.z - s["z"]
+        lateral_m = s["dirX"] * dz - s["dirZ"] * dx
+        error = lateral_m - env._line_target[idx]
+        expected = base + coef * math.exp(-(error * error) / (sigma * sigma))
+
+        assert abs(reward - expected) < 1e-5
+        # The bonus is non-negative and bounded by coef
+        assert base - 1e-9 <= reward <= base + coef + 1e-9
 
 
 # ---------------------------------------------------------------------------

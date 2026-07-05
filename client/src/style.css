@@ -410,6 +410,26 @@ input:focus {
   font-size: 12px;
 }
 
+.room-track-thumb {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  color: #9be8ff;
+  opacity: 0.75;
+}
+
+.room-row .room-track-name {
+  flex: 0 0 auto;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
 .room-row button,
 .create-form button {
   background: linear-gradient(120deg, #ff5e3a, #ff4fd8);
@@ -453,6 +473,68 @@ input:focus {
   box-shadow: 0 0 14px rgba(255, 79, 216, 0.35);
 }
 
+/* --- Track selector --- */
+
+.track-selector {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.track-card {
+  flex: 1 1 0;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.track-card:hover {
+  color: #9be8ff;
+  border-color: rgba(79, 216, 255, 0.4);
+  background: rgba(79, 216, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.track-card.active {
+  color: #4fd8ff;
+  border-color: #4fd8ff;
+  background: color-mix(in srgb, #4fd8ff 14%, transparent);
+  box-shadow:
+    0 0 18px rgba(79, 216, 255, 0.28),
+    0 0 0 1px rgba(79, 216, 255, 0.2) inset;
+}
+
+.track-outline {
+  width: 100%;
+  height: 74px;
+  display: block;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 5px currentColor);
+  transition: opacity 0.15s;
+}
+
+.track-card:hover .track-outline,
+.track-card.active .track-outline {
+  opacity: 1;
+}
+
+.track-card-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* Difficulty colors, shared by the create picker, board tabs and room badges. */
 .diff-easy {
   --diff-color: #51e08a;
@@ -467,7 +549,8 @@ input:focus {
 .diff-picker {
   flex: 1 0 100%;
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: 24px;
 }
 
 .diff-opt,
@@ -476,7 +559,7 @@ input:focus {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  padding: 7px 0;
+  padding: 8px 0;
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
@@ -484,6 +567,12 @@ input:focus {
   text-transform: uppercase;
   color: var(--text-dim);
   transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.diff-opt:not(.active):hover,
+.lb-tab:not(.active):hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .diff-opt.active,
@@ -730,6 +819,14 @@ input:focus {
   .name-row input {
     flex: 1 1 auto;
     min-width: 0;
+  }
+
+  .track-card {
+    min-width: 100px;
+  }
+
+  .track-outline {
+    height: 60px;
   }
 }
 

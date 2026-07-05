@@ -16,6 +16,10 @@ _Avoid_: Lobby, session, game
 A named set of physics rules (Easy, Medium, Hard) that governs how a car accelerates, how fast it can go, and how harshly going off-road is penalised. Fixed for the lifetime of a Room.
 _Avoid_: Mode, level, setting
 
+**Checkpoint**:
+One of a Track's ordered gates that a lap must pass through in sequence for the lap to count. Checkpoints enforce *order* (you cannot skip a gate) but not, by themselves, the racing *line* — the straight path between two consecutive gates is always legal. A Track that folds back on itself places gates densely enough (on Stormhaven, one per control point) that the required apex-to-apex path *is* the racing line, so cutting the grass can no longer save time. Checkpoints are invisible gameplay gates, not rendered geometry.
+_Avoid_: Gate (informal), waypoint, marker
+
 **Respawn**:
 A driver-initiated action that teleports the driver's own car back to the starting position and abandons the lap in progress. Scoped to the requesting driver only — never affects other players in the Room. Preserves the driver's completed lap count and session best lap; persisted leaderboard records are untouched.
 _Avoid_: Reset, restart (which imply the whole race or the whole session)

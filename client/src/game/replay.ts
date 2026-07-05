@@ -40,7 +40,7 @@ export class ReplayViewer {
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.appendChild(this.container);
 
-    this.bundle = createScene(this.container);
+    this.bundle = createScene(this.container, SUNSET_RIDGE.samples);
     buildTrack(this.bundle.scene, SUNSET_RIDGE.samples);
 
     this.carMesh = createCarMesh(name, name);

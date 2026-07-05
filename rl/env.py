@@ -12,6 +12,7 @@ Action (2-dim, continuous [-1, 1]):
   [1] longitudinal  (+1 = full throttle, -1 = full brake)
 
 Reward: arc-length progress per step - wall_penalty - offtrack_penalty
+        (+ optional bounded Gaussian bonus for hugging an oracle racing line)
 
 Episode:
   - Capped at max_steps (truncation)
@@ -20,7 +21,9 @@ Episode:
   - Randomized reset for training; fixed spawn (_spawn_sample) for eval
 """
 
+import json
 import math
+import os
 from collections import deque
 
 import numpy as np
@@ -66,6 +69,15 @@ _STUCK_THRESHOLD = 60       # consecutive wall-contact steps → terminate
 _REVERSE_WINDOW = 60        # step window for reverse detection
 _REVERSE_NET_THRESHOLD = 3  # net backward samples within window → terminate
 
+# Wall penalty scales with approach speed²: penalty = -WALL_PENALTY_COEF * v².
+# A fast slam is costly; gentle low-speed correction against the barrier is
+# nearly free. This avoids the wall-grinding / freezing local optimum that a
+# flat penalty induces, mirroring the kinetic-energy wall penalty from GT Sport
+# (Fuchs et al. 2020, c_w≈5e-4). At Medium top speed (90) this is ≈-4.05; at a
+# 30-unit correction ≈-0.45. Uses the pre-step approach speed, since
+# physics.step already damps speed by 0.45 on first contact.
+WALL_PENALTY_COEF = 5e-4
+
 
 def _normalize_angle(a: float) -> float:
     while a > math.pi:
@@ -86,6 +98,8 @@ class TimeTrialEnv(gym.Env):
         difficulty: str = "medium",
         eval_mode: bool = False,
         max_steps: int = 3600,
+        line_reward_coef: float = 0.0,
+        line_reward_sigma: float = 3.0,
     ) -> None:
         super().__init__()
         if track not in TRACKS:
@@ -94,11 +108,33 @@ class TimeTrialEnv(gym.Env):
         self.difficulty = difficulty
         self.eval_mode = eval_mode
         self.max_steps = max_steps
+        self.line_reward_coef = line_reward_coef
+        self._line_sigma = line_reward_sigma
         self._tuning = DIFFICULTY_PHYSICS[difficulty]
         self._samples = TRACKS[track]
         self._track_divisions = len(self._samples)
         self._avg_arc_length, self._total_track_length = _arc_length_stats(self._samples)
         self._spawn_sample: int = self._track_divisions - 14  # mirrors harness.ts
+
+        # Optional oracle-racing-line proximity reward. Loaded only when the
+        # coefficient is positive, so environments/CI without the reference
+        # file behave exactly as before (reward term stays 0). The `alpha`
+        # array is the target signed lateral offset in metres, indexed by
+        # center_index (length self._track_divisions for this track).
+        self._line_target: np.ndarray | None = None
+        if line_reward_coef > 0.0:
+            line_path = os.path.join(
+                os.path.dirname(__file__), "experiments", "racing_line.json"
+            )
+            with open(line_path) as f:
+                line_data = json.load(f)
+            alpha = np.asarray(line_data["alpha"], dtype=np.float64)
+            if alpha.shape[0] != self._track_divisions:
+                raise ValueError(
+                    f"racing_line.json alpha length {alpha.shape[0]} != "
+                    f"track_divisions {self._track_divisions}"
+                )
+            self._line_target = alpha
 
         self.observation_space = spaces.Box(
             low=-3.0, high=3.0, shape=(OBS_DIM,), dtype=np.float32
@@ -141,6 +177,7 @@ class TimeTrialEnv(gym.Env):
         brake = max(0.0, -longitudinal)
 
         prev_index = self._state.center_index
+        approach_speed = self._state.speed  # pre-collision speed for wall penalty
 
         self._state = _physics_step(
             self._state,
@@ -159,9 +196,31 @@ class TimeTrialEnv(gym.Env):
         self._total_progress += progress
 
         # Reward
-        wall_penalty = -2.0 if self._state.touching_wall else 0.0
+        wall_penalty = (
+            -WALL_PENALTY_COEF * approach_speed * approach_speed
+            if self._state.touching_wall else 0.0
+        )
         offtrack_penalty = -0.5 if not self._state.on_track else 0.0
-        reward = float(progress + wall_penalty + offtrack_penalty)
+
+        # Oracle-line proximity bonus (0 unless line_reward_coef > 0). A
+        # bounded Gaussian in the signed lateral error (metres, same
+        # left-positive convention as _compute_obs): +coef when exactly on the
+        # oracle line, decaying to 0 within a few sigma. Being non-negative and
+        # bounded by coef, it cannot swamp the progress signal the way an
+        # unbounded quadratic penalty does — early exploration far from the
+        # line is never punished into net-negative (cf. arXiv:2306.07003).
+        line_bonus = 0.0
+        if self._line_target is not None:
+            s = self._samples[self._state.center_index]
+            dx = self._state.x - s["x"]
+            dz = self._state.z - s["z"]
+            lateral_m = s["dirX"] * dz - s["dirZ"] * dx
+            error = lateral_m - self._line_target[self._state.center_index]
+            line_bonus = self.line_reward_coef * math.exp(
+                -(error * error) / (self._line_sigma * self._line_sigma)
+            )
+
+        reward = float(progress + wall_penalty + offtrack_penalty + line_bonus)
 
         # Stuck counter: any wall contact persisting (regardless of speed)
         if self._state.touching_wall:

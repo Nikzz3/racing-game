@@ -66,7 +66,7 @@ export class Game {
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.appendChild(this.container);
 
-    this.bundle = createScene(this.container);
+    this.bundle = createScene(this.container, this.track.samples);
     buildTrack(this.bundle.scene, this.track.samples);
 
     this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);

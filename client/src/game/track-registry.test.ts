@@ -82,8 +82,8 @@ describe('track registry', () => {
     expect(STORMHAVEN.samples.length).toBe(512);
   });
 
-  it('STORMHAVEN has 24 control points', () => {
-    expect(STORMHAVEN.controlPoints.length).toBe(24);
+  it('STORMHAVEN has 29 control points', () => {
+    expect(STORMHAVEN.controlPoints.length).toBe(29);
   });
 });
 

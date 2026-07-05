@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   BARRIER_OFFSET,
+  nearestCenterline,
   ROAD_HALF_WIDTH,
   type TrackSample,
 } from "@racing/shared";
@@ -110,49 +111,72 @@ function buildBarriers(samples: TrackSample[]): THREE.Group {
   const group = new THREE.Group();
   const n = samples.length;
   const step = 2;
-  const segCount = Math.floor(n / step);
-  const segLen = 5.4;
-  const geo = new THREE.BoxGeometry(0.4, 0.9, segLen);
-
-  const red = new THREE.InstancedMesh(
-    geo,
-    new THREE.MeshLambertMaterial({ color: 0xd8453c }),
-    segCount
-  );
-  const white = new THREE.InstancedMesh(
-    geo,
-    new THREE.MeshLambertMaterial({ color: 0xf0f0f0 }),
-    segCount
-  );
-  let redIdx = 0;
-  let whiteIdx = 0;
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
   const wallDist = ROAD_HALF_WIDTH + BARRIER_OFFSET;
 
-  for (let k = 0; k < segCount; k++) {
-    const s = samples[k * step];
-    const { nx, nz } = leftNormal(s);
-    const yaw = Math.atan2(s.dirX, s.dirZ);
-    q.setFromAxisAngle(up, yaw);
-    for (const side of [1, -1]) {
-      m.compose(
-        new THREE.Vector3(s.x + nx * wallDist * side, 0.45, s.z + nz * wallDist * side),
-        q,
-        new THREE.Vector3(1, 1, 1)
-      );
+  // Each barrier segment spans the gap between two consecutive offset edge
+  // points, stretched to fit. Dropping a fixed-length box at each sample (the
+  // old approach) left gaps on the outside of sharp turns, where the offset
+  // edge stretches, and overlapping, clipping boxes on the inside, where it
+  // bunches up; spanning the actual gap keeps the wall continuous through any
+  // curvature.
+  const geo = new THREE.BoxGeometry(0.4, 0.9, 1);
+  const redMats: THREE.Matrix4[] = [];
+  const whiteMats: THREE.Matrix4[] = [];
+  const up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion();
+  const center = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+
+  // Never let a barrier sit on the drivable road: on a corner tighter than the
+  // offset distance the inner edge folds back over itself, dropping offset
+  // points onto (or across) the tarmac. Any point closer to the centerline than
+  // this is treated as folded and its segments are dropped, leaving a small gap
+  // at the apex — the physical wall in physics.ts still stops the car there.
+  const minClearance = ROAD_HALF_WIDTH + 0.5;
+
+  for (const side of [1, -1]) {
+    // Offset edge points (plus each point's distance to the nearest centerline
+    // sample), wrapping past the end so the loop closes.
+    const pts: THREE.Vector3[] = [];
+    const onRoad: boolean[] = [];
+    for (let k = 0; k <= Math.floor(n / step); k++) {
+      const s = samples[(k * step) % n];
+      const { nx, nz } = leftNormal(s);
+      const px = s.x + nx * wallDist * side;
+      const pz = s.z + nz * wallDist * side;
+      pts.push(new THREE.Vector3(px, 0.45, pz));
+      onRoad.push(nearestCenterline(px, pz, samples).dist < minClearance);
+    }
+    for (let j = 0; j < pts.length - 1; j++) {
+      // Drop the segment if either endpoint has folded onto the road.
+      if (onRoad[j] || onRoad[j + 1]) continue;
+      const a = pts[j];
+      const b = pts[j + 1];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-4) continue;
+      center.set((a.x + b.x) / 2, 0.45, (a.z + b.z) / 2);
+      q.setFromAxisAngle(up, Math.atan2(dx, dz));
+      // Slight overlap hides seams at the joints between segments.
+      scale.set(1, 1, len + 0.15);
+      const m = new THREE.Matrix4().compose(center, q, scale);
       // Alternate colors along the track, opposite phase per side for a classic look.
-      const isRed = (k + (side === 1 ? 0 : 1)) % 2 === 0;
-      if (isRed) red.setMatrixAt(redIdx++, m);
-      else white.setMatrixAt(whiteIdx++, m);
+      const isRed = (j + (side === 1 ? 0 : 1)) % 2 === 0;
+      (isRed ? redMats : whiteMats).push(m);
     }
   }
-  red.count = redIdx;
-  white.count = whiteIdx;
-  red.castShadow = white.castShadow = true;
-  red.receiveShadow = white.receiveShadow = true;
-  group.add(red, white);
+
+  for (const [mats, color] of [
+    [redMats, 0xd8453c],
+    [whiteMats, 0xf0f0f0],
+  ] as const) {
+    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color }), mats.length);
+    mats.forEach((m, i) => mesh.setMatrixAt(i, m));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
   return group;
 }
 

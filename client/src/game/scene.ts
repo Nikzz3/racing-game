@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { nearestCenterline, ROAD_HALF_WIDTH, SUNSET_RIDGE } from "@racing/shared";
+import { nearestCenterline, ROAD_HALF_WIDTH, type TrackSample } from "@racing/shared";
 import { getModel, instancedFromModel } from "./models";
 
 export interface SceneBundle {
@@ -17,7 +17,7 @@ const SUN_OFFSET = new THREE.Vector3(-130, 45, -65);
 
 const HORIZON_COLOR = 0xf2a86e;
 
-export function createScene(container: HTMLElement): SceneBundle {
+export function createScene(container: HTMLElement, samples: TrackSample[]): SceneBundle {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(HORIZON_COLOR);
   scene.fog = new THREE.Fog(HORIZON_COLOR, 250, 700);
@@ -65,7 +65,7 @@ export function createScene(container: HTMLElement): SceneBundle {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  addEnvironment(scene);
+  addEnvironment(scene, samples);
 
   return { scene, camera, renderer, sun };
 }
@@ -208,9 +208,9 @@ const SCATTER: ScatterSpec[] = [
   },
 ];
 
-function addEnvironment(scene: THREE.Scene): void {
+function addEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
   if (!getModel("nature:tree_detailed")) {
-    addFallbackTrees(scene);
+    addFallbackTrees(scene, samples);
     return;
   }
 
@@ -228,7 +228,7 @@ function addEnvironment(scene: THREE.Scene): void {
       attempts++;
       const x = (Math.random() - 0.5) * 780;
       const z = (Math.random() - 0.5) * 780;
-      if (nearestCenterline(x, z, SUNSET_RIDGE.samples).dist < ROAD_HALF_WIDTH + spec.minClearance) continue;
+      if (nearestCenterline(x, z, samples).dist < ROAD_HALF_WIDTH + spec.minClearance) continue;
       const s = spec.scaleMin + Math.random() * (spec.scaleMax - spec.scaleMin);
       pos.set(x, 0, z);
       quat.setFromAxisAngle(up, Math.random() * Math.PI * 2);
@@ -248,7 +248,7 @@ function addEnvironment(scene: THREE.Scene): void {
 }
 
 /** Procedural cone trees, used only if the GLB models failed to load. */
-function addFallbackTrees(scene: THREE.Scene): void {
+function addFallbackTrees(scene: THREE.Scene, samples: TrackSample[]): void {
   const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4, 6);
   const leavesGeo = new THREE.ConeGeometry(3.2, 8, 7);
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5e4630 });
@@ -260,7 +260,7 @@ function addFallbackTrees(scene: THREE.Scene): void {
     attempts++;
     const x = (Math.random() - 0.5) * 760;
     const z = (Math.random() - 0.5) * 760;
-    if (nearestCenterline(x, z, SUNSET_RIDGE.samples).dist < ROAD_HALF_WIDTH + 18) continue;
+    if (nearestCenterline(x, z, samples).dist < ROAD_HALF_WIDTH + 18) continue;
     positions.push({ x, z, s: 0.7 + Math.random() * 0.8 });
   }
 

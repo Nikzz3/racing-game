@@ -172,41 +172,47 @@ export const SUNSET_RIDGE: Track = {
 
 /**
  * Control points [x, z] of the Stormhaven Circuit centerline.
- * Layout inspired by Spa-Francorchamps (fast right-hand complex, Blanchimont-style
- * sweeper, Bus Stop chicane) and Suzuka (flowing esses).
+ * "Serpent's Coil" layout inspired by Circuit of the Americas / Interlagos:
+ * a fast, open outer loop wrapped around a tight, knotted infield — deliberately
+ * asymmetric, with all the technical corners clustered on one side.
  * Original layout: not a 1:1 trace of any trademarked circuit.
  *
  * Sectors:
- *   S1: Start/finish straight → fast right complex (T1, Eau Rouge-style)
- *   S2: Back straight → T2 chicane → sweeping top-right hairpin (T3)
- *   S3: Flowing esses (T4-T6) → Blanchimont-style left sweeper (T7)
- *   S4: Bus Stop chicane (T8) → slow bottom-left hairpin (T9) → return straight
+ *   S1: Start/finish on the long right-hand main straight → sweeps down to the bottom
+ *   S2: Long curving back straight (bottom) → heavy-braking hairpin at the far corner
+ *   S3: Maggotts-Becketts-style high-speed esse snake → triple-apex tightening spiral
+ *   S4: Long curving top straight → fast top-right sweep back onto the main straight
  */
 const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
-  [15, -220],    // T0 – start/finish line
-  [80, -220],    // S/F straight right
-  [150, -205],   // T1 braking zone
-  [205, -158],   // T1 – fast right entry (Eau Rouge-inspired)
-  [232, -82],    // T1 apex (Raidillon-style)
-  [220, 0],      // T1 exit / Kemmel-straight
-  [210, 80],     // Kemmel straight continuing
-  [228, 160],    // T2 chicane peak
-  [198, 215],    // T3 entry
-  [118, 232],    // T3 – top-right sweeper apex (Pouhon-inspired)
-  [38, 215],     // T3 exit
-  [-38, 232],    // Esses T4 peak
-  [-108, 210],   // Esses T5 trough
-  [-172, 232],   // Esses T6 peak
-  [-215, 182],   // T7 – Blanchimont-inspired left sweeper entry
-  [-232, 102],   // T7 apex
-  [-215, 28],    // T7 exit
-  [-232, -52],   // T8 chicane left (Bus Stop-inspired)
-  [-200, -118],  // T8 chicane right
-  [-220, -170],  // T9 hairpin entry
-  [-195, -202],  // T9 hairpin apex
-  [-155, -218],  // T9 exit
-  [-100, -222],  // return straight approach
-  [-45, -220],   // return straight → loop closes back to T0
+  [232, 30],     // T0 – start/finish, mid main straight (right edge)
+  [228, -60],    // main straight sweeping down
+  [218, -150],   // T1 turn-in
+  [188, -202],   // T1 exit onto the bottom
+  [110, -220],   // long curving back straight (bottom)
+  [25, -220],    // back straight continuing
+  [-65, -208],   // back straight approach to the hairpin
+  [-150, -188],  // hairpin braking zone
+  [-198, -150],  // T2 – heavy-braking hairpin apex (far bottom-left, eased open)
+  [-190, -102],  // hairpin exit
+  [-150, -72],   // into the infield
+  [-110, -100],  // T3 – Maggotts-Becketts esse snake (swing 1, amplitude eased)
+  [-70, -73],    // esse swing 2
+  [-30, -100],   // esse swing 3
+  [10, -70],     // esse swing 4
+  [45, -94],     // esse swing 5
+  [95, -70],     // esse snake exit
+  [135, -20],    // T4 – triple-apex spiral entry
+  [140, 40],     // spiral apex 1
+  [110, 80],     // spiral apex 2 (tightening)
+  [60, 95],      // spiral apex 3
+  [0, 80],       // spiral exit
+  [-70, 112],    // sweep out toward the top-left (rounds the entry)
+  [-140, 150],   // top-left apex of the outer loop
+  [-95, 172],    // rounds the exit onto the top straight
+  [-40, 178],    // long curving top straight
+  [90, 175],     // top straight → top-right sweep
+  [185, 140],    // fast top-right sweeper
+  [225, 90],     // sweep exit → loop closes back to T0
 ];
 
 const _stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);

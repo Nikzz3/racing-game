@@ -60,13 +60,24 @@ def detect_plateau(
 # Policy export
 # ---------------------------------------------------------------------------
 
-def _make_env(difficulty: str = "medium", max_steps: int = 3600):
+def _make_env(
+    difficulty: str = "medium",
+    max_steps: int = 3600,
+    line_reward_coef: float = 0.0,
+    line_reward_sigma: float = 3.0,
+):
     def _init():
         from env import TimeTrialEnv
         from stable_baselines3.common.monitor import Monitor
         # Monitor adds info["episode"] on episode end, which populates PPO's
         # ep_info_buffer — the source for reward_log and plateau detection.
-        return Monitor(TimeTrialEnv(difficulty=difficulty, eval_mode=False, max_steps=max_steps))
+        return Monitor(TimeTrialEnv(
+            difficulty=difficulty,
+            eval_mode=False,
+            max_steps=max_steps,
+            line_reward_coef=line_reward_coef,
+            line_reward_sigma=line_reward_sigma,
+        ))
     return _init
 
 
@@ -163,6 +174,9 @@ def train(
     eval_freq: int = 200_000,
     plateau_window: int = 5,
     plateau_threshold_pct: float = 1.5,
+    seed: int | None = None,
+    line_reward_coef: float = 0.0,
+    line_reward_sigma: float = 3.0,
 ) -> None:
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
@@ -227,7 +241,10 @@ def train(
 
     print(f"Training PPO: {timesteps:,} timesteps, {n_envs} envs (SubprocVecEnv)")
 
-    env = SubprocVecEnv([_make_env() for _ in range(n_envs)])
+    env = SubprocVecEnv([
+        _make_env(line_reward_coef=line_reward_coef, line_reward_sigma=line_reward_sigma)
+        for _ in range(n_envs)
+    ])
     env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=5.0)
 
     model = PPO(
@@ -241,6 +258,7 @@ def train(
         policy_kwargs={"net_arch": [64, 64]},
         verbose=0,
         device="cpu",
+        seed=seed,
     )
     model.learn(total_timesteps=timesteps, callback=PlateauCallback())
 
@@ -323,6 +341,9 @@ if __name__ == "__main__":
     parser.add_argument("--eval-freq",          type=int,   default=200_000)
     parser.add_argument("--plateau-window",     type=int,   default=5)
     parser.add_argument("--plateau-threshold",  type=float, default=1.5)
+    parser.add_argument("--seed",               type=int,   default=None)
+    parser.add_argument("--line-reward-coef",   type=float, default=0.0)
+    parser.add_argument("--line-reward-sigma",  type=float, default=3.0)
     args = parser.parse_args()
     train(
         timesteps=args.timesteps,
@@ -332,4 +353,7 @@ if __name__ == "__main__":
         eval_freq=args.eval_freq,
         plateau_window=args.plateau_window,
         plateau_threshold_pct=args.plateau_threshold,
+        seed=args.seed,
+        line_reward_coef=args.line_reward_coef,
+        line_reward_sigma=args.line_reward_sigma,
     )
