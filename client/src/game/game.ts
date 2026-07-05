@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import {
   DEFAULT_DIFFICULTY,
+  DEFAULT_TRACK_SLUG,
   resolveTrack,
-  SUNSET_RIDGE,
+  TRACK_DIVISIONS,
   type Difficulty,
   type PlayerSnapshot,
   type ServerMessage,
@@ -21,7 +22,7 @@ import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
-const SPAWN_SAMPLE = SUNSET_RIDGE.samples.length - 14;
+const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 
 export class Game {
   private bundle: SceneBundle;
@@ -57,7 +58,7 @@ export class Game {
     roomName: string,
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
-    trackSlug: string = SUNSET_RIDGE.id
+    trackSlug: string = DEFAULT_TRACK_SLUG
   ) {
     this.track = resolveTrack(trackSlug);
     this.car = new CarPhysics(difficulty, this.track.samples);

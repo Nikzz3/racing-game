@@ -5,7 +5,7 @@ import {
   replayInputs,
   autopilotInput,
 } from './harness';
-import { CHECKPOINT_RADIUS, NUM_CHECKPOINTS, SUNSET_RIDGE } from '@racing/shared';
+import { CHECKPOINT_RADIUS, NUM_CHECKPOINTS, STORMHAVEN, SUNSET_RIDGE } from '@racing/shared';
 
 const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
 
@@ -130,4 +130,86 @@ describe('replayInputs', () => {
     const { lapTimeMs } = replayInputs(inputs);
     expect(lapTimeMs).toBeNull();
   });
+});
+
+describe('CheckpointTracker on Stormhaven (non-default track)', () => {
+  const SH_CHECKPOINTS = STORMHAVEN.checkpoints;
+
+  function atStormhavenCheckpoint(k: number): { x: number; z: number } {
+    return { x: SH_CHECKPOINTS[k].x, z: SH_CHECKPOINTS[k].z };
+  }
+
+  it('Stormhaven and Sunset Ridge checkpoints are at different positions', () => {
+    // The two tracks must have geometrically distinct checkpoints so the
+    // isolation tests below are meaningful.
+    const sameAtEveryIndex = STORMHAVEN.checkpoints.every((cp, i) => {
+      const sr = SUNSET_RIDGE.checkpoints[i];
+      return Math.abs(cp.x - sr.x) < 1 && Math.abs(cp.z - sr.z) < 1;
+    });
+    expect(sameAtEveryIndex).toBe(false);
+  });
+
+  it('records a lap time when all Stormhaven checkpoints are passed in order', () => {
+    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
+
+    const { x: x0, z: z0 } = atStormhavenCheckpoint(0);
+    expect(tracker.update(x0, z0, 0)).toBeNull(); // starts timer
+
+    for (let k = 1; k < NUM_CHECKPOINTS; k++) {
+      const { x, z } = atStormhavenCheckpoint(k);
+      expect(tracker.update(x, z, k * 60)).toBeNull();
+    }
+
+    // Second pass over CP0 completes the lap.
+    const lapMs = tracker.update(x0, z0, NUM_CHECKPOINTS * 60);
+    expect(lapMs).not.toBeNull();
+    expect(lapMs).toBeGreaterThan(0);
+    expect(lapMs).toBeCloseTo(NUM_CHECKPOINTS * 1000, 0);
+  });
+
+  it('does not complete a lap when Sunset Ridge checkpoint positions are fed to a Stormhaven tracker', () => {
+    // A tracker keyed to Stormhaven must not fire on Sunset Ridge geometry.
+    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
+
+    // Walk through all of Sunset Ridge's checkpoint positions.
+    for (let k = 0; k < NUM_CHECKPOINTS; k++) {
+      const { x, z } = { x: CHECKPOINTS[k].x, z: CHECKPOINTS[k].z };
+      tracker.update(x, z, k * 60);
+    }
+    // Pass CP0 of Sunset Ridge a second time — must NOT record a Stormhaven lap.
+    const result = tracker.update(CHECKPOINTS[0].x, CHECKPOINTS[0].z, NUM_CHECKPOINTS * 60);
+    expect(result).toBeNull();
+  });
+
+  it('does not complete a lap when a Stormhaven checkpoint is skipped', () => {
+    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
+    const { x: x0, z: z0 } = atStormhavenCheckpoint(0);
+    tracker.update(x0, z0, 0); // start timer
+
+    for (let k = 1; k <= 4; k++) {
+      const { x, z } = atStormhavenCheckpoint(k);
+      tracker.update(x, z, k * 60);
+    }
+    // Skip CP5, jump to CP6.
+    const { x: x6, z: z6 } = atStormhavenCheckpoint(6);
+    expect(tracker.update(x6, z6, 5 * 60)).toBeNull();
+    // CP0 again with CP5 not yet cleared — lap must NOT complete.
+    expect(tracker.update(x0, z0, 12 * 60)).toBeNull();
+  });
+});
+
+describe('autopilot baseline lap on Stormhaven', () => {
+  it('completes a valid lap on Stormhaven from the fixed spawn within a generous step budget', () => {
+    const result = runAutopilotLap({ track: STORMHAVEN, maxSteps: 72000 }); // 20 min at 60 fps
+    expect(result).not.toBeNull();
+    if (result === null) return;
+
+    expect(result.lapTimeMs).toBeGreaterThan(0);
+    // Generous sanity bounds — a new track may be slower than Sunset Ridge.
+    expect(result.lapTimeMs).toBeGreaterThan(20_000);
+    expect(result.lapTimeMs).toBeLessThan(600_000);
+
+    expect(result.trajectory.length).toBeGreaterThan(0);
+    console.log(`Autopilot Stormhaven lap time: ${(result.lapTimeMs / 1000).toFixed(2)} s`);
+  }, 60_000); // 60 s wall-clock budget
 });
