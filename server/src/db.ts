@@ -36,23 +36,18 @@ export async function initDb(): Promise<void> {
     );
   `);
 
-  // Migrate pre-feature installs: add the difficulty column (existing rows
-  // backfill to 'medium' via the default) and widen the primary key from
-  // (name) to (name, difficulty). Then add the track column (existing rows
-  // backfill to 'sunset-ridge' via the default) and widen to (name, track,
-  // difficulty). Idempotent so it is safe on every boot.
+  // Migrate pre-feature installs: add the difficulty and track columns (existing
+  // rows backfill to 'medium'/'sunset-ridge' via their defaults) and widen the
+  // primary key of best_laps/replays from (name) to (name, track, difficulty).
+  // Idempotent so it is safe on every boot.
   await pool.query(`
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS difficulty TEXT NOT NULL DEFAULT 'medium';
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS track TEXT NOT NULL DEFAULT 'sunset-ridge';
     ALTER TABLE best_laps ADD COLUMN IF NOT EXISTS difficulty TEXT NOT NULL DEFAULT 'medium';
-    ALTER TABLE best_laps DROP CONSTRAINT IF EXISTS best_laps_pkey;
-    ALTER TABLE best_laps ADD PRIMARY KEY (name, difficulty);
     ALTER TABLE best_laps ADD COLUMN IF NOT EXISTS track TEXT NOT NULL DEFAULT 'sunset-ridge';
     ALTER TABLE best_laps DROP CONSTRAINT IF EXISTS best_laps_pkey;
     ALTER TABLE best_laps ADD PRIMARY KEY (name, track, difficulty);
     ALTER TABLE replays ADD COLUMN IF NOT EXISTS difficulty TEXT NOT NULL DEFAULT 'medium';
-    ALTER TABLE replays DROP CONSTRAINT IF EXISTS replays_pkey;
-    ALTER TABLE replays ADD PRIMARY KEY (name, difficulty);
     ALTER TABLE replays ADD COLUMN IF NOT EXISTS track TEXT NOT NULL DEFAULT 'sunset-ridge';
     ALTER TABLE replays DROP CONSTRAINT IF EXISTS replays_pkey;
     ALTER TABLE replays ADD PRIMARY KEY (name, track, difficulty);
