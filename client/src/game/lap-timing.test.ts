@@ -173,11 +173,12 @@ describe('CheckpointTracker on Stormhaven (non-default track)', () => {
 
     // Walk through all of Sunset Ridge's checkpoint positions.
     for (let k = 0; k < NUM_CHECKPOINTS; k++) {
-      const { x, z } = { x: CHECKPOINTS[k].x, z: CHECKPOINTS[k].z };
+      const { x, z } = atCheckpoint(k);
       tracker.update(x, z, k * 60);
     }
     // Pass CP0 of Sunset Ridge a second time — must NOT record a Stormhaven lap.
-    const result = tracker.update(CHECKPOINTS[0].x, CHECKPOINTS[0].z, NUM_CHECKPOINTS * 60);
+    const { x: x0, z: z0 } = atCheckpoint(0);
+    const result = tracker.update(x0, z0, NUM_CHECKPOINTS * 60);
     expect(result).toBeNull();
   });
 
