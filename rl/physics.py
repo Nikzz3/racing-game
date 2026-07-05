@@ -50,11 +50,9 @@ def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
 
 
 def _sample_track(
-    control_points: list[tuple[float, float]] = None,  # type: ignore[assignment]
+    control_points: list[tuple[float, float]],
     divisions: int = TRACK_DIVISIONS,
 ) -> list[dict]:
-    if control_points is None:
-        control_points = _CONTROL_POINTS
     n = len(control_points)
     pts: list[tuple[float, float]] = []
     for s in range(divisions):
@@ -79,7 +77,7 @@ def _sample_track(
     return samples
 
 
-TRACK_SAMPLES: list[dict] = _sample_track()
+TRACK_SAMPLES: list[dict] = _sample_track(_CONTROL_POINTS)
 
 # ---------------------------------------------------------------------------
 # Stormhaven Circuit  (shared/src/track.ts — STORMHAVEN_CONTROL_POINTS)
