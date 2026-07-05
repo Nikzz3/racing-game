@@ -62,11 +62,11 @@ def detect_plateau(
 
 def _make_env(difficulty: str = "medium", max_steps: int = 3600):
     def _init():
-        from env import SunsetRidgeEnv
+        from env import TimeTrialEnv
         from stable_baselines3.common.monitor import Monitor
         # Monitor adds info["episode"] on episode end, which populates PPO's
         # ep_info_buffer — the source for reward_log and plateau detection.
-        return Monitor(SunsetRidgeEnv(difficulty=difficulty, eval_mode=False, max_steps=max_steps))
+        return Monitor(TimeTrialEnv(difficulty=difficulty, eval_mode=False, max_steps=max_steps))
     return _init
 
 
@@ -118,12 +118,12 @@ def eval_policy_lap(
     the Node validation harness (runPolicyLap against real TypeScript CarPhysics).
     """
     import numpy as np
-    from env import SunsetRidgeEnv, TOTAL_TRACK_LENGTH, DT
+    from env import TimeTrialEnv, TOTAL_TRACK_LENGTH, DT
 
     lap_times: list[float] = []
 
     for _ in range(n_eval):
-        eval_env = SunsetRidgeEnv(difficulty="medium", eval_mode=True, max_steps=36000)
+        eval_env = TimeTrialEnv(difficulty="medium", eval_mode=True, max_steps=36000)
         obs, _ = eval_env.reset()
         done = False
         lap_done = False
