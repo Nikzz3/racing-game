@@ -114,7 +114,7 @@ export class RoomManager {
       `${ROOM_TTL_MS} milliseconds`,
     ]);
     const { rows } = await pool.query(
-      "SELECT id, name, created_at, difficulty FROM rooms"
+      "SELECT id, name, created_at, difficulty, track FROM rooms"
     );
     for (const r of rows) {
       const track = resolveTrack(r.track);
@@ -144,8 +144,8 @@ export class RoomManager {
     this.rooms.set(id, room);
     pool
       .query(
-        "INSERT INTO rooms (id, name, created_at, difficulty) VALUES ($1, $2, $3, $4)",
-        [room.id, room.name, new Date(room.createdAt), room.difficulty]
+        "INSERT INTO rooms (id, name, created_at, difficulty, track) VALUES ($1, $2, $3, $4, $5)",
+        [room.id, room.name, new Date(room.createdAt), room.difficulty, room.track.id]
       )
       .catch((err) => console.error("Failed to persist room:", err));
     return room;

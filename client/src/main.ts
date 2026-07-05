@@ -35,7 +35,7 @@ const lobby = new Lobby(app, {
     net.send({ type: "hello", name: lobby.playerName });
     net.send({ type: "joinRoom", roomId });
   },
-  onReplay: (name, difficulty) => net.send({ type: "getReplay", name, difficulty }),
+  onReplay: (name, track, difficulty) => net.send({ type: "getReplay", name, track, difficulty }),
   onReferenceLap: () => {
     if (game) return;
     const lap = buildReferenceLap(policy);

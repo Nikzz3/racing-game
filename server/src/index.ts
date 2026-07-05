@@ -92,10 +92,10 @@ async function handleState(
   const frames =
     player.lapFramesValid && player.lapFrames.length >= 2 ? player.lapFrames : null;
 
-  // Track records are per difficulty, so compare against this room's board only.
-  const prevRecord = (await bestTime(room.difficulty)) ?? Infinity;
+  // Track records are per (track, difficulty), so compare against this room's board only.
+  const prevRecord = (await bestTime(room.track.id, room.difficulty)) ?? Infinity;
   let isTrackRecord = false;
-  if (await submitLap(player.name, room.difficulty, lap.lapTimeMs, frames)) {
+  if (await submitLap(player.name, room.track.id, room.difficulty, lap.lapTimeMs, frames)) {
     isTrackRecord = lap.lapTimeMs < prevRecord;
     broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
   }
@@ -119,10 +119,11 @@ async function handleState(
 async function handleGetReplay(
   player: Player,
   rawName: string,
+  track: string,
   difficulty: Difficulty
 ): Promise<void> {
   const name = rawName.trim().slice(0, 16);
-  const replay = name ? await getReplay(name, difficulty) : null;
+  const replay = name ? await getReplay(name, track, difficulty) : null;
   if (!replay) {
     send(player.ws, { type: "error", message: `No replay available for ${name || "this driver"}` });
     return;
@@ -170,7 +171,7 @@ function handleMessage(player: Player, msg: ClientMessage): void {
       );
       break;
     case "getReplay":
-      handleGetReplay(player, msg.name, asDifficulty(msg.difficulty)).catch((err) =>
+      handleGetReplay(player, msg.name, msg.track, asDifficulty(msg.difficulty)).catch((err) =>
         console.error("Failed to handle getReplay:", err)
       );
       break;

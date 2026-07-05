@@ -1,6 +1,7 @@
-import type { LeaderboardEntry, RoomInfo } from "@racing/shared";
+import type { LeaderboardEntry, RoomInfo, TrackSlug } from "@racing/shared";
 import {
   DEFAULT_DIFFICULTY,
+  DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
   DIFFICULTY_LABELS,
   type Difficulty,
@@ -10,7 +11,7 @@ import { escapeHtml, formatMs } from "../util";
 export interface LobbyCallbacks {
   onCreate: (roomName: string, difficulty: Difficulty) => void;
   onJoin: (roomId: string) => void;
-  onReplay: (name: string, difficulty: Difficulty) => void;
+  onReplay: (name: string, track: TrackSlug, difficulty: Difficulty) => void;
   onReferenceLap: () => void;
 }
 
@@ -27,6 +28,8 @@ export class Lobby {
   private createDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   /** Which difficulty's board is currently shown. */
   private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
+  /** Which track's board is currently shown (fixed to sunset-ridge until multi-track). */
+  private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
   private entries: LeaderboardEntry[] = [];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
@@ -134,7 +137,7 @@ export class Lobby {
 
     this.lbList.addEventListener("click", (e) => {
       const replayBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
-      if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.diff as Difficulty);
+      if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.track!, replayBtn.dataset.diff as Difficulty);
     });
 
     this.root.querySelector<HTMLElement>(".lb-ai-record")!.addEventListener("click", () => {
@@ -172,9 +175,11 @@ export class Lobby {
     this.renderBoard();
   }
 
-  /** Render only the entries for the currently selected difficulty tab. */
+  /** Render only the entries for the currently selected (track, difficulty) pair. */
   private renderBoard(): void {
-    const shown = this.entries.filter((e) => e.difficulty === this.boardDifficulty);
+    const shown = this.entries.filter(
+      (e) => e.track === this.boardTrack && e.difficulty === this.boardDifficulty
+    );
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
     empty.hidden = shown.length > 0;
     this.lbList.innerHTML = shown
@@ -183,7 +188,7 @@ export class Lobby {
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-diff="${e.difficulty}" title="Watch replay">▶</button>` : ""}
+          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Watch replay">▶</button>` : ""}
         </li>`
       )
       .join("");

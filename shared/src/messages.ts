@@ -31,6 +31,7 @@ export interface LeaderboardEntry {
   date: string;
   hasReplay: boolean;
   difficulty: Difficulty;
+  track: TrackSlug;
 }
 
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
@@ -42,7 +43,7 @@ export type ClientMessage =
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
   | { type: "respawn" }
-  | { type: "getReplay"; name: string; difficulty: Difficulty }
+  | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
 
 export type ServerMessage =
