@@ -1,5 +1,4 @@
 import type { PlayerSnapshot } from "@racing/shared";
-import { NUM_CHECKPOINTS } from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
 
 export class Hud {
@@ -13,15 +12,17 @@ export class Hud {
   private standingsEl: HTMLElement;
   private offtrackEl: HTMLElement;
   private toastsEl: HTMLElement;
+  private checkpointCount: number;
 
-  constructor(parent: HTMLElement, roomName: string, onLeave: () => void) {
+  constructor(parent: HTMLElement, roomName: string, onLeave: () => void, checkpointCount: number) {
+    this.checkpointCount = checkpointCount;
     this.root = document.createElement("div");
     this.root.className = "hud";
     this.root.innerHTML = `
       <div class="hud-panel hud-top-left">
         <div class="hud-room">${escapeHtml(roomName)}</div>
         <div class="hud-lap">LAP 0</div>
-        <div class="hud-cp">CP 0/${NUM_CHECKPOINTS}</div>
+        <div class="hud-cp">CP 0/${checkpointCount}</div>
         <button class="hud-leave">Leave race</button>
       </div>
       <div class="hud-panel hud-timer">
@@ -71,7 +72,7 @@ export class Hud {
 
   setMyProgress(p: PlayerSnapshot): void {
     this.lapCountEl.textContent = `LAP ${p.laps}`;
-    this.cpEl.textContent = `CP ${p.nextCheckpoint}/${NUM_CHECKPOINTS}`;
+    this.cpEl.textContent = `CP ${p.nextCheckpoint}/${this.checkpointCount}`;
     this.lastLapEl.textContent = formatMs(p.lastLapMs);
     this.bestLapEl.textContent = formatMs(p.bestLapMs);
   }

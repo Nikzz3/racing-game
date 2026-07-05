@@ -74,7 +74,7 @@ export class Game {
     this.bundle.scene.add(this.carMesh);
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
-    this.hud = new Hud(parent, roomName, onLeave);
+    this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
