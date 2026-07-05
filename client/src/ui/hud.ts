@@ -12,10 +12,13 @@ export class Hud {
   private standingsEl: HTMLElement;
   private offtrackEl: HTMLElement;
   private toastsEl: HTMLElement;
-  private checkpointCount: number;
 
-  constructor(parent: HTMLElement, roomName: string, onLeave: () => void, checkpointCount: number) {
-    this.checkpointCount = checkpointCount;
+  constructor(
+    parent: HTMLElement,
+    roomName: string,
+    onLeave: () => void,
+    private checkpointCount: number
+  ) {
     this.root = document.createElement("div");
     this.root.className = "hud";
     this.root.innerHTML = `
