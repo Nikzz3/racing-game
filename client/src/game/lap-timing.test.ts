@@ -151,20 +151,21 @@ describe('CheckpointTracker on Stormhaven (non-default track)', () => {
 
   it('records a lap time when all Stormhaven checkpoints are passed in order', () => {
     const tracker = new CheckpointTracker(SH_CHECKPOINTS);
+    const n = SH_CHECKPOINTS.length; // 24 (one per control point)
 
     const { x: x0, z: z0 } = atStormhavenCheckpoint(0);
     expect(tracker.update(x0, z0, 0)).toBeNull(); // starts timer
 
-    for (let k = 1; k < NUM_CHECKPOINTS; k++) {
+    for (let k = 1; k < n; k++) {
       const { x, z } = atStormhavenCheckpoint(k);
       expect(tracker.update(x, z, k * 60)).toBeNull();
     }
 
     // Second pass over CP0 completes the lap.
-    const lapMs = tracker.update(x0, z0, NUM_CHECKPOINTS * 60);
+    const lapMs = tracker.update(x0, z0, n * 60);
     expect(lapMs).not.toBeNull();
     expect(lapMs).toBeGreaterThan(0);
-    expect(lapMs).toBeCloseTo(NUM_CHECKPOINTS * 1000, 0);
+    expect(lapMs).toBeCloseTo(n * 1000, 0);
   });
 
   it('does not complete a lap when Sunset Ridge checkpoint positions are fed to a Stormhaven tracker', () => {
@@ -196,6 +197,37 @@ describe('CheckpointTracker on Stormhaven (non-default track)', () => {
     expect(tracker.update(x6, z6, 5 * 60)).toBeNull();
     // CP0 again with CP5 not yet cleared — lap must NOT complete.
     expect(tracker.update(x0, z0, 12 * 60)).toBeNull();
+  });
+
+  it('straight grass-cut bypassing the technical section does not complete a valid lap', () => {
+    // Simulates a driver who cuts directly from the S/F area to CP20 (hairpin exit)
+    // across the infield, bypassing CPs 1-19 which arc up through positive-z territory.
+    // Because those CPs are never cleared, the lap must not count.
+    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
+    const n = SH_CHECKPOINTS.length;
+
+    tracker.update(SH_CHECKPOINTS[0].x, SH_CHECKPOINTS[0].z, 0); // start timer
+
+    // Feed 10 positions interpolating from just past CP0 straight to CP20,
+    // none of which land within CHECKPOINT_RADIUS of CPs 1-19 (they go the
+    // wrong way through the infield rather than around the circuit).
+    const fromX = SH_CHECKPOINTS[1].x;
+    const fromZ = SH_CHECKPOINTS[1].z;
+    const toX = SH_CHECKPOINTS[20].x;
+    const toZ = SH_CHECKPOINTS[20].z;
+    for (let i = 1; i <= 10; i++) {
+      const frac = i / 11;
+      tracker.update(fromX + (toX - fromX) * frac, fromZ + (toZ - fromZ) * frac, i * 60);
+    }
+
+    // Continue from CP20 to the end to rule out timing as a factor.
+    for (let k = 20; k < n; k++) {
+      tracker.update(SH_CHECKPOINTS[k].x, SH_CHECKPOINTS[k].z, (11 + k - 20) * 60);
+    }
+
+    // Return to CP0 — must NOT record a lap (CP1-19 were never cleared).
+    const result = tracker.update(SH_CHECKPOINTS[0].x, SH_CHECKPOINTS[0].z, (n + 11) * 60);
+    expect(result).toBeNull();
   });
 });
 

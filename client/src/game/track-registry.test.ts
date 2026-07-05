@@ -3,11 +3,13 @@ import {
   asTrackSlug,
   DEFAULT_TRACK_SLUG,
   getTrack,
+  nearestCenterline,
   NUM_CHECKPOINTS,
   SUNSET_RIDGE,
   STORMHAVEN,
   TRACKS,
   trackPath,
+  CHECKPOINT_RADIUS,
 } from '@racing/shared';
 
 describe('track registry', () => {
@@ -43,14 +45,8 @@ describe('track registry', () => {
     expect(asTrackSlug('sunset-ridge')).toBe('sunset-ridge');
   });
 
-  it('SUNSET_RIDGE derives the correct global number of checkpoints', () => {
+  it('SUNSET_RIDGE checkpoint count equals NUM_CHECKPOINTS (12 evenly-spaced gates)', () => {
     expect(SUNSET_RIDGE.checkpoints.length).toBe(NUM_CHECKPOINTS);
-  });
-
-  it('each Track in the registry derives the correct number of checkpoints', () => {
-    for (const track of TRACKS) {
-      expect(track.checkpoints.length).toBe(NUM_CHECKPOINTS);
-    }
   });
 
   it('SUNSET_RIDGE samples array has the expected length', () => {
@@ -74,8 +70,60 @@ describe('track registry', () => {
     expect(STORMHAVEN.name).toBe('Stormhaven Circuit');
   });
 
-  it('STORMHAVEN derives the correct global number of checkpoints', () => {
-    expect(STORMHAVEN.checkpoints.length).toBe(NUM_CHECKPOINTS);
+  it('STORMHAVEN checkpoint count equals its control-point count (one gate per apex)', () => {
+    expect(STORMHAVEN.checkpoints.length).toBe(STORMHAVEN.controlPoints.length);
+  });
+
+  it('each Stormhaven checkpoint lies within CHECKPOINT_RADIUS of the centerline', () => {
+    for (const cp of STORMHAVEN.checkpoints) {
+      const { dist } = nearestCenterline(cp.x, cp.z, STORMHAVEN.samples);
+      expect(dist).toBeLessThanOrEqual(CHECKPOINT_RADIUS);
+    }
+  });
+
+  it('Stormhaven checkpoints are in travel order (nearest sample indices are strictly ascending)', () => {
+    const indices = STORMHAVEN.checkpoints.map(
+      (cp) => nearestCenterline(cp.x, cp.z, STORMHAVEN.samples).index
+    );
+    for (let i = 0; i < indices.length - 1; i++) {
+      expect(indices[i]).toBeLessThan(indices[i + 1]);
+    }
+  });
+
+  it('Stormhaven checkpoint 0 maps to sample 0 (start/finish)', () => {
+    const { index } = nearestCenterline(
+      STORMHAVEN.checkpoints[0].x,
+      STORMHAVEN.checkpoints[0].z,
+      STORMHAVEN.samples
+    );
+    expect(index).toBe(0);
+  });
+
+  it('Stormhaven chord/arc ratio for every consecutive checkpoint pair is ≥ 0.8 (anti-cut regression guard)', () => {
+    const cps = STORMHAVEN.checkpoints;
+    const samples = STORMHAVEN.samples;
+    const n = samples.length;
+    const cpIndices = cps.map((cp) => nearestCenterline(cp.x, cp.z, samples).index);
+    const THRESHOLD = 0.8;
+
+    for (let k = 0; k < cps.length; k++) {
+      const i = cpIndices[k];
+      const j = cpIndices[(k + 1) % cps.length];
+      const cp1 = cps[k];
+      const cp2 = cps[(k + 1) % cps.length];
+      const chord = Math.hypot(cp2.x - cp1.x, cp2.z - cp1.z);
+
+      let arc = 0;
+      let idx = i;
+      while (idx !== j) {
+        const next = (idx + 1) % n;
+        arc += Math.hypot(samples[next].x - samples[idx].x, samples[next].z - samples[idx].z);
+        idx = next;
+      }
+
+      if (arc === 0) continue; // degenerate: two CPs at same sample
+      expect(chord / arc).toBeGreaterThanOrEqual(THRESHOLD);
+    }
   });
 
   it('STORMHAVEN samples array has 512 entries', () => {

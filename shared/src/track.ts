@@ -86,6 +86,21 @@ function deriveCheckpoints(
   });
 }
 
+/**
+ * Derives one Checkpoint per control point by mapping each control point to its
+ * nearest centerline sample. Preserves travel order (control points are already
+ * in lap order) so Checkpoint 0 lands at the start/finish.
+ */
+function deriveCheckpointsFromControlPoints(
+  controlPoints: readonly [number, number][],
+  samples: TrackSample[]
+): { x: number; z: number }[] {
+  return controlPoints.map(([cx, cz]) => {
+    const { index } = nearestCenterline(cx, cz, samples);
+    return { x: samples[index].x, z: samples[index].z };
+  });
+}
+
 /** Nearest centerline sample to a world position (full scan; 512 points is cheap). */
 export function nearestCenterline(
   x: number,
@@ -210,10 +225,9 @@ const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
 ];
 
 const _stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
-const _stormhavenCheckpoints = deriveCheckpoints(
-  _stormhavenSamples,
-  NUM_CHECKPOINTS,
-  TRACK_DIVISIONS
+const _stormhavenCheckpoints = deriveCheckpointsFromControlPoints(
+  STORMHAVEN_CONTROL_POINTS,
+  _stormhavenSamples
 );
 
 /** Second circuit: Stormhaven Circuit. */
