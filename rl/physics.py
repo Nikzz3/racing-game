@@ -99,11 +99,17 @@ _STORMHAVEN_CONTROL_POINTS: list[tuple[float, float]] = [
 STORMHAVEN_SAMPLES: list[dict] = _sample_track(_STORMHAVEN_CONTROL_POINTS)
 
 
-def nearest_centerline(x: float, z: float) -> dict:
+TRACKS: dict[str, list[dict]] = {
+    "sunset-ridge": TRACK_SAMPLES,
+    "stormhaven": STORMHAVEN_SAMPLES,
+}
+
+
+def nearest_centerline(x: float, z: float, samples: list[dict] = TRACK_SAMPLES) -> dict:
     """Full linear scan — mirrors the TypeScript implementation exactly."""
     best = 0
     best_d2 = float("inf")
-    for i, s in enumerate(TRACK_SAMPLES):
+    for i, s in enumerate(samples):
         dx = x - s["x"]
         dz = z - s["z"]
         d2 = dx * dx + dz * dz
@@ -143,12 +149,16 @@ class PhysicsState:
     touching_wall: bool = False
 
 
-def spawn_at_sample(index: int, lateral_offset: float) -> PhysicsState:
+def spawn_at_sample(
+    index: int,
+    lateral_offset: float,
+    samples: list[dict] = TRACK_SAMPLES,
+) -> PhysicsState:
     """
     Mirror of CarPhysics.spawnAtSample.
     Left-pointing normal of the direction of travel offsets the spawn position.
     """
-    s = TRACK_SAMPLES[index]
+    s = samples[index]
     nx = -s["dirZ"]
     nz = s["dirX"]
     return PhysicsState(
@@ -162,7 +172,13 @@ def spawn_at_sample(index: int, lateral_offset: float) -> PhysicsState:
     )
 
 
-def step(state: PhysicsState, action: dict, dt: float, difficulty: str = "medium") -> PhysicsState:
+def step(
+    state: PhysicsState,
+    action: dict,
+    dt: float,
+    difficulty: str = "medium",
+    samples: list[dict] = TRACK_SAMPLES,
+) -> PhysicsState:
     """
     Pure stepping function mirroring CarPhysics.update.
     Returns a new PhysicsState; the input state is not mutated.
@@ -195,7 +211,7 @@ def step(state: PhysicsState, action: dict, dt: float, difficulty: str = "medium
     speed -= speed * abs(speed) * DRAG * dt
 
     # --- Surface limits ---
-    before = nearest_centerline(x, z)
+    before = nearest_centerline(x, z, samples)
     on_track = before["dist"] <= ROAD_HALF_WIDTH + 0.6
     limit = tuning["max_speed"] if on_track else tuning["grass_max_speed"]
     if speed > limit:
@@ -220,10 +236,10 @@ def step(state: PhysicsState, action: dict, dt: float, difficulty: str = "medium
     z += math.cos(heading) * speed * dt
 
     # --- Barrier collision: clamp to wall, one-time speed penalty on contact ---
-    after = nearest_centerline(x, z)
+    after = nearest_centerline(x, z, samples)
     center_index = after["index"]
     if after["dist"] > WALL_DIST:
-        s = TRACK_SAMPLES[after["index"]]
+        s = samples[after["index"]]
         inv = 1.0 / after["dist"]
         x = s["x"] + (x - s["x"]) * inv * WALL_DIST
         z = s["z"] + (z - s["z"]) * inv * WALL_DIST

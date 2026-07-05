@@ -1,5 +1,5 @@
 """
-Gymnasium environment wrapping the Sunset Ridge car physics.
+Gymnasium environment wrapping the racing car physics for any registered Track.
 
 Observation (7-dim, normalized to [-3, 3]):
   [0] signed lateral offset from centerline  / ROAD_HALF_WIDTH
@@ -17,7 +17,7 @@ Episode:
   - Capped at max_steps (truncation)
   - Early terminated when stuck at wall ≥60 steps, or reversing (net
     backward progress over a 60-step sliding window)
-  - Randomized reset for training; fixed spawn (SPAWN_SAMPLE) for eval
+  - Randomized reset for training; fixed spawn (_spawn_sample) for eval
 """
 
 import math
@@ -31,6 +31,7 @@ from physics import (
     PhysicsState,
     step as _physics_step,
     spawn_at_sample,
+    TRACKS,
     TRACK_SAMPLES,
     TRACK_DIVISIONS,
     ROAD_HALF_WIDTH,
@@ -39,11 +40,11 @@ from physics import (
 
 OBS_DIM = 7
 ACTION_DIM = 2
-SPAWN_SAMPLE = TRACK_DIVISIONS - 14  # mirrors harness.ts
+SPAWN_SAMPLE = TRACK_DIVISIONS - 14  # mirrors harness.ts (Sunset Ridge default)
 DT = 1 / 60
 LOOKAHEADS = (5, 10, 20, 40)
 
-# Metres of arc-length per centerline sample (average over the loop)
+# Module-level defaults (Sunset Ridge) kept for backward compatibility
 _SEGMENT_LENGTHS = [
     math.hypot(
         TRACK_SAMPLES[(i + 1) % TRACK_DIVISIONS]["x"] - TRACK_SAMPLES[i]["x"],
@@ -68,22 +69,39 @@ def _normalize_angle(a: float) -> float:
     return a
 
 
-class SunsetRidgeEnv(gym.Env):
-    """Single-car time-trial on Sunset Ridge Circuit."""
+class TimeTrialEnv(gym.Env):
+    """Single-car time-trial on a configurable Track."""
 
     metadata: dict = {"render_modes": []}
 
     def __init__(
         self,
+        track: str = "sunset-ridge",
         difficulty: str = "medium",
         eval_mode: bool = False,
         max_steps: int = 3600,
     ) -> None:
         super().__init__()
+        if track not in TRACKS:
+            raise ValueError(f"Unknown track {track!r}; valid: {sorted(TRACKS)}")
+        self.track = track
         self.difficulty = difficulty
         self.eval_mode = eval_mode
         self.max_steps = max_steps
         self._tuning = DIFFICULTY_PHYSICS[difficulty]
+        self._samples = TRACKS[track]
+        self._track_divisions = len(self._samples)
+
+        seg_lengths = [
+            math.hypot(
+                self._samples[(i + 1) % self._track_divisions]["x"] - self._samples[i]["x"],
+                self._samples[(i + 1) % self._track_divisions]["z"] - self._samples[i]["z"],
+            )
+            for i in range(self._track_divisions)
+        ]
+        self._avg_arc_length: float = sum(seg_lengths) / len(seg_lengths)
+        self._total_track_length: float = sum(seg_lengths)
+        self._spawn_sample: int = self._track_divisions - 14  # mirrors harness.ts
 
         self.observation_space = spaces.Box(
             low=-3.0, high=3.0, shape=(OBS_DIM,), dtype=np.float32
@@ -105,13 +123,13 @@ class SunsetRidgeEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         if self.eval_mode:
-            idx = SPAWN_SAMPLE
+            idx = self._spawn_sample
             lateral = 0.0
         else:
-            idx = int(self.np_random.integers(0, TRACK_DIVISIONS))
+            idx = int(self.np_random.integers(0, self._track_divisions))
             lateral = float(self.np_random.uniform(-2.0, 2.0))
 
-        self._state = spawn_at_sample(idx, lateral)
+        self._state = spawn_at_sample(idx, lateral, self._samples)
         self._step_count = 0
         self._stuck_steps = 0
         self._progress_window = deque(maxlen=_REVERSE_WINDOW)
@@ -132,14 +150,15 @@ class SunsetRidgeEnv(gym.Env):
             {"throttle": throttle, "brake": brake, "steer": steer},
             DT,
             self.difficulty,
+            self._samples,
         )
         self._step_count += 1
 
         # Signed arc-length progress this step
-        delta = (self._state.center_index - prev_index) % TRACK_DIVISIONS
-        if delta > TRACK_DIVISIONS // 2:
-            delta -= TRACK_DIVISIONS
-        progress = delta * AVG_ARC_LENGTH
+        delta = (self._state.center_index - prev_index) % self._track_divisions
+        if delta > self._track_divisions // 2:
+            delta -= self._track_divisions
+        progress = delta * self._avg_arc_length
         self._total_progress += progress
 
         # Reward
@@ -181,7 +200,7 @@ class SunsetRidgeEnv(gym.Env):
 
     def _compute_obs(self) -> np.ndarray:
         state = self._state
-        s = TRACK_SAMPLES[state.center_index]
+        s = self._samples[state.center_index]
 
         dx = state.x - s["x"]
         dz = state.z - s["z"]
@@ -196,8 +215,8 @@ class SunsetRidgeEnv(gym.Env):
 
         curvatures: list[float] = []
         for offset in LOOKAHEADS:
-            ahead_idx = (state.center_index + offset) % TRACK_DIVISIONS
-            ahead_s = TRACK_SAMPLES[ahead_idx]
+            ahead_idx = (state.center_index + offset) % self._track_divisions
+            ahead_s = self._samples[ahead_idx]
             ahead_heading = math.atan2(ahead_s["dirX"], ahead_s["dirZ"])
             curvatures.append(
                 _normalize_angle(ahead_heading - track_heading) / math.pi

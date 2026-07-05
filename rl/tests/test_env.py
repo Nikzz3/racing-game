@@ -1,5 +1,5 @@
 """
-Behavioral tests for SunsetRidgeEnv.
+Behavioral tests for TimeTrialEnv.
 
 Tests exercise the public reset/step contract; no assertions on internal fields
 beyond what info dict exposes.  Coverage:
@@ -26,7 +26,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from env import (
-    SunsetRidgeEnv,
+    TimeTrialEnv,
     SPAWN_SAMPLE,
     OBS_DIM,
     LOOKAHEADS,
@@ -40,6 +40,7 @@ from env import (
 from physics import (
     PhysicsState,
     TRACK_SAMPLES,
+    STORMHAVEN_SAMPLES,
     TRACK_DIVISIONS,
     ROAD_HALF_WIDTH,
     spawn_at_sample,
@@ -53,36 +54,36 @@ from physics import (
 
 class TestObservation:
     def test_shape_and_dtype(self):
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         obs, _ = env.reset(seed=0)
         assert obs.shape == (OBS_DIM,)
         assert obs.dtype == np.float32
 
     def test_all_finite(self):
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         obs, _ = env.reset(seed=42)
         assert np.all(np.isfinite(obs))
 
     def test_clipped_to_observation_space(self):
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         obs, _ = env.reset(seed=42)
         assert np.all(obs >= -3.0) and np.all(obs <= 3.0)
 
     def test_lookahead_count(self):
         """obs[3:] contains exactly len(LOOKAHEADS) curvature values."""
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         obs, _ = env.reset(seed=0)
         assert obs[3:].shape == (len(LOOKAHEADS),)
 
     def test_lateral_near_zero_at_centered_spawn(self):
         """obs[0] ≈ 0 when spawned with zero lateral offset."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         obs, _ = env.reset()
         assert abs(obs[0]) < 0.05, f"Expected ~0 lateral at centred spawn, got {obs[0]}"
 
     def test_lateral_positive_left_of_track(self):
         """Spawning left of track direction yields positive obs[0]."""
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         env.reset(seed=0)
         env._state = spawn_at_sample(0, +3.0)  # 3 m to the left
         obs = env._compute_obs()
@@ -90,7 +91,7 @@ class TestObservation:
 
     def test_lateral_negative_right_of_track(self):
         """Spawning right of track direction yields negative obs[0]."""
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         env.reset(seed=0)
         env._state = spawn_at_sample(0, -3.0)  # 3 m to the right
         obs = env._compute_obs()
@@ -98,12 +99,12 @@ class TestObservation:
 
     def test_heading_error_near_zero_when_aligned(self):
         """obs[1] ≈ 0 when the car heading matches the track direction."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         obs, _ = env.reset()
         assert abs(obs[1]) < 0.05, f"Expected ~0 heading error at spawn, got {obs[1]}"
 
     def test_obs_after_step_finite_and_bounded(self):
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         obs, _ = env.reset(seed=7)
         for _ in range(60):
             obs, _, terminated, truncated, _ = env.step(
@@ -127,7 +128,7 @@ class TestReward:
         The spawn is on the bottom straight; the car reaches the first corner after
         ~150 steps so the first 100 steps are clean on-track progress.
         """
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         total = 0.0
         for _ in range(100):
@@ -141,7 +142,7 @@ class TestReward:
 
     def test_reward_equals_progress_minus_penalties(self):
         """For a single step, reward = progress + wall_penalty + offtrack_penalty."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         # Build speed first so a step advances the index
         for _ in range(120):
@@ -165,7 +166,7 @@ class TestReward:
 
     def test_wall_contact_incurs_penalty(self):
         """Steps with touching_wall=True have reward 2.0 lower than equivalent progress."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         wall_touched = False
         # Drive hard right steer + throttle to hit the wall
@@ -186,7 +187,7 @@ class TestReward:
 
     def test_offtrack_incurs_penalty(self):
         """Steps with on_track=False have reward reduced by ≥0.5."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         offtrack_found = False
         # Drive straight into wall, then continue past it (wall clamp prevents going far off,
@@ -215,7 +216,7 @@ class TestReward:
 class TestTermination:
     def test_truncation_at_max_steps(self):
         """Episode truncates after max_steps."""
-        env = SunsetRidgeEnv(max_steps=30)
+        env = TimeTrialEnv(max_steps=30)
         env.reset(seed=0)
         step_count = 0
         for _ in range(50):
@@ -231,13 +232,13 @@ class TestTermination:
 
     def test_stuck_at_wall_terminates(self):
         """Car touching wall for ≥ _STUCK_THRESHOLD steps terminates."""
-        env = SunsetRidgeEnv(eval_mode=True, max_steps=5000)
+        env = TimeTrialEnv(eval_mode=True, max_steps=5000)
         env.reset()
 
         # Place car pinned at the wall so each step keeps touching_wall=True
         from physics import WALL_DIST
 
-        s = TRACK_SAMPLES[0]
+        s = env._samples[0]
         nx = -s["dirZ"]
         nz = s["dirX"]
         env._state = PhysicsState(
@@ -263,18 +264,18 @@ class TestTermination:
 
     def test_sustained_reverse_terminates(self):
         """Sustained backward movement terminates via the progress window."""
-        env = SunsetRidgeEnv(eval_mode=True, max_steps=5000)
+        env = TimeTrialEnv(eval_mode=True, max_steps=5000)
         env.reset()
         # Place car with negative speed (physical reverse) so it moves backward on track.
         # speed=-14 at forward heading → x decreases → center_index decreases.
-        s = TRACK_SAMPLES[SPAWN_SAMPLE]
+        s = env._samples[env._spawn_sample]
         env._state = PhysicsState(
             x=s["x"],
             z=s["z"],
             heading=math.atan2(s["dirX"], s["dirZ"]),
             speed=-14.0,   # max reverse speed, forward heading → backward track progress
             on_track=True,
-            center_index=SPAWN_SAMPLE,
+            center_index=env._spawn_sample,
             touching_wall=False,
         )
         env._progress_window.clear()
@@ -298,19 +299,19 @@ class TestTermination:
 
 class TestReset:
     def test_eval_mode_spawns_at_fixed_sample(self):
-        """eval_mode=True always starts from SPAWN_SAMPLE with zero lateral."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        """eval_mode=True always starts from _spawn_sample with zero lateral."""
+        env = TimeTrialEnv(eval_mode=True)
         for seed in (0, 1, 42):
             env.reset(seed=seed)
-            assert env._state.center_index == SPAWN_SAMPLE
+            assert env._state.center_index == env._spawn_sample
             # Heading should match track direction at spawn
-            s = TRACK_SAMPLES[SPAWN_SAMPLE]
+            s = env._samples[env._spawn_sample]
             expected_heading = math.atan2(s["dirX"], s["dirZ"])
             assert abs(env._state.heading - expected_heading) < 1e-9
 
     def test_training_mode_gives_varied_positions(self):
         """Training resets spread across different track positions."""
-        env = SunsetRidgeEnv(eval_mode=False)
+        env = TimeTrialEnv(eval_mode=False)
         indices = set()
         for seed in range(20):
             env.reset(seed=seed)
@@ -319,7 +320,7 @@ class TestReset:
 
     def test_reset_clears_counters(self):
         """Counters are zeroed on reset."""
-        env = SunsetRidgeEnv()
+        env = TimeTrialEnv()
         env.reset(seed=0)
         env._stuck_steps = 50
         env._progress_window.extend([1, -2, -3])
@@ -331,7 +332,7 @@ class TestReset:
 
     def test_obs_and_info_consistent_after_reset(self):
         """Observation returned by reset is identical to one computed from initial state."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         obs, info = env.reset()
         obs2 = env._compute_obs()
         np.testing.assert_array_equal(obs, obs2)
@@ -345,7 +346,7 @@ class TestReset:
 class TestActions:
     def test_positive_longitudinal_is_throttle(self):
         """action=[0, 1] (full throttle) should accelerate the car."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         for _ in range(60):
             _, _, terminated, truncated, info = env.step(
@@ -357,7 +358,7 @@ class TestActions:
 
     def test_negative_longitudinal_is_brake(self):
         """action=[0, -1] (full brake) from speed should reduce speed to 0."""
-        env = SunsetRidgeEnv(eval_mode=True)
+        env = TimeTrialEnv(eval_mode=True)
         env.reset()
         # Build speed
         for _ in range(120):
@@ -367,3 +368,76 @@ class TestActions:
             _, _, _, _, info = env.step(np.array([0.0, -1.0], dtype=np.float32))
         # Speed should be near zero or slightly negative (reverse)
         assert info["speed"] <= 1.0, f"Expected low speed after braking, got {info['speed']:.2f}"
+
+
+# ---------------------------------------------------------------------------
+# Track parameterization
+# ---------------------------------------------------------------------------
+
+
+class TestTrackParameterization:
+    """Verify the env can be constructed on any registered Track."""
+
+    def test_default_track_is_sunset_ridge(self):
+        env = TimeTrialEnv()
+        assert env.track == "sunset-ridge"
+        assert env._samples is TRACK_SAMPLES
+
+    def test_stormhaven_track_uses_stormhaven_geometry(self):
+        env = TimeTrialEnv(track="stormhaven")
+        assert env.track == "stormhaven"
+        assert env._samples is STORMHAVEN_SAMPLES
+
+    def test_stormhaven_has_same_divisions_as_sunset_ridge(self):
+        sr = TimeTrialEnv(track="sunset-ridge")
+        sh = TimeTrialEnv(track="stormhaven")
+        assert sr._track_divisions == sh._track_divisions == TRACK_DIVISIONS
+
+    def test_stormhaven_eval_spawn_position_matches_its_geometry(self):
+        """Spawn on Stormhaven lands at that track's spawn sample, not Sunset Ridge's."""
+        env = TimeTrialEnv(track="stormhaven", eval_mode=True)
+        env.reset(seed=0)
+        spawn_idx = env._spawn_sample
+        expected = STORMHAVEN_SAMPLES[spawn_idx]
+        assert abs(env._state.x - expected["x"]) < 0.1
+        assert abs(env._state.z - expected["z"]) < 0.1
+
+    def test_stormhaven_spawn_differs_from_sunset_ridge_spawn(self):
+        """The two tracks have different spawn coordinates."""
+        sr = TimeTrialEnv(track="sunset-ridge", eval_mode=True)
+        sh = TimeTrialEnv(track="stormhaven", eval_mode=True)
+        sr.reset()
+        sh.reset()
+        assert sr._state.x != sh._state.x or sr._state.z != sh._state.z
+
+    def test_stormhaven_obs_valid_after_reset(self):
+        env = TimeTrialEnv(track="stormhaven", eval_mode=True)
+        obs, _ = env.reset()
+        assert obs.shape == (OBS_DIM,)
+        assert obs.dtype == np.float32
+        assert np.all(np.isfinite(obs))
+        assert np.all(obs >= -3.0) and np.all(obs <= 3.0)
+
+    def test_stormhaven_obs_valid_after_steps(self):
+        env = TimeTrialEnv(track="stormhaven", eval_mode=True)
+        env.reset()
+        for _ in range(60):
+            obs, _, terminated, truncated, _ = env.step(
+                np.array([0.0, 1.0], dtype=np.float32)
+            )
+            assert np.all(np.isfinite(obs))
+            assert np.all(obs >= -3.0) and np.all(obs <= 3.0)
+            if terminated or truncated:
+                break
+
+    def test_difficulty_still_works_on_stormhaven(self):
+        """Difficulty parameterization is orthogonal to track selection."""
+        for difficulty in ("easy", "medium", "hard"):
+            env = TimeTrialEnv(track="stormhaven", difficulty=difficulty, eval_mode=True)
+            obs, _ = env.reset()
+            assert np.all(np.isfinite(obs)), f"Non-finite obs on stormhaven/{difficulty}"
+
+    def test_unknown_track_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="Unknown track"):
+            TimeTrialEnv(track="nonexistent-circuit")
