@@ -1,15 +1,19 @@
 """
-Python port of the Sunset Ridge car physics and track math.
+Python port of the car physics and track math.
 
 Sources mirrored exactly:
   shared/src/track.ts  — CONTROL_POINTS, catmull_rom, sample_track, nearest_centerline
   client/src/game/physics.ts — CarPhysics.update, difficulty constants, wall clamp
 
+Track-taking functions accept a `samples` list (a track's centerline) and
+default to TRACK_SAMPLES (Sunset Ridge).
+
 Public API:
+  TRACKS                     dict[str, list[dict]]  registered tracks by name
   TRACK_SAMPLES              list[dict]  512 {x, z, dirX, dirZ} samples
-  nearest_centerline(x, z)  -> {index, dist}
-  spawn_at_sample(index, lateral_offset)            -> PhysicsState
-  step(state, action, dt, difficulty)               -> PhysicsState
+  nearest_centerline(x, z, samples=TRACK_SAMPLES)        -> {index, dist}
+  spawn_at_sample(index, lateral_offset, samples=...)    -> PhysicsState
+  step(state, action, dt, difficulty, samples=...)       -> PhysicsState
 """
 
 import math

@@ -44,16 +44,22 @@ SPAWN_SAMPLE = TRACK_DIVISIONS - 14  # mirrors harness.ts (Sunset Ridge default)
 DT = 1 / 60
 LOOKAHEADS = (5, 10, 20, 40)
 
+
+def _arc_length_stats(samples: list[dict]) -> tuple[float, float]:
+    """Return (average, total) arc-length per centerline sample over the loop."""
+    n = len(samples)
+    seg_lengths = [
+        math.hypot(
+            samples[(i + 1) % n]["x"] - samples[i]["x"],
+            samples[(i + 1) % n]["z"] - samples[i]["z"],
+        )
+        for i in range(n)
+    ]
+    return sum(seg_lengths) / n, sum(seg_lengths)
+
+
 # Module-level defaults (Sunset Ridge) kept for backward compatibility
-_SEGMENT_LENGTHS = [
-    math.hypot(
-        TRACK_SAMPLES[(i + 1) % TRACK_DIVISIONS]["x"] - TRACK_SAMPLES[i]["x"],
-        TRACK_SAMPLES[(i + 1) % TRACK_DIVISIONS]["z"] - TRACK_SAMPLES[i]["z"],
-    )
-    for i in range(TRACK_DIVISIONS)
-]
-AVG_ARC_LENGTH: float = sum(_SEGMENT_LENGTHS) / len(_SEGMENT_LENGTHS)
-TOTAL_TRACK_LENGTH: float = sum(_SEGMENT_LENGTHS)
+AVG_ARC_LENGTH, TOTAL_TRACK_LENGTH = _arc_length_stats(TRACK_SAMPLES)
 
 # Termination thresholds
 _STUCK_THRESHOLD = 60       # consecutive wall-contact steps → terminate
@@ -91,16 +97,7 @@ class TimeTrialEnv(gym.Env):
         self._tuning = DIFFICULTY_PHYSICS[difficulty]
         self._samples = TRACKS[track]
         self._track_divisions = len(self._samples)
-
-        seg_lengths = [
-            math.hypot(
-                self._samples[(i + 1) % self._track_divisions]["x"] - self._samples[i]["x"],
-                self._samples[(i + 1) % self._track_divisions]["z"] - self._samples[i]["z"],
-            )
-            for i in range(self._track_divisions)
-        ]
-        self._avg_arc_length: float = sum(seg_lengths) / len(seg_lengths)
-        self._total_track_length: float = sum(seg_lengths)
+        self._avg_arc_length, self._total_track_length = _arc_length_stats(self._samples)
         self._spawn_sample: int = self._track_divisions - 14  # mirrors harness.ts
 
         self.observation_space = spaces.Box(
