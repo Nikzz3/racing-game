@@ -85,19 +85,44 @@ TRACK_SAMPLES: list[dict] = _sample_track(_CONTROL_POINTS)
 
 # ---------------------------------------------------------------------------
 # Stormhaven Circuit  (shared/src/track.ts — STORMHAVEN_CONTROL_POINTS)
+#
+# "Serpent's Coil" layout: 29 control points, an apex at every one, so an
+# apex-to-apex chord traces the racing line and grass-cutting can no longer
+# save time. Keep this list in exact sync with the TS source — the golden
+# TestStormhavenSampleParity test replays the TS-derived samples through this
+# Python port and asserts equality to 1e-9. See ADR 0003.
 # ---------------------------------------------------------------------------
 
 _STORMHAVEN_CONTROL_POINTS: list[tuple[float, float]] = [
-    (15, -220), (80, -220), (150, -205),
-    (205, -158), (232, -82),
-    (220, 0), (210, 80),
-    (228, 160), (198, 215),
-    (118, 232), (38, 215),
-    (-38, 232), (-108, 210), (-172, 232),
-    (-215, 182), (-232, 102), (-215, 28),
-    (-232, -52), (-200, -118),
-    (-220, -170), (-195, -202), (-155, -218),
-    (-100, -222), (-45, -220),
+    (232, 30),
+    (228, -60),
+    (218, -150),
+    (188, -202),
+    (110, -220),
+    (25, -220),
+    (-65, -208),
+    (-150, -188),
+    (-198, -150),
+    (-190, -102),
+    (-150, -72),
+    (-110, -100),
+    (-70, -73),
+    (-30, -100),
+    (10, -70),
+    (45, -94),
+    (95, -70),
+    (135, -20),
+    (140, 40),
+    (110, 80),
+    (60, 95),
+    (0, 80),
+    (-70, 112),
+    (-140, 150),
+    (-95, 172),
+    (-40, 178),
+    (90, 175),
+    (185, 140),
+    (225, 90),
 ]
 
 STORMHAVEN_SAMPLES: list[dict] = _sample_track(_STORMHAVEN_CONTROL_POINTS)
