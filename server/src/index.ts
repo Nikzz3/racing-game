@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   asDifficulty,
+  asTrackSlug,
   type ClientMessage,
   type Difficulty,
   type ServerMessage,
@@ -131,6 +132,7 @@ async function handleGetReplay(
   send(player.ws, {
     type: "replay",
     name,
+    track: asTrackSlug(track),
     timeMs: replay.timeMs,
     frames: replay.frames,
   });

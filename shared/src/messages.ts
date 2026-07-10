@@ -68,5 +68,5 @@ export type ServerMessage =
       isTrackRecord: boolean;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
-  | { type: "replay"; name: string; timeMs: number; frames: ReplayFrame[] }
+  | { type: "replay"; name: string; track: TrackSlug; timeMs: number; frames: ReplayFrame[] }
   | { type: "error"; message: string };

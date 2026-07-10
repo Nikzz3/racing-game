@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import type { ReplayFrame } from "@racing/shared";
+import type { ReplayFrame, TrackSlug } from "@racing/shared";
 import { formatMs, escapeHtml } from "../util";
 import { animateCar, createCarMesh } from "./car";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
-import { SUNSET_RIDGE } from "@racing/shared";
+import { resolveTrack } from "@racing/shared";
 import { buildTrack } from "./trackMesh";
 
 const FINISH_HOLD_MS = 1500;
@@ -32,6 +32,7 @@ export class ReplayViewer {
   constructor(
     parent: HTMLElement,
     private name: string,
+    trackSlug: TrackSlug,
     private timeMs: number,
     private frames: ReplayFrame[],
     private onClose: () => void
@@ -40,8 +41,9 @@ export class ReplayViewer {
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.appendChild(this.container);
 
-    this.bundle = createScene(this.container, SUNSET_RIDGE.samples);
-    buildTrack(this.bundle.scene, SUNSET_RIDGE.samples);
+    const track = resolveTrack(trackSlug);
+    this.bundle = createScene(this.container, track.samples);
+    buildTrack(this.bundle.scene, track.samples);
 
     this.carMesh = createCarMesh(name, name);
     this.bundle.scene.add(this.carMesh);

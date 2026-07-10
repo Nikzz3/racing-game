@@ -5,7 +5,7 @@ import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
 import { buildReferenceLap } from "./game/reference-lap";
-import type { ReplayFrame } from "@racing/shared";
+import type { ReplayFrame, TrackSlug } from "@racing/shared";
 import policy from "../../rl/policy.json";
 
 const app = document.getElementById("app")!;
@@ -16,11 +16,16 @@ let game: Game | null = null;
 let replay: ReplayViewer | null = null;
 
 /** Swap the lobby for a replay viewer that restores the lobby when closed. */
-function openReplay(name: string, timeMs: number, frames: ReplayFrame[]): void {
+function openReplay(
+  name: string,
+  track: TrackSlug,
+  timeMs: number,
+  frames: ReplayFrame[]
+): void {
   if (game) return;
   replay?.dispose();
   lobby.hide();
-  replay = new ReplayViewer(app, name, timeMs, frames, () => {
+  replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
     replay = null;
     lobby.show();
   });
@@ -39,7 +44,7 @@ const lobby = new Lobby(app, {
   onReferenceLap: () => {
     if (game) return;
     const lap = buildReferenceLap(policy);
-    if (lap) openReplay(lap.name, lap.timeMs, lap.frames);
+    if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames);
   },
 });
 
@@ -75,7 +80,7 @@ net.onMessage((msg) => {
       lobby.show();
       break;
     case "replay":
-      openReplay(msg.name, msg.timeMs, msg.frames);
+      openReplay(msg.name, msg.track, msg.timeMs, msg.frames);
       break;
     case "error":
       alert(msg.message);

@@ -1,4 +1,4 @@
-import type { ReplayFrame } from '@racing/shared';
+import type { ReplayFrame, TrackSlug } from '@racing/shared';
 import { SUNSET_RIDGE } from '@racing/shared';
 import { runPolicyLap, type PolicyWeights } from './harness';
 
@@ -11,6 +11,7 @@ function round(n: number, d: number): number {
 
 export interface ReferenceLap {
   name: 'AI Record';
+  track: TrackSlug;
   timeMs: number;
   frames: ReplayFrame[];
 }
@@ -41,5 +42,5 @@ export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
     round(s.speed, 2),
   ]);
 
-  return { name: 'AI Record', timeMs: result.lapTimeMs, frames };
+  return { name: 'AI Record', track: SUNSET_RIDGE.id, timeMs: result.lapTimeMs, frames };
 }
