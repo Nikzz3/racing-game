@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import {
   asDifficulty,
   asTrackSlug,
+  parseClientMessage,
   type ClientMessage,
   type Difficulty,
   type ServerMessage,
@@ -22,6 +23,22 @@ const CLIENT_DIST = join(
   "../../client/dist"
 );
 const SNAPSHOT_INTERVAL_MS = 50;
+/** Cap inbound frames well above any legitimate message (~a few KB). */
+const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
+
+// A single unhandled throw/rejection in a WebSocket listener or a DB callback
+// must not take the whole server (and every connected race) down. Log and keep
+// serving; individual bad frames are already dropped at the parse boundary.
+// Tradeoff: after an uncaughtException the process may be in an undefined state,
+// so this is a last-resort net to keep live races alive, not a substitute for
+// the deterministic per-frame validation and per-handler try/catch below. Run
+// under a supervisor that restarts on crash for defence in depth.
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
 
 const manager = new RoomManager();
 const allPlayers = new Set<Player>();
@@ -213,7 +230,10 @@ const httpServer = createServer((req, res) => {
   createReadStream(filePath).pipe(res);
 });
 
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({
+  server: httpServer,
+  maxPayload: MAX_WS_PAYLOAD_BYTES,
+});
 
 wss.on("connection", async (ws) => {
   const player = createPlayer(Math.random().toString(36).slice(2, 10), ws);
@@ -226,13 +246,25 @@ wss.on("connection", async (ws) => {
   });
 
   ws.on("message", (raw) => {
-    let msg: ClientMessage;
+    let parsed: unknown;
     try {
-      msg = JSON.parse(raw.toString());
+      parsed = JSON.parse(raw.toString());
     } catch {
       return;
     }
-    handleMessage(player, msg);
+    // The wire type is untrusted: validate the shape before touching any field.
+    // A malformed frame is dropped, never allowed to throw out of this listener.
+    const msg = parseClientMessage(parsed);
+    if (!msg) return;
+    try {
+      handleMessage(player, msg);
+    } catch (err) {
+      console.error("Failed to handle message:", err);
+    }
+  });
+
+  ws.on("error", (err) => {
+    console.error("WebSocket error:", err);
   });
 
   ws.on("close", () => {

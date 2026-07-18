@@ -1,0 +1,154 @@
+# Deep Audit — Sunset Ridge Racing
+
+Workflow: 7 Opus dimension-finders -> dedup -> 2 Sonnet adversarial verifiers per finding.
+17 raw findings, 17 after dedup, 17 survived verification.
+
+> **Status update (PR #50 — server crash hardening).** Findings #1, #2, and #5
+> are the same root cause — an unvalidated inbound WebSocket frame crashing the
+> process — reported from three finder dimensions (server, security, protocol);
+> counted as 3 raw but a single deduplicated malformed-frame crash issue.
+> PR #50 remediates that issue plus #4 (Postgres pool `error` listener), #8
+> (non-finite `state` coordinates), and #15 (WebSocket `maxPayload`). Those
+> entries are now **Fixed** and are retained below verbatim as pre-hardening
+> history. #16 (Postgres port / default credentials) is **out of scope** and
+> non-blocking for this PR. The remaining findings (#3, #6, #7, #9–#14, #17)
+> are still open.
+>
+> Effective counts after PR #50: 17 raw findings → 15 distinct issues → 5 fixed,
+> 1 out of scope, 9 still open.
+
+## 1. [CRITICAL] Malformed 'hello'/'createRoom' message crashes the entire server process (DoS)
+**Location:** `server/src/index.ts:235`  ·  dimension: server  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #2 and #5 — same malformed-frame crash). Every inbound frame is now validated by `parseClientMessage` before any field is touched, `handleMessage` is wrapped in try/catch, and a per-socket `error` handler plus process-level nets are in place. The description below is retained as pre-hardening history.
+
+**Problem:** `ws.on("message")` wraps only `JSON.parse` in try/catch; the subsequent `handleMessage(player, msg)` (line 235) runs unguarded. `handleMessage` trusts the parsed shape without validation. The `hello` case does `player.name = msg.name.trim()...` (line 144) and the `createRoom` case calls `manager.create(msg.roomName, ...)` which does `name.trim()...` in rooms.ts:139. If `msg.name` / `msg.roomName` is absent or non-string, `.trim()` throws a TypeError synchronously inside the ws message listener. There is no try/catch around handleMessage, no `ws.on('error')` handler, and no `process.on('uncaughtException')` handler anywhere in the codebase (grep confirmed). A synchronous throw in a Node EventEmitter listener propagates as an uncaughtException and terminates the process, disconnecting every other player in every room. Note the async handlers (`state`, `getReplay`) are protected by `.catch(...)`, but the synchronous cases (`hello`, `createRoom`) are not.
+
+**Failure scenario:** Any client (or a single malicious peer) sends the raw text `{"type":"hello"}` (or `{"type":"createRoom","difficulty":"easy","track":"sunset-ridge"}` with no roomName). `msg.name`/`msg.roomName` is undefined, `undefined.trim()` throws TypeError, the exception escapes the message listener uncaught, and the Node process exits — taking down the WebSocket server and all connected races.
+
+## 2. [CRITICAL] Malformed WebSocket message crashes the whole server (unauthenticated remote DoS)
+**Location:** `server/src/index.ts:235`  ·  dimension: security  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #1 and #5 — same malformed-frame crash). Frames are validated at the parse boundary via `parseClientMessage`, and `handleMessage` runs inside try/catch with per-socket and process-level error handlers. Retained below as pre-hardening history.
+
+**Problem:** The `ws.on("message")` handler wraps only `JSON.parse` in try/catch; `handleMessage(player, msg)` on line 235 runs unguarded, and no `process.on('uncaughtException')` handler exists anywhere in server/src. `handleMessage` performs no runtime shape validation of the parsed message — `ClientMessage` is only a compile-time type. The `hello` case (line 144) does `player.name = msg.name.trim().slice(0,16)` and the `createRoom` case (line 148) passes `msg.roomName` into `RoomManager.create`, which does `name.trim().slice(0,24)` (rooms.ts:130). If `name`/`roomName` is missing or non-string, `.trim()` throws a synchronous TypeError. These two cases are synchronous (unlike handleState/handleGetReplay which are async and swallow via `.catch`), so the throw propagates out of the emit listener as an uncaughtException and Node exits, killing all connected players' rooms.
+
+**Failure scenario:** Any client sends the single frame `{"type":"hello"}` (name undefined) or `{"type":"hello","name":123}` or `{"type":"createRoom"}`. `undefined.trim()` throws → uncaught → the entire process crashes, disconnecting every player and dropping every in-memory room.
+
+## 3. [HIGH] Server checkpoint validation point-samples at the 50ms client-send cadence, so legitimate laps often never register
+**Location:** `server/src/timing.ts:48`  ·  dimension: physics-timing  ·  verdict: CONFIRMED
+
+**Problem:** updateTiming does a pure point-in-radius test (`dx*dx+dz*dz > R2` with CHECKPOINT_RADIUS=8) against the single position carried by each client `state` message. The client sends state only every SEND_INTERVAL_MS=50ms (client/src/game/game.ts:25, sendTimer), and index.ts handleState runs updateTiming once per received message, so the server never sees the car between 50ms-spaced positions and never interpolates the traveled segment. There is no swept-segment check. At racing speeds the 50ms-spaced reported positions can straddle a checkpoint with BOTH samples farther than 8 units from the gate center, so the owed checkpoint never advances and the lap silently fails to complete — even though the car physically drove through the gate at 60fps. Because whether a given gate lands inside radius depends on the phase alignment between the send timer and the crossing, this is flaky/phase-dependent, not merely a fast-car edge case. I reproduced it by driving the repo's own autopilot (harness.runAutopilotLap, a centerline-hugging follower — a best case since checkpoints sit on the centerline), taking its 60fps trajectory, subsampling every 3rd step (=50ms, exactly the server's spatial resolution), and feeding those positions to the real server updateTiming. Results: a legitimate 39.3s Sunset Ridge (medium), 49.2s Sunset Ridge (hard), and 45.0s Stormhaven (medium) lap each registered on only 1 of the 3 possible send phases; the other two phases returned NULL (no lap). The closing approach to CP0 in the failing phases measured 7.08 / 10.13 / 9.50 units versus the 8-unit radius. Real human laps drive an apex line offset from the centerline gates, which can only make the miss rate worse. Consequences: valid laps are not counted, leaderboard/track-record submission is skipped, and (finding-1-derived) the client HUD keeps `nextCheckpoint` pointed at an already-passed gate, so checkpointMissed() (game.ts) can spuriously flash 'checkpoint missed' on a correctly driven lap. As a secondary effect, even when a lap does register, lapStartT and completion time are pinned to whichever 50ms sample happened to fall inside the radius, injecting up to tens of ms of phase-dependent error into every recorded lap time.
+
+**Failure scenario:** Drive a valid clean lap on Sunset Ridge at Hard (or Stormhaven at Medium). The 50ms-spaced positions the client reports miss the 8-unit radius of the closing start/finish checkpoint (closest sampled approach 7-10 units > 8). updateTiming never advances past the final gate; the lap does not complete, no time is recorded, and the leaderboard is not updated — despite a perfectly legal lap. Reproduced: only 1 of 3 send-phase alignments registered the autopilot's own lap.
+
+## 4. [HIGH] No pool 'error' listener: an idle Postgres connection error crashes the process
+**Location:** `server/src/db.ts:7`  ·  dimension: server  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 — a `pool.on('error', ...)` listener is now attached in `server/src/db.ts`, so an idle-connection error is logged instead of re-thrown as an uncaughtException. The description below is retained as pre-hardening history.
+
+**Problem:** `pool = new pg.Pool(...)` is created with no `pool.on('error', ...)` handler (grep across server/src and shared/src finds zero error handlers). node-postgres documents that the Pool emits an 'error' event on behalf of idle clients when the backend closes or errors a connection out-of-band (e.g. Postgres restart, `pg_terminate_backend`, network drop, idle timeout). An 'error' event on an EventEmitter with no listener is re-thrown by Node as an uncaughtException, and there is no `process.on('uncaughtException')` fallback. So a transient database-side connection drop kills the whole game server rather than being logged and recovered.
+
+**Failure scenario:** Postgres restarts, or an admin/network event terminates an idle pooled connection while no query is in flight. The Pool emits 'error' with no listener attached, Node throws it as an uncaughtException, and the racing server process exits, disconnecting all players — even though the DB is only used for the leaderboard and rooms, not the live race loop.
+
+## 5. [HIGH] Server does no shape validation of inbound ClientMessages; a single malformed frame crashes the whole process
+**Location:** `server/src/index.ts:141`  ·  dimension: protocol  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #1 and #2 — same malformed-frame crash). `handleMessage` is now called only with a value validated by `parseClientMessage`, and is itself wrapped in try/catch. Retained below as pre-hardening history.
+
+**Problem:** `ws.on("message")` (lines 228-236) only wraps `JSON.parse` in try/catch, then calls `handleMessage(player, msg)` OUTSIDE any try. `handleMessage` trusts the parsed object matches the `ClientMessage` union with zero validation (no zod, no runtime guards — grep confirms none exist). Two of its cases dereference fields synchronously:
+- `case "hello": player.name = msg.name.trim().slice(0, 16) || "Racer"` (index.ts:144). If `msg.name` is absent/non-string, `.trim()` throws a synchronous TypeError.
+- `case "createRoom": manager.create(msg.roomName, asDifficulty(msg.difficulty), msg.track)` (index.ts:147-151). `create` runs `name.trim().slice(0, 24)` (rooms.ts:139) synchronously; if `msg.roomName` is absent it throws.
+Because these throw synchronously inside the `ws` 'message' listener (not inside the async `handleState`/`handleGetReplay` paths, which are shielded by `.catch`), the exception propagates out of the listener as an uncaughtException. There is no `process.on('uncaughtException')` handler, so Node prints the stack and exits — taking down every room and every connected player. No authentication gates this; any WebSocket client can send one frame.
+
+**Failure scenario:** Any client (or a stale/hostile one) sends the raw text `{"type":"hello"}` or `{"type":"createRoom"}` over the WebSocket. `msg.name`/`msg.roomName` is undefined, `.trim()` throws synchronously in the message listener, the exception is uncaught, and the entire Node server process exits, disconnecting all players in all rooms.
+
+## 6. [HIGH] Leaderboard/replay fully trusts client-driven positions and client-chosen name (cheating + record impersonation)
+**Location:** `server/src/index.ts:99`  ·  dimension: security  ·  verdict: CONFIRMED
+
+**Problem:** The server never simulates physics (difficulty.ts explicitly notes this). Lap timing (timing.ts `updateTiming`) advances purely from client-reported `x/z` in `state` messages, and the lap time is `Date.now() - lapStartT` — i.e. the wall-clock gap between two client-triggered checkpoint-0 crossings. A client controls both the reported positions and the send timing, and there is no minimum-plausible-lap-time check, no speed/continuity validation, and no distance-between-samples check. So a client can teleport its reported position through every checkpoint coordinate in order within a few milliseconds and submit an arbitrarily fast lap that becomes the Track Record (index.ts:99 `submitLap`). Worse, the submitted `name` is the client-chosen `hello` name (line 144, only capped to 16 chars) and best_laps' primary key is `(name, track, difficulty)` — so a cheater can set name to any real player's name and overwrite/impersonate their record and replay. Replay frames are also generated from these fabricated positions and persisted.
+
+**Failure scenario:** Client sends `{"type":"hello","name":"victim"}`, joins a room, then rapidly sends `state` messages placing itself at checkpoint[0], checkpoint[1], … checkpoint[N-1], checkpoint[0] within the same ~10ms window. Server computes a sub-100ms lap, writes it as the track record under "victim", and stores a bogus replay — no legitimate driver can ever beat it.
+
+## 7. [MEDIUM] Physics integration is frame-rate dependent, so identical inputs yield different lap times across displays/hardware
+**Location:** `client/src/game/physics.ts:72`  ·  dimension: physics-timing  ·  verdict: CONFIRMED
+
+**Problem:** CarPhysics.update is plain variable-dt forward Euler and several terms are not dt-invariant: quadratic drag applied after acceleration (line 80), the grass speed-cap step `Math.max(limit, speed - GRASS_DECEL*dt)` (line 86), and continuous grass friction (line 89) all compound differently depending on how dt is chopped. The live loop feeds a variable dt clamped to 0.05 (client/src/game/game.ts:149, `Math.min((now-lastFrame)/1000, 0.05)`), so the same drive produces a different trajectory and speed at 30fps vs 144fps. I drove CarPhysics with an identical input trace at several frame rates: after 5s the resulting speed/position differed monotonically with fps (e.g. distance-from-spawn 132.58 at 10fps vs 136.75 at 144fps; grass-capped speed 4.00 vs 4.93). Since lap times are server-timed on client-reported positions, a player on a slower/stuttering machine gets a materially different (and generally worse) trajectory than one at high fps for the same inputs — the leaderboard is not frame-rate fair. Worse, the 0.05 dt clamp means that whenever a real frame exceeds 50ms the simulation advances less physics time than wall-clock elapsed, while the server lap clock (index.ts uses Date.now()) keeps running at wall-clock, so a stuttering client's car under-travels relative to the clock timing it. The deterministic tests never catch this because harness/replay hardcode DT=1/60.
+
+**Failure scenario:** Two players drive the identical input sequence, one rendering at 30fps and one at 144fps. Their cars follow measurably different paths and reach different speeds (demonstrated: ~20% speed and several-unit position divergence on grass over 5s), producing different server-recorded lap times for the same driving. A frame stall >50ms additionally desyncs the clamped physics from the server's wall-clock lap timer.
+
+## 8. [MEDIUM] NaN/non-numeric 'state' coordinates bypass the checkpoint distance gate
+**Location:** `server/src/timing.ts:48`  ·  dimension: server  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 — the omitted/non-numeric `state` coordinate path described below is pre-fix behavior. `parseClientMessage` now rejects any `state` frame whose `x/y/z/rot/speed` are not finite numbers (`isFiniteNumber`), so NaN/Infinity/omitted coordinates never reach `handleState`/`updateTiming` and cannot walk the checkpoint gate. Retained below as pre-hardening history.
+
+**Problem:** `handleState` copies `msg.x`/`msg.z` into the player with no numeric validation (index.ts:63-67) and passes them to `updateTiming`. The gate is `if (dx*dx + dz*dz > R2) return null;` (timing.ts:48). If a coordinate is non-numeric (undefined because the field was omitted, or a JSON string/bool), `dx` becomes NaN and `NaN > R2` evaluates to `false`, so the function does NOT return null — it treats the sample as a checkpoint hit and advances `t.next` on every such message. Feeding a run of malformed `state` messages therefore walks the player through all checkpoints in order and completes a 'lap' whose `lapTimeMs` is just the wall-clock delta between the first and last message (near-zero in a tight loop). That fabricated time is persisted to `best_laps` via `submitLap` and can become the Track Record, and the corrupt frames (Math.round(NaN)=NaN, serialized to JSON null) are stored/served as a replay. The gate should reject non-finite distances (e.g. use `!(d2 <= R2)` or a Number.isFinite check).
+
+**Failure scenario:** A client sends `hello` with a valid name, creates/joins a room, then sends ~13 `state` messages of the form `{"type":"state"}` (all coordinate fields omitted → undefined → NaN) in a fast loop. Each passes the `NaN > R2` gate, advancing next-checkpoint 0→1→...→11→0, and the wrap to checkpoint 0 records a ~0 ms lap that is written to the leaderboard as an impossible Track Record with a null-filled replay.
+
+## 9. [MEDIUM] renderer.dispose() never releases the WebGL context; repeated room joins/replays exhaust the browser context pool and blank the view
+**Location:** `client/src/game/game.ts:235`  ·  dimension: client-state  ·  verdict: CONFIRMED
+
+**Problem:** Game.dispose() (game.ts:235) and ReplayViewer.dispose() (replay.ts:154) call this.bundle.renderer.dispose() and remove the container, but never call renderer.forceContextLoss() and never reuse a single renderer. Confirmed in bundled three@0.181.2 (three.module.js:16082): WebGLRenderer.dispose() only tears down internal caches/listeners (background, renderLists, properties, programCache, etc.) and does NOT lose the WebGL context. Each new Game(...) (main.ts:67) and new ReplayViewer(...) (main.ts:28) constructs a fresh WebGLRenderer in createScene (scene.ts:33) with a new <canvas> and a new live WebGL context. On dispose the canvas is detached but its context remains alive until GC.
+
+**Failure scenario:** Join a room then leave, repeatedly (or open then close a replay/AI Record) ~16 times. Each cycle leaks one live WebGL context. Browsers cap simultaneous contexts (~16 in Chrome); once exceeded the browser force-loses the oldest context, blanking the active race/replay render or firing webglcontextlost, and the game stops drawing.
+
+## 10. [MEDIUM] Remote player name-tag CanvasTexture/SpriteMaterial leaked on every player join within a race
+**Location:** `client/src/game/remote.ts:38`  ·  dimension: client-state  ·  verdict: CONFIRMED
+
+**Problem:** createNameTag (car.ts:140-160) allocates a unique CanvasTexture + SpriteMaterial for every remote car (createCarMesh(id, p.name), remote.ts:31). When a remote player leaves, RemotePlayers.onSnapshot does this.scene.remove(mesh); this.meshes.delete(id) (remote.ts:38-42) and dispose() (remote.ts:83-87) only removes meshes from the scene. Neither disposes the sprite's texture or material. GLB car geometry/material are shared via clone(true) so those are fine, but each name-tag CanvasTexture is per-instance and is never freed for the life of the room's WebGL context.
+
+**Failure scenario:** In a room where players repeatedly join and leave, each join creates a name-tag CanvasTexture that is never disposed when that player leaves. GPU texture memory for the single race grows unbounded proportional to the number of joins, independent of how many players are currently present.
+
+## 11. [MEDIUM] Joining a room before preloadModels() resolves locks the entire race into procedural fallback assets
+**Location:** `client/src/main.ts:94`  ·  dimension: client-state  ·  verdict: CONFIRMED
+
+**Problem:** main.ts starts preloadModels() in parallel (main.ts:94) and only awaits it at module top level (main.ts:101). The net.onMessage handler that builds new Game(...) on 'joined' (main.ts:64-76) is registered independently and never checks whether models finished loading. The Lobby create/join forms are interactive as soon as 'welcome' arrives. If the user creates/joins before the ~19 GLB files finish downloading, createCarMesh -> getModel(...) returns null (car.ts:31) and addEnvironment -> getModel('nature:tree_detailed') returns null (scene.ts:212), so the scene is built with fallback cars/cones. The scene is constructed once in the Game constructor and never rebuilt when models later resolve.
+
+**Failure scenario:** On a slow connection, a user who clicks 'Create & Race' or 'Join' immediately after the lobby appears (before the model preload Promise resolves) races with procedural box/cone fallback assets for the entire session, even though the real GLB models finish downloading moments later; nothing re-triggers scene construction.
+
+## 12. [MEDIUM] TS policy forward pass omits VecNormalize clip_obs=5, so the Reference Lap feeds the network out-of-distribution obs the trained/eval policy never saw
+**Location:** `client/src/game/harness.ts:202`  ·  dimension: rl-parity  ·  verdict: CONFIRMED
+
+**Problem:** Training normalizes observations with VecNormalize(clip_obs=5.0) (train.py:248), and the Python eval that produces the documented lap time replicates that clamp exactly: np.clip((obs - mean)/sqrt(var+1e-8), -5.0, 5.0) (train.py:145-148). The exported TypeScript forward pass, however, normalizes but never re-clamps: `let x = obs.map((v,i) => (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8));` (harness.ts:202) and then goes straight into the layers (harness.ts:205-214) with no [-5,5] clip. The stored obs_var values are tiny (policy.json obs_var[1]=0.002985 → std 0.0546), so a raw obs component clipped only to env.py's [-3,3] range easily normalizes past ±5. runPolicyLap/computePolicyObs (harness.ts:174-215) is the exact code path used by buildReferenceLap (reference-lap.ts:27) for the browser 'AI Record' AND by the Node validation harness (training-record.test.ts:107), so both diverge from the network's training distribution and from train.py's eval_policy_lap.
+
+**Failure scenario:** obs[1] (heading error) = normalize_angle(heading - track_heading)/pi. With obs_mean[1]=0.00338, obs_var[1]=0.002985 (std 0.05463), a normalized value of 5 corresponds to raw heading_err = 5*0.05463+0.00338 = 0.2765, i.e. a heading deviation of 0.2765*pi = 0.869 rad ≈ 49.8 degrees from the local track direction. Any time the policy car's heading deviates > ~50 deg from track direction (reachable when it slides/oversteers through Sunset Ridge's T2-T3 chicane), Python training/eval feeds the network a value clamped to 5.0 while harness.ts feeds it the uncapped normalized value (e.g. raw heading_err at the [-3,3] clip edge → (3-0.00338)/0.05463 ≈ 54.9). The first Linear layer therefore computes a different pre-activation, yielding a different steer/throttle action than the trained policy — so the rendered Reference Lap is an unfaithful (and potentially slower/off-line) rendering of the trained policy rather than the canonical fastest lap it is documented to be.
+
+## 13. [LOW] Unknown track slug silently falls back to the default track, desyncing a stale client from the server's checkpoint set
+**Location:** `shared/src/track.ts:258`  ·  dimension: protocol  ·  verdict: CONFIRMED
+
+**Problem:** `asTrackSlug`/`resolveTrack` (track.ts:258-266) coerce any unregistered slug to `DEFAULT_TRACK_SLUG` (sunset-ridge) instead of surfacing an error. Sunset Ridge has 12 checkpoints (`NUM_CHECKPOINTS`) via `deriveCheckpoints`; Stormhaven has 29 (one per control point) via `deriveCheckpointsFromControlPoints`. On join, the server sends `{type:"joined", track: room.track.id}` (index.ts:47-53) and validates lap progress against `room.track.checkpoints`; snapshots carry `nextCheckpoint` in `[0, room.track.checkpoints.length)`. The client's `Game` constructor calls `resolveTrack(trackSlug)` (game.ts:71) and builds `checkpointSampleIndices` sized to whatever track it resolves. If the client bundle predates a track the server knows (version skew — server serves the static bundle but browsers cache old ones), resolving e.g. "stormhaven" yields Sunset Ridge. The client then renders the wrong circuit AND indexes `this.checkpointSampleIndices[me.nextCheckpoint]` (game.ts:173) with server-supplied indices up to 28 into a length-12 array, yielding `undefined` passed into `checkpointMissed`, plus a fully desynced car/track. Nothing signals the mismatch to the user.
+
+**Failure scenario:** Server is deployed with the Stormhaven track; a browser with a cached older client bundle (TRACKS = [sunset-ridge] only) joins a Stormhaven room. The `joined` message's track "stormhaven" resolves to Sunset Ridge on the client, so it renders the wrong circuit and reads `checkpointSampleIndices[nextCheckpoint]` out of bounds (undefined) for any server checkpoint index >= 12, corrupting the checkpoint-missed HUD.
+
+## 14. [LOW] speed observation is normalized by per-difficulty max_speed in Python but by a hardcoded 90 in TS, so a non-medium exported policy gets a mis-scaled speed obs
+**Location:** `client/src/game/harness.ts:183`  ·  dimension: rl-parity  ·  verdict: CONFIRMED
+
+**Problem:** env.py._compute_obs computes speed_norm = state.speed / self._tuning['max_speed'] (env.py:270), i.e. divided by the selected difficulty's max_speed (easy 52 / medium 90 / hard 110). The TS mirror hardcodes MEDIUM_MAX_SPEED = 90 (harness.ts:164) and computes speedNorm = car.speed / MEDIUM_MAX_SPEED (harness.ts:183), with the doc comment claiming it 'mirrors SunsetRidgeEnv._compute_obs in env.py'. For the currently shipped path (medium, via reference-lap.ts default difficulty) the two agree, so there is no live wrong output today. But the env fully supports easy/hard and stormhaven training; the moment a policy is trained/exported for hard (max_speed 110) or easy (52) and a Reference Lap requested at that difficulty, obs[2] would be scaled by 90 in TS vs 110/52 in training, feeding the network a systematically wrong speed feature and invalidating that policy's reference lap.
+
+**Failure scenario:** Train and export a hard-difficulty policy (env DIFFICULTY_PHYSICS['hard']['max_speed']=110). At an actual speed of 100 m/s, training/eval obs[2]=100/110=0.909; the TS forward pass computes 100/90=1.111. The network receives a ~22% inflated speed feature at every step, producing different actions than trained — the exported policy does not reproduce the trained behavior at non-medium difficulty despite the harness comment asserting exact parity with env.py.
+
+## 15. [LOW] WebSocketServer has no maxPayload limit; one client can force 100MB allocations per frame
+**Location:** `server/src/index.ts:216`  ·  dimension: security  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 — the `WebSocketServer` now enforces a 64 KB `maxPayload` (`MAX_WS_PAYLOAD_BYTES`), far above any legitimate message, so the 100 MiB default exposure described below no longer applies. Retained below as pre-hardening history.
+
+**Problem:** `new WebSocketServer({ server: httpServer })` sets no `maxPayload`, so ws applies its 100 MiB default. Every inbound frame is buffered and then `JSON.parse(raw.toString())` allocates the full string plus parsed structure. A handful of clients repeatedly sending ~100MB frames can drive the process to OOM; there is no per-connection rate limiting or size cap tuned to the tiny messages this protocol actually uses (all legitimate messages are a few hundred bytes).
+
+**Failure scenario:** A single connected client streams 100MB JSON frames back-to-back; each triggers a large buffer + string + parse allocation. Concurrent large frames from a few sockets exhaust heap and crash the Node process.
+
+## 16. [LOW] docker-compose exposes Postgres on 0.0.0.0:5432 with default postgres/postgres credentials
+**Location:** `docker-compose.yml:6`  ·  dimension: security  ·  verdict: PLAUSIBLE
+
+**Status:** ⏭️ Out of scope for PR #50 (server crash hardening) and non-blocking — this is a local-dev docker-compose credential/exposure concern, not a runtime crash path. Tracked separately as a follow-up; details preserved below.
+
+**Problem:** The db service maps `ports: ["5432:5432"]`, which binds to all host interfaces, and sets `POSTGRES_USER: postgres` / `POSTGRES_PASSWORD: postgres`. The app itself connects over the compose network and does not need the host port published at all (db.ts default DATABASE_URL is only used for local dev). Publishing the port with trivial default credentials means anyone who can reach the host's 5432 (e.g. if this compose is ever run on a cloud VM or a shared network) gets full read/write to the leaderboard and rooms tables.
+
+**Failure scenario:** The stack is brought up with `docker compose up` on a machine with a routable/LAN-reachable interface; an attacker connects `psql postgres://postgres:postgres@host:5432/racing` and reads or rewrites best_laps/replays at will.
+
+## 17. [LOW] Typecheck gate excludes gen_golden.ts / gen_stormhaven_samples.ts / .sandcastle/main.ts — the golden-test input generators are never type-checked
+**Location:** `package.json:14`  ·  dimension: config-tests  ·  verdict: CONFIRMED
+
+**Problem:** The project's typecheck gate is `"typecheck": "npm run typecheck --workspaces"` (package.json:14), and each workspace's tsconfig only compiles its own `src` (server/tsconfig.json:12, shared/tsconfig.json:11, client/tsconfig.json:14 all `"include": ["src"]`). The TypeScript files `rl/gen_golden.ts`, `rl/gen_stormhaven_samples.ts`, and `.sandcastle/main.ts` live outside every workspace `src`, so no `tsc --noEmit` invocation ever sees them. `rl/gen_golden.ts` imports `replayInputs` from `../client/src/game/harness.ts` and is the sole source of the reference trajectories the Python `python-golden-tests` CI job depends on (test_golden.py runs it via `npx tsx`). Because tsx strips types without checking, a type-level break in these generators (e.g. a renamed/removed export in harness) passes `npm run typecheck` green in the js-tests job even though a load-bearing file no longer type-checks — the CI 'typecheck' step does not actually cover all first-party TS in the repo.
+
+**Failure scenario:** Rename an export in client/src/game/harness.ts that gen_golden.ts consumes but keep the client workspace internally consistent: `npm run typecheck` (js-tests job) still reports success because gen_golden.ts is in no tsconfig include, so the typecheck gate green-lights a repo containing a broken TS reference. The break only surfaces later in the separate Python job at runtime, not in the check that claims to type-check the project.
