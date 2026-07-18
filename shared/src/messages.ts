@@ -62,6 +62,19 @@ const HANDLED_CLIENT_MESSAGE_TYPES: Record<ClientMessage["type"], true> = {
   state: true,
 };
 
+function isClientMessageType(value: string): value is ClientMessage["type"] {
+  return Object.prototype.hasOwnProperty.call(HANDLED_CLIENT_MESSAGE_TYPES, value);
+}
+
+/**
+ * Compile-time unreachable guard: if a new ClientMessage variant is added but
+ * its switch case is omitted, `value` below is no longer `never` and this fails
+ * to compile, so no valid frame can silently fall through to null.
+ */
+function assertNever(value: never): never {
+  throw new Error(`Unhandled client message type: ${String(value)}`);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -84,12 +97,11 @@ function isFiniteNumber(value: unknown): value is number {
  */
 export function parseClientMessage(value: unknown): ClientMessage | null {
   if (!isRecord(value) || !isString(value.type)) return null;
-  // Reject any type that is not a known ClientMessage variant. Referencing the
-  // guard here also keeps it from being dead code the compiler would let rot.
-  if (!Object.prototype.hasOwnProperty.call(HANDLED_CLIENT_MESSAGE_TYPES, value.type)) {
-    return null;
-  }
-  switch (value.type) {
+  // Reject any type that is not a known ClientMessage variant; this also narrows
+  // `type` to the union so the switch below is compile-time exhaustive.
+  const type = value.type;
+  if (!isClientMessageType(type)) return null;
+  switch (type) {
     case "hello":
       return isString(value.name) ? { type: "hello", name: value.name } : null;
     case "createRoom":
@@ -132,7 +144,7 @@ export function parseClientMessage(value: unknown): ClientMessage | null {
           }
         : null;
     default:
-      return null;
+      return assertNever(type);
   }
 }
 
