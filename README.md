@@ -50,7 +50,7 @@ GitHub issues and opens pull requests for them. You don't touch a branch yoursel
 describe the work in an issue and review the result.
 
 1. **File an issue.** Open a GitHub issue describing the change you want, as concretely as
-   possible (what should change, and how you'll know it's done). Add the `ready-for-agent`
+   possible (what should change, and how you'll know it's done). Add the `sandcastle`
    label so the agent picks it up. To scope a large effort, link the issue to a parent
    PRD; the agent reads the parent for context but only implements the issue it's assigned.
 
