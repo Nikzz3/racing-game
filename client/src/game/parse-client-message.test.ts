@@ -39,6 +39,18 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "state", x: 0, y: 0, z: 0, rot: 0 })).toBeNull();
   });
 
+  it("validates getReplay and joinRoom string fields", () => {
+    expect(
+      parseClientMessage({ type: "getReplay", name: "Ada", difficulty: "hard", track: "stormhaven" })
+    ).toEqual({ type: "getReplay", name: "Ada", difficulty: "hard", track: "stormhaven" });
+    expect(parseClientMessage({ type: "getReplay" })).toBeNull();
+    expect(parseClientMessage({ type: "joinRoom", roomId: "abc123" })).toEqual({
+      type: "joinRoom",
+      roomId: "abc123",
+    });
+    expect(parseClientMessage({ type: "joinRoom" })).toBeNull();
+  });
+
   it("rejects junk that is not a message at all", () => {
     expect(parseClientMessage(null)).toBeNull();
     expect(parseClientMessage("hello")).toBeNull();

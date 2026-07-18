@@ -46,6 +46,22 @@ export type ClientMessage =
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
 
+/**
+ * Compile-time guard tying parseClientMessage's cases to the ClientMessage
+ * union: this record must have exactly one key per variant `type`. Adding or
+ * removing a ClientMessage variant makes this fail to compile, forcing the
+ * switch below to be updated instead of silently dropping the new frame type.
+ */
+const HANDLED_CLIENT_MESSAGE_TYPES: Record<ClientMessage["type"], true> = {
+  hello: true,
+  createRoom: true,
+  joinRoom: true,
+  leaveRoom: true,
+  respawn: true,
+  getReplay: true,
+  state: true,
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -68,6 +84,11 @@ function isFiniteNumber(value: unknown): value is number {
  */
 export function parseClientMessage(value: unknown): ClientMessage | null {
   if (!isRecord(value) || !isString(value.type)) return null;
+  // Reject any type that is not a known ClientMessage variant. Referencing the
+  // guard here also keeps it from being dead code the compiler would let rot.
+  if (!Object.prototype.hasOwnProperty.call(HANDLED_CLIENT_MESSAGE_TYPES, value.type)) {
+    return null;
+  }
   switch (value.type) {
     case "hello":
       return isString(value.name) ? { type: "hello", name: value.name } : null;

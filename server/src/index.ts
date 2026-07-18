@@ -29,6 +29,10 @@ const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 // A single unhandled throw/rejection in a WebSocket listener or a DB callback
 // must not take the whole server (and every connected race) down. Log and keep
 // serving; individual bad frames are already dropped at the parse boundary.
+// Tradeoff: after an uncaughtException the process may be in an undefined state,
+// so this is a last-resort net to keep live races alive, not a substitute for
+// the deterministic per-frame validation and per-handler try/catch below. Run
+// under a supervisor that restarts on crash for defence in depth.
 process.on("uncaughtException", (err) => {
   console.error("Uncaught exception:", err);
 });
