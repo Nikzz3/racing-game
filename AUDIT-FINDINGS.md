@@ -3,8 +3,24 @@
 Workflow: 7 Opus dimension-finders -> dedup -> 2 Sonnet adversarial verifiers per finding.
 17 raw findings, 17 after dedup, 17 survived verification.
 
+> **Status update (PR #50 — server crash hardening).** Findings #1, #2, and #5
+> are the same root cause — an unvalidated inbound WebSocket frame crashing the
+> process — reported from three finder dimensions (server, security, protocol);
+> counted as 3 raw but a single deduplicated malformed-frame crash issue.
+> PR #50 remediates that issue plus #4 (Postgres pool `error` listener), #8
+> (non-finite `state` coordinates), and #15 (WebSocket `maxPayload`). Those
+> entries are now **Fixed** and are retained below verbatim as pre-hardening
+> history. #16 (Postgres port / default credentials) is **out of scope** and
+> non-blocking for this PR. The remaining findings (#3, #6, #7, #9–#14, #17)
+> are still open.
+>
+> Effective counts after PR #50: 17 raw findings → 15 distinct issues → 5 fixed,
+> 1 out of scope, 9 still open.
+
 ## 1. [CRITICAL] Malformed 'hello'/'createRoom' message crashes the entire server process (DoS)
 **Location:** `server/src/index.ts:235`  ·  dimension: server  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #2 and #5 — same malformed-frame crash). Every inbound frame is now validated by `parseClientMessage` before any field is touched, `handleMessage` is wrapped in try/catch, and a per-socket `error` handler plus process-level nets are in place. The description below is retained as pre-hardening history.
 
 **Problem:** `ws.on("message")` wraps only `JSON.parse` in try/catch; the subsequent `handleMessage(player, msg)` (line 235) runs unguarded. `handleMessage` trusts the parsed shape without validation. The `hello` case does `player.name = msg.name.trim()...` (line 144) and the `createRoom` case calls `manager.create(msg.roomName, ...)` which does `name.trim()...` in rooms.ts:139. If `msg.name` / `msg.roomName` is absent or non-string, `.trim()` throws a TypeError synchronously inside the ws message listener. There is no try/catch around handleMessage, no `ws.on('error')` handler, and no `process.on('uncaughtException')` handler anywhere in the codebase (grep confirmed). A synchronous throw in a Node EventEmitter listener propagates as an uncaughtException and terminates the process, disconnecting every other player in every room. Note the async handlers (`state`, `getReplay`) are protected by `.catch(...)`, but the synchronous cases (`hello`, `createRoom`) are not.
 
@@ -12,6 +28,8 @@ Workflow: 7 Opus dimension-finders -> dedup -> 2 Sonnet adversarial verifiers pe
 
 ## 2. [CRITICAL] Malformed WebSocket message crashes the whole server (unauthenticated remote DoS)
 **Location:** `server/src/index.ts:235`  ·  dimension: security  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #1 and #5 — same malformed-frame crash). Frames are validated at the parse boundary via `parseClientMessage`, and `handleMessage` runs inside try/catch with per-socket and process-level error handlers. Retained below as pre-hardening history.
 
 **Problem:** The `ws.on("message")` handler wraps only `JSON.parse` in try/catch; `handleMessage(player, msg)` on line 235 runs unguarded, and no `process.on('uncaughtException')` handler exists anywhere in server/src. `handleMessage` performs no runtime shape validation of the parsed message — `ClientMessage` is only a compile-time type. The `hello` case (line 144) does `player.name = msg.name.trim().slice(0,16)` and the `createRoom` case (line 148) passes `msg.roomName` into `RoomManager.create`, which does `name.trim().slice(0,24)` (rooms.ts:130). If `name`/`roomName` is missing or non-string, `.trim()` throws a synchronous TypeError. These two cases are synchronous (unlike handleState/handleGetReplay which are async and swallow via `.catch`), so the throw propagates out of the emit listener as an uncaughtException and Node exits, killing all connected players' rooms.
 
@@ -27,12 +45,16 @@ Workflow: 7 Opus dimension-finders -> dedup -> 2 Sonnet adversarial verifiers pe
 ## 4. [HIGH] No pool 'error' listener: an idle Postgres connection error crashes the process
 **Location:** `server/src/db.ts:7`  ·  dimension: server  ·  verdict: CONFIRMED
 
+**Status:** ✅ Fixed by PR #50 — a `pool.on('error', ...)` listener is now attached in `server/src/db.ts`, so an idle-connection error is logged instead of re-thrown as an uncaughtException. The description below is retained as pre-hardening history.
+
 **Problem:** `pool = new pg.Pool(...)` is created with no `pool.on('error', ...)` handler (grep across server/src and shared/src finds zero error handlers). node-postgres documents that the Pool emits an 'error' event on behalf of idle clients when the backend closes or errors a connection out-of-band (e.g. Postgres restart, `pg_terminate_backend`, network drop, idle timeout). An 'error' event on an EventEmitter with no listener is re-thrown by Node as an uncaughtException, and there is no `process.on('uncaughtException')` fallback. So a transient database-side connection drop kills the whole game server rather than being logged and recovered.
 
 **Failure scenario:** Postgres restarts, or an admin/network event terminates an idle pooled connection while no query is in flight. The Pool emits 'error' with no listener attached, Node throws it as an uncaughtException, and the racing server process exits, disconnecting all players — even though the DB is only used for the leaderboard and rooms, not the live race loop.
 
 ## 5. [HIGH] Server does no shape validation of inbound ClientMessages; a single malformed frame crashes the whole process
 **Location:** `server/src/index.ts:141`  ·  dimension: protocol  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 (duplicate of #1 and #2 — same malformed-frame crash). `handleMessage` is now called only with a value validated by `parseClientMessage`, and is itself wrapped in try/catch. Retained below as pre-hardening history.
 
 **Problem:** `ws.on("message")` (lines 228-236) only wraps `JSON.parse` in try/catch, then calls `handleMessage(player, msg)` OUTSIDE any try. `handleMessage` trusts the parsed object matches the `ClientMessage` union with zero validation (no zod, no runtime guards — grep confirms none exist). Two of its cases dereference fields synchronously:
 - `case "hello": player.name = msg.name.trim().slice(0, 16) || "Racer"` (index.ts:144). If `msg.name` is absent/non-string, `.trim()` throws a synchronous TypeError.
@@ -57,6 +79,8 @@ Because these throw synchronously inside the `ws` 'message' listener (not inside
 
 ## 8. [MEDIUM] NaN/non-numeric 'state' coordinates bypass the checkpoint distance gate
 **Location:** `server/src/timing.ts:48`  ·  dimension: server  ·  verdict: CONFIRMED
+
+**Status:** ✅ Fixed by PR #50 — the omitted/non-numeric `state` coordinate path described below is pre-fix behavior. `parseClientMessage` now rejects any `state` frame whose `x/y/z/rot/speed` are not finite numbers (`isFiniteNumber`), so NaN/Infinity/omitted coordinates never reach `handleState`/`updateTiming` and cannot walk the checkpoint gate. Retained below as pre-hardening history.
 
 **Problem:** `handleState` copies `msg.x`/`msg.z` into the player with no numeric validation (index.ts:63-67) and passes them to `updateTiming`. The gate is `if (dx*dx + dz*dz > R2) return null;` (timing.ts:48). If a coordinate is non-numeric (undefined because the field was omitted, or a JSON string/bool), `dx` becomes NaN and `NaN > R2` evaluates to `false`, so the function does NOT return null — it treats the sample as a checkpoint hit and advances `t.next` on every such message. Feeding a run of malformed `state` messages therefore walks the player through all checkpoints in order and completes a 'lap' whose `lapTimeMs` is just the wall-clock delta between the first and last message (near-zero in a tight loop). That fabricated time is persisted to `best_laps` via `submitLap` and can become the Track Record, and the corrupt frames (Math.round(NaN)=NaN, serialized to JSON null) are stored/served as a replay. The gate should reject non-finite distances (e.g. use `!(d2 <= R2)` or a Number.isFinite check).
 
@@ -107,12 +131,16 @@ Because these throw synchronously inside the `ws` 'message' listener (not inside
 ## 15. [LOW] WebSocketServer has no maxPayload limit; one client can force 100MB allocations per frame
 **Location:** `server/src/index.ts:216`  ·  dimension: security  ·  verdict: CONFIRMED
 
+**Status:** ✅ Fixed by PR #50 — the `WebSocketServer` now enforces a 64 KB `maxPayload` (`MAX_WS_PAYLOAD_BYTES`), far above any legitimate message, so the 100 MiB default exposure described below no longer applies. Retained below as pre-hardening history.
+
 **Problem:** `new WebSocketServer({ server: httpServer })` sets no `maxPayload`, so ws applies its 100 MiB default. Every inbound frame is buffered and then `JSON.parse(raw.toString())` allocates the full string plus parsed structure. A handful of clients repeatedly sending ~100MB frames can drive the process to OOM; there is no per-connection rate limiting or size cap tuned to the tiny messages this protocol actually uses (all legitimate messages are a few hundred bytes).
 
 **Failure scenario:** A single connected client streams 100MB JSON frames back-to-back; each triggers a large buffer + string + parse allocation. Concurrent large frames from a few sockets exhaust heap and crash the Node process.
 
 ## 16. [LOW] docker-compose exposes Postgres on 0.0.0.0:5432 with default postgres/postgres credentials
 **Location:** `docker-compose.yml:6`  ·  dimension: security  ·  verdict: PLAUSIBLE
+
+**Status:** ⏭️ Out of scope for PR #50 (server crash hardening) and non-blocking — this is a local-dev docker-compose credential/exposure concern, not a runtime crash path. Tracked separately as a follow-up; details preserved below.
 
 **Problem:** The db service maps `ports: ["5432:5432"]`, which binds to all host interfaces, and sets `POSTGRES_USER: postgres` / `POSTGRES_PASSWORD: postgres`. The app itself connects over the compose network and does not need the host port published at all (db.ts default DATABASE_URL is only used for local dev). Publishing the port with trivial default credentials means anyone who can reach the host's 5432 (e.g. if this compose is ever run on a cloud VM or a shared network) gets full read/write to the leaderboard and rooms tables.
 
