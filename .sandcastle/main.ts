@@ -11,7 +11,9 @@
 //                               branch (1 iteration). All issue pipelines run
 //                               concurrently via Promise.allSettled().
 //   Phase 3 (Merge):            A single agent merges all completed branches
-//                               into the current branch.
+//                               into the integration branch (never master
+//                               directly — promoting integration to master is
+//                               a separate, human-driven step).
 //
 // The outer loop repeats up to MAX_ITERATIONS times so that newly unblocked
 // issues are picked up after each round of merges.
@@ -23,6 +25,7 @@
 
 import * as sandcastle from "@ai-hero/sandcastle";
 import { podman } from "@ai-hero/sandcastle/sandboxes/podman";
+import { execSync } from "node:child_process";
 import { z } from "zod";
 
 // The planner emits its plan as JSON inside <plan> tags; Output.object extracts
@@ -42,6 +45,18 @@ const planSchema = z.object({
 // Maximum number of plan→execute→merge cycles before stopping.
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
+
+// All completed branches are merged into this branch — never into master
+// directly. Promote integration to master yourself (e.g. via a PR) once
+// you've reviewed the accumulated work.
+const INTEGRATION_BRANCH = "integration/sandcastle";
+
+// Ensure the integration branch exists before the loop starts; new issue
+// branches fork from it so later rounds build on already-merged work.
+execSync(
+  `git rev-parse --verify --quiet ${INTEGRATION_BRANCH} || git branch ${INTEGRATION_BRANCH}`,
+  { stdio: "inherit" },
+);
 
 // Hooks run inside the sandbox before the agent starts each iteration.
 // npm install ensures the sandbox always has fresh dependencies.
@@ -115,6 +130,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     issues.map(async (issue) => {
       const sandbox = await sandcastle.createSandbox({
         branch: issue.branch,
+        baseBranch: INTEGRATION_BRANCH,
         sandbox: podman(),
         hooks,
         copyToWorktree,
@@ -199,8 +215,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   // Phase 3: Merge
   //
-  // One agent merges all completed branches into the current branch,
+  // One agent merges all completed branches into the integration branch,
   // resolving any conflicts and running tests to confirm everything works.
+  // Master is never touched; promoting integration to master is a separate,
+  // human-driven step.
   //
   // The {{BRANCHES}} and {{ISSUES}} prompt arguments are lists that the agent
   // uses to know which branches to merge and which issues to close.
@@ -212,7 +230,11 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     maxIterations: 1,
     agent: sandcastle.claudeCode("claude-opus-4-8"),
     promptFile: "./.sandcastle/merge-prompt.md",
+    // Run the merger's worktree on the integration branch so merge commits
+    // land there instead of on the host's current branch (master).
+    branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
     promptArgs: {
+      INTEGRATION_BRANCH,
       // A markdown list of branch names, one per line.
       BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
       // A markdown list of issue IDs and titles, one per line.
@@ -220,7 +242,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     },
   });
 
-  console.log("\nBranches merged.");
+  console.log(`\nBranches merged into ${INTEGRATION_BRANCH}.`);
 }
 
 console.log("\nAll done.");

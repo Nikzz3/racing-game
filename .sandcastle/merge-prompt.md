@@ -1,6 +1,6 @@
 # TASK
 
-Merge the following branches into the current branch:
+You are on the `{{INTEGRATION_BRANCH}}` branch. Merge the following branches into it. Do NOT merge anything into master — promoting `{{INTEGRATION_BRANCH}}` to master is a separate, human-driven step.
 
 {{BRANCHES}}
 
@@ -17,7 +17,7 @@ After all branches are merged, make a single commit summarizing the merge.
 
 For each branch that was merged, close its issue using the following command:
 
-`gh issue close <ID> --comment "Completed by Sandcastle"`
+`gh issue close <ID> --comment "Completed by Sandcastle (merged to {{INTEGRATION_BRANCH}}, pending promotion to master)"`
 
 Here are all the issues:
 
