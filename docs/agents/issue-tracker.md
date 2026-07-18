@@ -27,7 +27,9 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## Sandcastle handoff
 
-Issues labelled `ready-for-agent` are picked up by **Sandcastle** (`.sandcastle/`), an AFK agent pipeline. Its planner (`.sandcastle/plan-prompt.md`) queries `gh issue list --state open --label ready-for-agent`, works each on a `sandcastle/issue-<N>` branch, and opens a PR. So `ready-for-agent` is both the canonical AFK-ready triage state and the Sandcastle trigger.
+Issues labelled `sandcastle` are picked up by **Sandcastle** (`.sandcastle/`), an AFK agent pipeline. Its planner (`.sandcastle/plan-prompt.md`) queries `gh issue list --state open --label sandcastle`, works each on a `sandcastle/issue-<N>` branch, and opens a PR.
+
+`sandcastle` is the **dispatch** trigger, kept distinct from the `ready-for-agent` triage state: `ready-for-agent` classifies an issue as fully specified and safe for autonomous work, but applying `sandcastle` is the separate, deliberate act that actually hands it to the pipeline. See `docs/agents/triage-labels.md`.
 
 ## When a skill says "publish to the issue tracker"
 

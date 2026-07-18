@@ -9,8 +9,9 @@ glossary.
 ### Issue tracker
 
 Issues and PRDs live as GitHub issues (`Nikzz3/racing-game`), via the `gh` CLI. External
-PRs are **not** a triage surface. `ready-for-agent` issues are picked up by the Sandcastle
-AFK pipeline (`.sandcastle/`). See `docs/agents/issue-tracker.md`.
+PRs are **not** a triage surface. Issues labelled `sandcastle` are picked up by the
+Sandcastle AFK pipeline (`.sandcastle/`) — the dispatch trigger, distinct from the
+`ready-for-agent` triage state. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

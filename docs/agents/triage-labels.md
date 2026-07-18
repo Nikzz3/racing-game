@@ -10,6 +10,20 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
+## Dispatch label
+
+`ready-for-agent` is a triage **classification** — it records that an issue is fully
+specified and safe for autonomous work, but it triggers nothing on its own. Actually
+routing an issue into the Sandcastle AFK pipeline is a separate, deliberate act:
+
+| Label in our tracker | Meaning                                              |
+| -------------------- | ---------------------------------------------------- |
+| `sandcastle`         | Dispatch: hand this issue to the Sandcastle pipeline |
+
+Sandcastle's planner selects on `sandcastle` only (see `.sandcastle/plan-prompt.md`). Keep
+triage (`ready-for-agent`) and dispatch (`sandcastle`) as two signals so marking an issue
+agent-ready doesn't commit compute until someone applies `sandcastle`.
+
 Two **category** roles run alongside the state roles; every triaged issue carries one of each:
 
 | Category role | Label in our tracker | Meaning                    |
