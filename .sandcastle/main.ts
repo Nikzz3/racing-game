@@ -49,7 +49,7 @@ const MAX_ITERATIONS = 10;
 // All completed branches are merged into this branch — never into master
 // directly. Promote integration to master yourself (e.g. via a PR) once
 // you've reviewed the accumulated work.
-const INTEGRATION_BRANCH = "integration";
+const INTEGRATION_BRANCH = "integration/sandcastle";
 
 // Ensure the integration branch exists before the loop starts; new issue
 // branches fork from it so later rounds build on already-merged work.
