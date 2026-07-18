@@ -6,6 +6,12 @@ const DATABASE_URL =
 
 export const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
+// pg emits 'error' on idle clients (server restart, dropped connection). Without
+// a listener this is an unhandled 'error' event, which crashes the process.
+pool.on("error", (err) => {
+  console.error("Postgres pool error:", err);
+});
+
 export async function initDb(): Promise<void> {
   // Fresh installs get the per-(track, difficulty) shape directly (composite keys
   // on best_laps/replays). See docs/adr/0001-segregate-leaderboard-by-difficulty.md.
