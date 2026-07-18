@@ -25,8 +25,12 @@ A driver-initiated action that teleports the driver's own car back to the starti
 _Avoid_: Reset, restart (which imply the whole race or the whole session)
 
 **Track Record**:
-The fastest human lap on the leaderboard for a given `(Track, Difficulty)` pair. Set by a real player driving a valid lap in a Room; persisted and segregated per `(Track, Difficulty)`.
+The fastest human lap on the leaderboard for a given `(Track, Difficulty)` pair. Set by a real player driving a Plausible Lap in a Room; persisted and segregated per `(Track, Difficulty)`.
 _Avoid_: Record (unqualified — collides with the AI Reference Lap), best time
+
+**Plausible Lap**:
+A completed lap whose reported trajectory stays within the physical limits of its Room's Difficulty — bounded speed, no teleports. Only Plausible Laps are persisted: an implausible lap still counts within its Room session (HUD, session best), but never becomes a Track Record, Replay, or Pacer. Rejection is silent — the driver is not told (ADR-0005).
+_Avoid_: valid lap (collides with checkpoint-order validity, which is a separate, in-Room concept), legal lap, verified lap
 
 **Replay**:
 A playback of a recorded, persisted human leaderboard lap for a `(driver, Track, Difficulty)`, fetched from the server and rendered as a single car following a chase camera. The playback interpolates stored poses by timestamp — it does not re-simulate physics.
