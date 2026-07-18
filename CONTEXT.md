@@ -35,3 +35,7 @@ _Avoid_: Recording, ghost
 **Reference Lap**:
 The single canonical fastest lap the trained RL policy drives against the real physics — a benchmark answering "how fast can this Track be driven?", not a leaderboard entry. Deterministic (fixed spawn, no stochasticity), computed on demand, never persisted. Shown to players as **"AI Record"**; rendered through the same viewer as a Replay. Only available for Tracks that have a trained policy.
 _Avoid_: Record (collides with Track Record), Replay (which is a persisted human lap), ghost
+
+**Pacer**:
+An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a *Replay*, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Currently only persisted human *Replays* are surfaced as Pacers; the AI *Reference Lap* is kept to its standalone viewer and does not yet enter live Rooms (ADR-0002).
+_Avoid_: ghost, shadow, phantom, rival/opponent (informal)
