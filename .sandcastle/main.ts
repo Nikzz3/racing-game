@@ -47,10 +47,10 @@ const planSchema = z.object({
 const MAX_ITERATIONS = 10;
 
 // Agent providers can be tuned or switched independently for each phase.
-const PLANNER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const PLANNER_AGENT = sandcastle.claudeCode("claude-opus-4-8")
 const IMPLEMENTER_AGENT = sandcastle.codex("gpt-5.6-sol");
-const REVIEWER_AGENT = sandcastle.codex("gpt-5.6-sol");
-const MERGER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const REVIEWER_AGENT = sandcastle.claudeCode("claude-fable-5")
+const MERGER_AGENT = sandcastle.claudeCode("claude-opus-4-8")
 
 // Share the host Codex login with every ephemeral Sandcastle container. Run
 // `codex login` on the host to create/refresh this subscription credential.
