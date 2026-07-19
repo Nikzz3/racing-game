@@ -6,7 +6,9 @@ export default defineConfig({
   // A full injected lap runs under software WebGL; game-seam.ts budgets 240s for it,
   // which the 30s default test timeout would otherwise cut short.
   timeout: 300_000,
-  retries: process.env.CI ? 2 : 0,
+  // Each retry re-pays the timeout above, so 2 retries put a single stuck test at
+  // 15 minutes. One retry still absorbs a flake without dominating the job.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["html", { outputFolder: "playwright-report" }]],
   use: {
     baseURL: "http://127.0.0.1:5174",

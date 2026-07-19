@@ -13,6 +13,7 @@ jobs:
   js-tests:
     name: TypeScript typecheck + vitest
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,6 +27,9 @@ jobs:
   e2e:
     name: Playwright e2e tests
     runs-on: ubuntu-latest
+    # Driven laps are paced to real time, so this suite is inherently minutes long.
+    # Without a ceiling a hung run would sit on GitHub's 6h default.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +54,7 @@ jobs:
   python-golden-tests:
     name: Python physics golden tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
