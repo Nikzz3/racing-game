@@ -185,14 +185,21 @@ describe('Lobby Pacer arming UX', () => {
   });
   afterEach(() => parent.remove());
 
-  it('replay-bearing row shows a Pace button', () => {
-    const aliceRow = [...parent.querySelectorAll('.lb-list li')].find(li => li.textContent!.includes('Alice'));
-    expect(aliceRow!.querySelector('button[data-pace]')).not.toBeNull();
-  });
+  function picker(): HTMLSelectElement {
+    return parent.querySelector<HTMLSelectElement>('.pacer-select')!;
+  }
 
-  it('non-replay row shows no Pace button', () => {
-    const bobRow = [...parent.querySelectorAll('.lb-list li')].find(li => li.textContent!.includes('Bob'));
-    expect(bobRow!.querySelector('button[data-pace]')).toBeNull();
+  /** Selects the option naming `name` (or "No Pacer" when null) and fires change. */
+  function pickPacer(name: string | null): void {
+    const sel = picker();
+    sel.value = name === null
+      ? '-1'
+      : [...sel.options].find(o => o.textContent!.includes(name))!.value;
+    sel.dispatchEvent(new Event('change'));
+  }
+
+  it('picker lives in the Starting Grid panel', () => {
+    expect(parent.querySelector('.panel-rooms .pacer-select')).not.toBeNull();
   });
 
   it('non-replay row shows no Watch button', () => {
@@ -200,59 +207,68 @@ describe('Lobby Pacer arming UX', () => {
     expect(bobRow!.querySelector('button[data-replay]')).toBeNull();
   });
 
-  it('armed-pacer banner is hidden initially', () => {
-    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(true);
-  });
-
-  it('armedPacer is null initially', () => {
+  it('armedPacer is null and "No Pacer" selected initially', () => {
     expect(lobby.armedPacer).toBeNull();
+    expect(picker().value).toBe('-1');
   });
 
-  it('clicking Pace shows the armed-pacer banner', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
-    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(false);
+  it('offers only replay-bearing entries', () => {
+    const texts = [...picker().options].map(o => o.textContent!);
+    expect(texts.some(t => t.includes('Alice'))).toBe(true);
+    expect(texts.some(t => t.includes('Carol'))).toBe(true);
+    expect(texts.some(t => t.includes('Bob'))).toBe(false);
   });
 
-  it('banner shows the entry name after arming', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
-    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('Alice');
+  it('options show a formatted lap time', () => {
+    const alice = [...picker().options].find(o => o.textContent!.includes('Alice'))!;
+    expect(alice.textContent).toContain('1:02');
   });
 
-  it('banner shows a formatted lap time after arming', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
-    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('1:02');
-  });
-
-  it('armedPacer getter returns the armed entry', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+  it('picking an entry arms it', () => {
+    pickPacer('Alice');
     expect(lobby.armedPacer).toEqual(replayEntry);
   });
 
-  it('clicking the clear button hides the banner and nulls armedPacer', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
-    parent.querySelector<HTMLButtonElement>('.pacer-clear')!.click();
-    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(true);
+  it('picking "No Pacer" clears the armed entry', () => {
+    pickPacer('Alice');
+    pickPacer(null);
     expect(lobby.armedPacer).toBeNull();
   });
 
-  it('arming a new entry replaces the previous one', () => {
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
-    parent.querySelector<HTMLButtonElement>('button[data-pace="Carol"]')!.click();
+  it('picking a new entry replaces the previous one', () => {
+    pickPacer('Alice');
+    pickPacer('Carol');
     expect(lobby.armedPacer).toEqual(replayEntry2);
-    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('Carol');
-    expect(parent.querySelector('.pacer-banner')!.textContent).not.toContain('Alice');
   });
 
-  it('Pace buttons are only shown for entries matching selected Track and Difficulty', () => {
+  it('only offers entries matching selected Track and Difficulty', () => {
     const otherTrackEntry: LeaderboardEntry = {
       name: 'Dave', timeMs: 60000, date: '2026-01-04', hasReplay: true, difficulty: 'medium', track: 'stormhaven',
     };
     lobby.setLeaderboard([replayEntry, otherTrackEntry]);
-    // Default view is sunset-ridge / medium — Dave (stormhaven) should not be visible
-    const paceButtons = parent.querySelectorAll('button[data-pace]');
-    const names = [...paceButtons].map(b => (b as HTMLButtonElement).dataset.pace);
-    expect(names).toContain('Alice');
-    expect(names).not.toContain('Dave');
+    // Default view is sunset-ridge / medium — Dave (stormhaven) should not be offered
+    const texts = [...picker().options].map(o => o.textContent!);
+    expect(texts.some(t => t.includes('Alice'))).toBe(true);
+    expect(texts.some(t => t.includes('Dave'))).toBe(false);
+  });
+
+  it('switching Track clears the armed Pacer and resets the picker', () => {
+    pickPacer('Alice');
+    parent.querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!.click();
+    expect(lobby.armedPacer).toBeNull();
+    expect(picker().value).toBe('-1');
+  });
+
+  it('the armed Pacer survives a leaderboard refresh with new entry objects', () => {
+    pickPacer('Alice');
+    lobby.setLeaderboard([{ ...replayEntry }, noReplayEntry, replayEntry2]);
+    expect(lobby.armedPacer).toEqual(replayEntry);
+    expect(picker().value).not.toBe('-1');
+  });
+
+  it('is disabled when no entry has a replay', () => {
+    lobby.setLeaderboard([noReplayEntry]);
+    expect(picker().disabled).toBe(true);
   });
 });
 

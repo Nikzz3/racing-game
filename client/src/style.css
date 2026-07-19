@@ -12,6 +12,8 @@
   --text: #f2f4f8;
   --text-dim: #9aa3b5;
   --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --pacer: #c77dff;
+  --pacer-soft: rgba(199, 125, 255, 0.16);
 }
 
 html,
@@ -715,6 +717,55 @@ input:focus {
 .lb-ai-record-btn:hover {
   filter: brightness(1.1);
   box-shadow: 0 0 0 1px rgba(79, 216, 255, 0.6), 0 0 22px rgba(79, 216, 255, 0.5);
+}
+
+/* Pacer picker — lives in the Starting Grid panel, next to Create & Race, so
+   the opponent choice sits at the moment the race is started. */
+.pacer-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(199, 125, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(199, 125, 255, 0.05);
+}
+
+.pacer-picker-lead {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pacer);
+}
+
+.pacer-select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+.pacer-select:focus {
+  border-color: var(--pacer);
+}
+
+.pacer-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pacer-select option {
+  background: #1a1626;
 }
 
 .replay-hud {
