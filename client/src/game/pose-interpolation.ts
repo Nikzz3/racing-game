@@ -17,20 +17,21 @@ export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
   while (i < frames.length - 2 && frames[i + 1][0] <= t) {
     i++;
   }
-  const f0 = frames[i];
-  const f1 = frames[Math.min(i + 1, frames.length - 1)];
-  const span = f1[0] - f0[0];
-  const a = span > 0 ? Math.max(0, Math.min(1, (t - f0[0]) / span)) : 0;
+  const [t0, x0, z0, rot0, speed0] = frames[i];
+  const [t1, x1, z1, rot1, speed1] = frames[Math.min(i + 1, frames.length - 1)];
 
-  const x = f0[1] + (f1[1] - f0[1]) * a;
-  const z = f0[2] + (f1[2] - f0[2]) * a;
-  const speed = f0[4] + (f1[4] - f0[4]) * a;
+  const span = t1 - t0;
+  const a = span > 0 ? Math.max(0, Math.min(1, (t - t0) / span)) : 0;
+
+  const x = x0 + (x1 - x0) * a;
+  const z = z0 + (z1 - z0) * a;
+  const speed = speed0 + (speed1 - speed0) * a;
 
   // Shortest-arc heading: wrap delta into (-π, π].
-  let d = (f1[3] - f0[3]) % (Math.PI * 2);
+  let d = (rot1 - rot0) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2;
   if (d < -Math.PI) d += Math.PI * 2;
-  const heading = f0[3] + d * a;
+  const heading = rot0 + d * a;
 
   return { x, z, heading, speed };
 }
