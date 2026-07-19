@@ -212,7 +212,7 @@ export class Game {
     this.lastFrame = now;
 
     const input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
-    this.car.update(dt, input);
+    this.car.advance(dt, input);
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
