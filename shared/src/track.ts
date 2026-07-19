@@ -254,6 +254,33 @@ export function getTrack(slug: string): Track | undefined {
   return TRACKS.find((t) => t.id === slug);
 }
 
+/** Sum of straight-line segment lengths between consecutive centerline samples (meters). */
+export function trackLength(track: Track): number {
+  const s = track.samples;
+  let len = 0;
+  for (let i = 0; i < s.length; i++) {
+    const next = s[(i + 1) % s.length];
+    len += Math.hypot(next.x - s[i].x, next.z - s[i].z);
+  }
+  return len;
+}
+
+/**
+ * Fraction of the theoretical fastest lap below which a lap is treated as
+ * implausibly fast (ADR-0005). Below 1.0 because the centerline underestimates
+ * the real racing line, so an honest lap can slightly beat the naive floor.
+ */
+export const MIN_LAP_FRACTION = 0.85;
+
+/**
+ * Lower bound (ms) on a plausible lap time for `track` at `maxSpeedMs`:
+ * `MIN_LAP_FRACTION × centerline length / max speed`. A lap faster than this
+ * could not have been driven within the difficulty's speed cap (ADR-0005).
+ */
+export function minPlausibleLapMs(track: Track, maxSpeedMs: number): number {
+  return Math.floor((MIN_LAP_FRACTION * trackLength(track)) / maxSpeedMs * 1000);
+}
+
 /** Coerce arbitrary input to a valid track slug, falling back to the default. */
 export function asTrackSlug(value: unknown): TrackSlug {
   if (typeof value === "string" && TRACKS.some((t) => t.id === value)) return value;
