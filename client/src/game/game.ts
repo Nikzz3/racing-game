@@ -132,10 +132,9 @@ export class Game {
   }
 
   receiveReplayFrames(frames: ReplayFrame[]): void {
-    this.pacer?.setFrames(frames);
-    if (this.pacer) {
-      this.pacerCpTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
-    }
+    if (!this.pacer) return;
+    this.pacer.setFrames(frames);
+    this.pacerCpTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
   }
 
   onMessage(msg: ServerMessage): void {
@@ -176,11 +175,11 @@ export class Game {
     // Skip CP0 (start line) because curLapBaseMs ≈ 0 there.
     // Skip lap-completion snapshots (lapStartT changed) because curLapBaseMs
     // already reflects the new lap, not the crossing time.
-    const n = this.track.checkpoints.length;
+    const checkpointCount = this.track.checkpoints.length;
     if (
       prevCp !== undefined &&
       prevCp >= 1 &&
-      me.nextCheckpoint === (prevCp + 1) % n &&
+      me.nextCheckpoint === (prevCp + 1) % checkpointCount &&
       me.lapStartT === prevLapStartT &&
       this.pacer !== null &&
       this.curLapBaseMs !== null &&
