@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: ["**"]
 
+# Every job only reads the repo; none should hold a writable token, and test code
+# must not be able to lift credentials out of .git/config.
+permissions:
+  contents: read
+
 jobs:
   js-tests:
     name: TypeScript typecheck + vitest
@@ -16,6 +21,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -31,6 +38,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -56,6 +65,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

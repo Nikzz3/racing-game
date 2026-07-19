@@ -3,7 +3,6 @@ import { GenericContainer, Wait, type StartedTestContainer } from "testcontainer
 
 const POSTGRES_IMAGE = "postgres:17-alpine";
 const POSTGRES_CONTAINER_PORT = 5432;
-const POSTGRES_HOST_PORT = 5433;
 const POSTGRES_CREDENTIALS = {
   user: "postgres",
   password: "postgres",
@@ -35,7 +34,7 @@ async function getDatabaseUrl(): Promise<string> {
       POSTGRES_PASSWORD: POSTGRES_CREDENTIALS.password,
       POSTGRES_DB: POSTGRES_CREDENTIALS.database,
     })
-    .withExposedPorts({ container: POSTGRES_CONTAINER_PORT, host: POSTGRES_HOST_PORT })
+    .withExposedPorts(POSTGRES_CONTAINER_PORT)
     .withWaitStrategy(Wait.forHealthCheck())
     .withHealthCheck({
       test: [
@@ -50,7 +49,10 @@ async function getDatabaseUrl(): Promise<string> {
 
   const { user, password, database } = POSTGRES_CREDENTIALS;
   const host = startedPostgresContainer.getHost();
-  return `postgres://${user}:${password}@${host}:${POSTGRES_HOST_PORT}/${database}`;
+  // Docker picks a free host port, so a local Postgres (or anything else) on a
+  // fixed port can never collide with the throwaway container.
+  const hostPort = startedPostgresContainer.getMappedPort(POSTGRES_CONTAINER_PORT);
+  return `postgres://${user}:${password}@${host}:${hostPort}/${database}`;
 }
 
 function runPlaywright(databaseUrl: string): Promise<number> {

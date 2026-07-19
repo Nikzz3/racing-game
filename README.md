@@ -27,8 +27,8 @@ room (or join an existing one), and drive.
 ## End-to-end tests
 
 Install Chromium once, then run the Playwright suite. The test command starts its own
-throwaway Postgres container on host port 5433, plus the server and client on dedicated
-ports 8081 and 5174:
+throwaway Postgres container on a dynamically allocated host port, plus the server and
+client on dedicated ports 8081 and 5174:
 
 ```bash
 npx playwright install chromium
