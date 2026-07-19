@@ -1,8 +1,9 @@
 /**
  * Difficulty is a property of a Room (see CONTEXT.md): a named set of physics
  * rules applied to every player in that room and fixed for its lifetime. The
- * physics numbers themselves live client-side (the server never simulates the
- * car); this module only defines the shared vocabulary.
+ * physics numbers live client-side (the server never simulates the car), except
+ * the per-difficulty top speed below, shared so server-side lap plausibility
+ * validation can use it (ADR-0005).
  */
 export type Difficulty = "easy" | "medium" | "hard";
 

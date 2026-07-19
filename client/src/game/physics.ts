@@ -2,6 +2,7 @@ import {
   BARRIER_OFFSET,
   DEFAULT_DIFFICULTY,
   type Difficulty,
+  MAX_SPEED_MS,
   nearestCenterline,
   ROAD_HALF_WIDTH,
   type TrackSample,
@@ -23,10 +24,13 @@ interface DifficultyPhysics {
   grassFriction: number;
 }
 
+// maxSpeed comes from the shared MAX_SPEED_MS table so the server's lap
+// plausibility validation can never drift from the cap the client enforces
+// (ADR-0005).
 const DIFFICULTY_PHYSICS: Record<Difficulty, DifficultyPhysics> = {
-  easy: { maxSpeed: 52, engineAccel: 38, grassMaxSpeed: 24, grassFriction: 1.5 },
-  medium: { maxSpeed: 90, engineAccel: 65, grassMaxSpeed: 9, grassFriction: 6 },
-  hard: { maxSpeed: 110, engineAccel: 80, grassMaxSpeed: 5, grassFriction: 10 },
+  easy: { maxSpeed: MAX_SPEED_MS.easy, engineAccel: 38, grassMaxSpeed: 24, grassFriction: 1.5 },
+  medium: { maxSpeed: MAX_SPEED_MS.medium, engineAccel: 65, grassMaxSpeed: 9, grassFriction: 6 },
+  hard: { maxSpeed: MAX_SPEED_MS.hard, engineAccel: 80, grassMaxSpeed: 5, grassFriction: 10 },
 };
 
 // Fixed across all difficulties.

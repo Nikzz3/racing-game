@@ -100,7 +100,7 @@ export function pacerDelta(
 }
 
 /**
- * In-Room Pacer overlay: one translucent phantom car driven by recorded replay frames.
+ * In-Room Pacer overlay: one translucent Pacer car driven by recorded replay frames.
  * Modelled structurally on RemotePlayers — owns no camera, renderer, HUD, or rAF.
  * Disposed on `left` and on Game.dispose().
  */
@@ -189,11 +189,12 @@ function createPacerMesh(): THREE.Group {
     obj.castShadow = false;
     obj.receiveShadow = false;
   });
-  group.add(createReplayBadge());
+  group.add(createPacerBadge());
   return group;
 }
 
-function createReplayBadge(): THREE.Sprite {
+/** The "REPLAY" pill above the Pacer (per PRD #27 story 13), replacing the name tag. */
+function createPacerBadge(): THREE.Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 64;

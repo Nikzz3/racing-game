@@ -50,6 +50,17 @@ function trackThumbHtml(track: Track): string {
   return trackOutlineSvg(track, "room-track-thumb");
 }
 
+/** Leaderboard row action button carrying the (name, track, difficulty) key. */
+function entryButton(
+  e: LeaderboardEntry,
+  className: string,
+  action: string,
+  title: string,
+  label: string
+): string {
+  return `<button class="${className}" data-${action}="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="${title}">${label}</button>`;
+}
+
 export class Lobby {
   private root: HTMLElement;
   private nameInput: HTMLInputElement;
@@ -253,7 +264,7 @@ export class Lobby {
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Watch replay">▶</button><button class="lb-pace" data-pace="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Arm as Pacer">🏁</button>` : ""}
+          ${e.hasReplay ? `${entryButton(e, "lb-replay", "replay", "Watch replay", "▶")}${entryButton(e, "lb-pace", "pace", "Arm as Pacer", "🏁")}` : ""}
         </li>`
       )
       .join("");
