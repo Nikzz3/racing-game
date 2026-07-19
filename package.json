@@ -13,6 +13,7 @@
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces --if-present",
     "test:e2e": "npx tsx e2e/scripts/test-e2e.ts",
     "sandcastle": "npx tsx .sandcastle/main.ts"
   },

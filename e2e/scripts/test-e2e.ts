@@ -16,7 +16,9 @@ let stopPromise: Promise<void> | undefined;
 
 function stopContainer(): Promise<void> {
   if (!postgresContainer) return Promise.resolve();
-  stopPromise ??= postgresContainer.stop().then(() => undefined);
+  if (!stopPromise) {
+    stopPromise = postgresContainer.stop().then(() => undefined);
+  }
   return stopPromise;
 }
 
