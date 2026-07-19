@@ -1,8 +1,11 @@
 name: CI
 
+# A branch with an open PR matches both `push` and `pull_request`, which used to run
+# the whole workflow twice per commit. Restricting `push` to master keeps trunk covered
+# while feature branches are covered exactly once, by their PR.
 on:
   push:
-    branches: ["**"]
+    branches: [master]
   pull_request:
     branches: ["**"]
 
