@@ -25,6 +25,7 @@ import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
 import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
+import { E2eSeam, E2E_DT } from "./e2e-seam";
 
 const SEND_INTERVAL_MS = 50;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
@@ -65,6 +66,7 @@ export class Game {
   private checkpointSampleIndices: number[];
 
   private autopilot = false;
+  private seam: E2eSeam | null = null;
 
   private onResize = () => {
     const { camera, renderer } = this.bundle;
@@ -95,11 +97,29 @@ export class Game {
     this.bundle = createScene(this.container, this.track.samples);
     buildTrack(this.bundle.scene, this.track.samples);
 
-    this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);
+    this.remote = new RemotePlayers(this.bundle.scene, myId);
+    if (import.meta.env.VITE_E2E) {
+      this.seam = new E2eSeam({
+        step: (dt, input) => this.car.update(dt, input),
+        localState: () => ({
+          position: { x: this.car.x, z: this.car.z },
+          rotation: this.car.heading,
+          velocity: this.car.speed,
+          checkpoint: this.lastMe?.nextCheckpoint ?? 0,
+          lap: {
+            laps: this.lastMe?.laps ?? 0,
+            active: this.lastMe?.lapStartT !== null && this.lastMe?.lapStartT !== undefined,
+            lastLapMs: this.lastMe?.lastLapMs ?? null,
+            bestLapMs: this.lastMe?.bestLapMs ?? null,
+          },
+        }),
+        remotePlayerIds: () => this.remote.playerIds(),
+      });
+      this.seam.install();
+    }
+    this.car.spawnAtSample(SPAWN_SAMPLE, this.seam ? 0 : (Math.random() - 0.5) * 7);
     this.carMesh = createCarMesh(myId);
     this.bundle.scene.add(this.carMesh);
-
-    this.remote = new RemotePlayers(this.bundle.scene, myId);
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     if (this.pacer) {
@@ -194,6 +214,7 @@ export class Game {
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
     if (msg.playerId === this.myId) {
+      this.seam?.recordLapSubmission(msg.lapTimeMs, msg.laps);
       const suffix = msg.isTrackRecord
         ? "  TRACK RECORD!"
         : msg.isPersonalBest
@@ -207,11 +228,18 @@ export class Game {
 
   private frame = (now: number) => {
     if (!this.running) return;
-    const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
+    let dt = Math.min((now - this.lastFrame) / 1000, 0.05);
     this.lastFrame = now;
 
-    const input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
-    this.car.advance(dt, input);
+    let input: CarInput;
+    if (this.seam?.driving) {
+      const steps = this.seam.stepFrame();
+      dt = steps * E2E_DT;
+      input = { throttle: 0, brake: 0, steer: 0 };
+    } else {
+      input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
+      this.car.advance(dt, input);
+    }
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
@@ -264,7 +292,7 @@ export class Game {
    */
   private respawn(): void {
     this.net.send({ type: "respawn" });
-    this.car.spawnAtSample(SPAWN_SAMPLE, (Math.random() - 0.5) * 7);
+    this.car.spawnAtSample(SPAWN_SAMPLE, this.seam ? 0 : (Math.random() - 0.5) * 7);
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
     this.snapCameraBehindCar();
@@ -312,6 +340,7 @@ export class Game {
     this.remote.dispose();
     this.pacer?.dispose();
     this.hud.dispose();
+    this.seam?.dispose();
     disposeRenderer(this.bundle.renderer);
     this.container.remove();
     delete (window as unknown as Record<string, unknown>).__autopilot;

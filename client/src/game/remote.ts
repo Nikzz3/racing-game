@@ -81,6 +81,10 @@ export class RemotePlayers {
     }
   }
 
+  playerIds(): string[] {
+    return [...this.meshes.keys()];
+  }
+
   dispose(): void {
     for (const mesh of this.meshes.values()) {
       disposeCarMesh(mesh);
