@@ -13,6 +13,8 @@ export class Hud {
   private offtrackEl: HTMLElement;
   private cpMissWarnEl: HTMLElement;
   private toastsEl: HTMLElement;
+  private pacerChipEl: HTMLElement;
+  private pacerDismissEl: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
@@ -46,6 +48,7 @@ export class Hud {
       </div>
       <div class="offtrack-warn">OFF TRACK</div>
       <div class="cp-miss-warn">CHECKPOINT MISSED — LAP WON'T COUNT<br><span>Respawn or drive back through the gate</span></div>
+      <div class="pacer-chip"><span class="pacer-chip-label">PACER</span><button class="pacer-chip-dismiss">✕</button></div>
       <div class="toasts"></div>
     `;
     parent.appendChild(this.root);
@@ -59,6 +62,8 @@ export class Hud {
     this.standingsEl = this.root.querySelector(".hud-standings tbody")!;
     this.offtrackEl = this.root.querySelector(".offtrack-warn")!;
     this.cpMissWarnEl = this.root.querySelector(".cp-miss-warn")!;
+    this.pacerChipEl = this.root.querySelector(".pacer-chip")!;
+    this.pacerDismissEl = this.root.querySelector(".pacer-chip-dismiss")!;
     this.toastsEl = this.root.querySelector(".toasts")!;
 
     this.root.querySelector(".hud-leave")!.addEventListener("click", onLeave);
@@ -105,6 +110,15 @@ export class Hud {
         </tr>`
       )
       .join("");
+  }
+
+  showPacerChip(onDismiss: () => void): void {
+    this.pacerDismissEl.onclick = onDismiss;
+    this.pacerChipEl.classList.add("visible");
+  }
+
+  hidePacerChip(): void {
+    this.pacerChipEl.classList.remove("visible");
   }
 
   toast(text: string, record = false): void {
