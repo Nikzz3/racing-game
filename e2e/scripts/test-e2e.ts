@@ -10,29 +10,26 @@ const POSTGRES_CREDENTIALS = {
   database: "racing",
 } as const;
 
-let postgresContainer: StartedTestContainer | undefined;
+let startedPostgresContainer: StartedTestContainer | undefined;
 let playwrightProcess: ChildProcess | undefined;
-let receivedSignal: NodeJS.Signals | undefined;
-let stopPromise: Promise<void> | undefined;
+let shutdownSignal: NodeJS.Signals | undefined;
+let containerStopPromise: Promise<void> | undefined;
 
-function stopPostgresContainer(): Promise<void> {
-  if (!postgresContainer) {
+function stopContainer(): Promise<void> {
+  if (!startedPostgresContainer) {
     return Promise.resolve();
   }
 
-  if (!stopPromise) {
-    stopPromise = postgresContainer.stop().then(() => undefined);
-  }
-
-  return stopPromise;
+  containerStopPromise ??= startedPostgresContainer.stop().then(() => undefined);
+  return containerStopPromise;
 }
 
-async function resolveDatabaseUrl(): Promise<string> {
+async function getDatabaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
     return process.env.E2E_DATABASE_URL;
   }
 
-  postgresContainer = await new GenericContainer(POSTGRES_IMAGE)
+  startedPostgresContainer = await new GenericContainer(POSTGRES_IMAGE)
     .withEnvironment({
       POSTGRES_USER: POSTGRES_CREDENTIALS.user,
       POSTGRES_PASSWORD: POSTGRES_CREDENTIALS.password,
@@ -52,7 +49,8 @@ async function resolveDatabaseUrl(): Promise<string> {
     .start();
 
   const { user, password, database } = POSTGRES_CREDENTIALS;
-  return `postgres://${user}:${password}@${postgresContainer.getHost()}:${POSTGRES_HOST_PORT}/${database}`;
+  const host = startedPostgresContainer.getHost();
+  return `postgres://${user}:${password}@${host}:${POSTGRES_HOST_PORT}/${database}`;
 }
 
 function runPlaywright(databaseUrl: string): Promise<number> {
@@ -79,18 +77,18 @@ function runPlaywright(databaseUrl: string): Promise<number> {
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    receivedSignal = signal;
+    shutdownSignal = signal;
     playwrightProcess?.kill(signal);
-    void stopPostgresContainer();
+    void stopContainer();
   });
 }
 
 let exitCode = 1;
 try {
-  const databaseUrl = await resolveDatabaseUrl();
-  exitCode = receivedSignal ? 1 : await runPlaywright(databaseUrl);
+  const databaseUrl = await getDatabaseUrl();
+  exitCode = shutdownSignal ? 1 : await runPlaywright(databaseUrl);
 } finally {
-  await stopPostgresContainer();
+  await stopContainer();
 }
 
 process.exitCode = exitCode;
