@@ -1,5 +1,12 @@
 import { CHECKPOINT_RADIUS } from "@racing/shared";
 
+/** A single position sample: server wall-clock time (ms) plus world x/z. */
+interface WindowSample {
+  t: number;
+  x: number;
+  z: number;
+}
+
 export interface TimingState {
   /** Index of the next checkpoint the player must pass. */
   next: number;
@@ -8,7 +15,7 @@ export interface TimingState {
   lastLapMs: number | null;
   bestLapMs: number | null;
   /** Rolling window of recent samples (server wall-clock ms + x/z), reset on lap start and Respawn. */
-  windowSamples: Array<{ t: number; x: number; z: number }>;
+  windowSamples: WindowSample[];
   /** Becomes true if any window sample violates the speed bound; cleared on lap start and Respawn. */
   lapImplausible: boolean;
 }
@@ -52,6 +59,24 @@ const PLAUSIBILITY_WINDOW_MS = 1000;
 const SPEED_TOLERANCE = 1.1;
 
 /**
+ * True when the average speed across the window's samples exceeds the tolerated
+ * speed bound — i.e. the car covered more ground than physically possible.
+ */
+function windowExceedsSpeedBound(
+  samples: WindowSample[],
+  now: number,
+  maxSpeedMs: number
+): boolean {
+  if (samples.length < 2) return false;
+  let totalDist = 0;
+  for (let i = 1; i < samples.length; i++) {
+    totalDist += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
+  }
+  const windowS = (now - samples[0].t) / 1000;
+  return windowS > 0 && totalDist / windowS > maxSpeedMs * SPEED_TOLERANCE;
+}
+
+/**
  * Advance checkpoint progress from a reported position and validate plausibility.
  *
  * Maintains a rolling window of the last ~1 second of positions; if the total
@@ -77,17 +102,8 @@ export function updateTiming(
     while (t.windowSamples.length > 1 && now - t.windowSamples[0].t > PLAUSIBILITY_WINDOW_MS) {
       t.windowSamples.shift();
     }
-    if (!t.lapImplausible && t.windowSamples.length >= 2) {
-      let totalDist = 0;
-      for (let i = 1; i < t.windowSamples.length; i++) {
-        const prev = t.windowSamples[i - 1];
-        const curr = t.windowSamples[i];
-        totalDist += Math.hypot(curr.x - prev.x, curr.z - prev.z);
-      }
-      const windowS = (now - t.windowSamples[0].t) / 1000;
-      if (windowS > 0 && totalDist / windowS > maxSpeedMs * SPEED_TOLERANCE) {
-        t.lapImplausible = true;
-      }
+    if (!t.lapImplausible && windowExceedsSpeedBound(t.windowSamples, now, maxSpeedMs)) {
+      t.lapImplausible = true;
     }
   }
 
