@@ -5,13 +5,15 @@
   "workspaces": [
     "shared",
     "server",
-    "client"
+    "client",
+    "e2e"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck --workspaces",
+    "test:e2e": "npx tsx e2e/scripts/test-e2e.ts",
     "sandcastle": "npx tsx .sandcastle/main.ts"
   },
   "devDependencies": {

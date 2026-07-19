@@ -4,6 +4,8 @@ server/data/
 *.log
 *.tsbuildinfo
 .DS_Store
+playwright-report/
+test-results/
 
 # Python (rl/)
 __pycache__/
