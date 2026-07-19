@@ -21,7 +21,7 @@ import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
-import { PacerOverlay } from "./pacer";
+import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
@@ -55,6 +55,11 @@ export class Game {
   // Pacer. undefined = no snapshot received yet (see the skip-first-snapshot
   // guard in applyMyProgress).
   private prevLapStartT: number | null | undefined = undefined;
+  // Previous snapshot's nextCheckpoint, used to detect individual checkpoint
+  // crossings for the Pacer delta toast. undefined = no snapshot yet.
+  private prevNextCheckpoint: number | undefined = undefined;
+  // Pacer's pre-computed checkpoint-crossing times (ms, lap-relative).
+  private pacerCpTimes: (number | null)[] = [];
   /** Sample index of each checkpoint, pre-computed for checkpointMissed. */
   private checkpointSampleIndices: number[];
 
@@ -128,6 +133,9 @@ export class Game {
 
   receiveReplayFrames(frames: ReplayFrame[]): void {
     this.pacer?.setFrames(frames);
+    if (this.pacer) {
+      this.pacerCpTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
+    }
   }
 
   onMessage(msg: ServerMessage): void {
@@ -147,17 +155,43 @@ export class Game {
     this.curLapBaseMs = me.lapStartT === null ? null : serverT - me.lapStartT;
     this.curLapReceivedAt = performance.now();
 
+    // Save old values before updating so both Pacer triggers see the same prior state.
+    const prevLapStartT = this.prevLapStartT;
+    const prevCp = this.prevNextCheckpoint;
+
     // Detect start-line crossing: lapStartT changes to a new non-null value.
     // Skip the very first snapshot (prevLapStartT === undefined) so joining
     // mid-lap doesn't immediately restart the Pacer.
     if (
-      this.prevLapStartT !== undefined &&
+      prevLapStartT !== undefined &&
       me.lapStartT !== null &&
-      me.lapStartT !== this.prevLapStartT
+      me.lapStartT !== prevLapStartT
     ) {
       this.pacer?.restart();
     }
     this.prevLapStartT = me.lapStartT;
+    this.prevNextCheckpoint = me.nextCheckpoint;
+
+    // Detect intermediate checkpoint crossings for the Pacer delta toast.
+    // Skip CP0 (start line) because curLapBaseMs ≈ 0 there.
+    // Skip lap-completion snapshots (lapStartT changed) because curLapBaseMs
+    // already reflects the new lap, not the crossing time.
+    const n = this.track.checkpoints.length;
+    if (
+      prevCp !== undefined &&
+      prevCp >= 1 &&
+      me.nextCheckpoint === (prevCp + 1) % n &&
+      me.lapStartT === prevLapStartT &&
+      this.pacer !== null &&
+      this.curLapBaseMs !== null &&
+      this.pacerCpTimes.length > 0
+    ) {
+      const delta = pacerDelta(this.pacerCpTimes, prevCp, this.curLapBaseMs);
+      if (delta !== null) {
+        const abs = (Math.abs(delta) / 1000).toFixed(1);
+        this.hud.toast(delta < 0 ? `vs Pacer −${abs}s` : `vs Pacer +${abs}s`);
+      }
+    }
   }
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
@@ -243,6 +277,7 @@ export class Game {
   private dismissPacer(): void {
     this.pacer?.dispose();
     this.pacer = null;
+    this.pacerCpTimes = [];
     this.hud.hidePacerChip();
   }
 
