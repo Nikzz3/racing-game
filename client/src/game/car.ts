@@ -137,6 +137,16 @@ function buildFallbackCar(color: number): THREE.Group {
   return group;
 }
 
+/** Disposes GPU resources (SpriteMaterial + CanvasTexture) held by name-tag sprites. */
+export function disposeCarMesh(car: THREE.Group): void {
+  car.traverse((obj) => {
+    if (obj instanceof THREE.Sprite) {
+      obj.material.map?.dispose();
+      obj.material.dispose();
+    }
+  });
+}
+
 function createNameTag(name: string): THREE.Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
