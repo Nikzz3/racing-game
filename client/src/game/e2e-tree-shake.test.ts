@@ -7,16 +7,26 @@ import { join } from "node:path";
 let outputDirectory: string | undefined;
 
 afterEach(async () => {
-  if (outputDirectory) await rm(outputDirectory, { recursive: true, force: true });
+  if (!outputDirectory) return;
+
+  await rm(outputDirectory, { recursive: true, force: true });
+  outputDirectory = undefined;
 });
 
 describe("production build", () => {
   it("tree-shakes every window.__game reference", async () => {
-    outputDirectory = await mkdtemp(join(tmpdir(), "racing-client-build-"));
-    await build({ root: join(import.meta.dirname, "../.."), logLevel: "silent", build: { outDir: outputDirectory } });
-    const assets = await readdir(join(outputDirectory, "assets"));
+    const buildDirectory = await mkdtemp(join(tmpdir(), "racing-client-build-"));
+    outputDirectory = buildDirectory;
+    await build({
+      root: join(import.meta.dirname, "../.."),
+      logLevel: "silent",
+      build: { outDir: buildDirectory },
+    });
+    const assets = await readdir(join(buildDirectory, "assets"));
     const javascript = await Promise.all(
-      assets.filter((name) => name.endsWith(".js")).map((name) => readFile(join(outputDirectory!, "assets", name), "utf8"))
+      assets
+        .filter((name) => name.endsWith(".js"))
+        .map((name) => readFile(join(buildDirectory, "assets", name), "utf8")),
     );
     expect(javascript.join("\n")).not.toContain("__game");
   });

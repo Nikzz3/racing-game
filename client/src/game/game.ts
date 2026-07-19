@@ -32,6 +32,7 @@ const SEND_INTERVAL_MS = 50;
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 /** Tolerance in samples before declaring a checkpoint missed (~1.5× CHECKPOINT_RADIUS). */
 const CP_MISS_MARGIN_SAMPLES = 8;
+const IDLE_INPUT: CarInput = { throttle: 0, brake: 0, steer: 0 };
 
 export class Game {
   private bundle: SceneBundle;
@@ -98,26 +99,8 @@ export class Game {
     buildTrack(this.bundle.scene, this.track.samples);
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
-    if (import.meta.env.VITE_E2E) {
-      this.seam = new E2eSeam({
-        step: (dt, input) => this.car.update(dt, input),
-        localState: () => ({
-          position: { x: this.car.x, z: this.car.z },
-          rotation: this.car.heading,
-          velocity: this.car.speed,
-          checkpoint: this.lastMe?.nextCheckpoint ?? 0,
-          lap: {
-            laps: this.lastMe?.laps ?? 0,
-            active: this.lastMe?.lapStartT !== null && this.lastMe?.lapStartT !== undefined,
-            lastLapMs: this.lastMe?.lastLapMs ?? null,
-            bestLapMs: this.lastMe?.bestLapMs ?? null,
-          },
-        }),
-        remotePlayerIds: () => this.remote.playerIds(),
-      });
-      this.seam.install();
-    }
-    this.car.spawnAtSample(SPAWN_SAMPLE, this.seam ? 0 : (Math.random() - 0.5) * 7);
+    this.installE2eSeam();
+    this.car.spawnAtSample(SPAWN_SAMPLE, this.spawnOffset());
     this.carMesh = createCarMesh(myId);
     this.bundle.scene.add(this.carMesh);
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
@@ -150,6 +133,32 @@ export class Game {
     };
 
     requestAnimationFrame(this.frame);
+  }
+
+  private installE2eSeam(): void {
+    if (!import.meta.env.VITE_E2E) return;
+
+    this.seam = new E2eSeam({
+      step: (dt, input) => this.car.update(dt, input),
+      localState: () => ({
+        position: { x: this.car.x, z: this.car.z },
+        rotation: this.car.heading,
+        velocity: this.car.speed,
+        checkpoint: this.lastMe?.nextCheckpoint ?? 0,
+        lap: {
+          laps: this.lastMe?.laps ?? 0,
+          active: this.lastMe?.lapStartT !== null && this.lastMe?.lapStartT !== undefined,
+          lastLapMs: this.lastMe?.lastLapMs ?? null,
+          bestLapMs: this.lastMe?.bestLapMs ?? null,
+        },
+      }),
+      remotePlayerIds: () => this.remote.playerIds(),
+    });
+    this.seam.install();
+  }
+
+  private spawnOffset(): number {
+    return this.seam ? 0 : (Math.random() - 0.5) * 7;
   }
 
   receiveReplayFrames(frames: ReplayFrame[]): void {
@@ -235,7 +244,7 @@ export class Game {
     if (this.seam?.driving) {
       const steps = this.seam.stepFrame();
       dt = steps * E2E_DT;
-      input = { throttle: 0, brake: 0, steer: 0 };
+      input = IDLE_INPUT;
     } else {
       input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
       this.car.advance(dt, input);
@@ -292,7 +301,7 @@ export class Game {
    */
   private respawn(): void {
     this.net.send({ type: "respawn" });
-    this.car.spawnAtSample(SPAWN_SAMPLE, this.seam ? 0 : (Math.random() - 0.5) * 7);
+    this.car.spawnAtSample(SPAWN_SAMPLE, this.spawnOffset());
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
     this.snapCameraBehindCar();

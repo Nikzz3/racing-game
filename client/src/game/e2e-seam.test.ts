@@ -8,7 +8,7 @@ const INPUTS: CarInput[] = [
   { throttle: 1, brake: 0, steer: 0 },
 ];
 
-function bindings(): E2eGameBindings {
+function createBindings(): E2eGameBindings {
   return {
     step: vi.fn(),
     localState: () => ({
@@ -23,8 +23,8 @@ function bindings(): E2eGameBindings {
 }
 
 describe("E2eSeam", () => {
-  it("consumes multiplier inputs per animation frame with dt pinned to 1/60", () => {
-    const game = bindings();
+  it("consumes multiple inputs per animation frame with dt pinned to 1/60", () => {
+    const game = createBindings();
     const seam = new E2eSeam(game);
     seam.inject(INPUTS, { stepsPerFrame: 2 });
 
@@ -40,11 +40,16 @@ describe("E2eSeam", () => {
 
   it("restarts cleanly and produces exactly equal trajectories for equal inputs", () => {
     let x = 0;
-    const game = bindings();
-    game.step = (_dt, input) => { x += input.throttle - input.brake; };
+    const game = createBindings();
+    game.step = (_dt, input) => {
+      x += input.throttle - input.brake;
+    };
     game.localState = () => ({
-      position: { x, z: x * 2 }, rotation: x / 3, velocity: x,
-      checkpoint: 0, lap: { laps: 0, active: false },
+      position: { x, z: x * 2 },
+      rotation: x / 3,
+      velocity: x,
+      checkpoint: 0,
+      lap: { laps: 0, active: false },
     });
     const seam = new E2eSeam(game);
 
@@ -59,14 +64,17 @@ describe("E2eSeam", () => {
   });
 
   it("surfaces local state, sorted remote ids, and lap submission completion", () => {
-    const game = bindings();
+    const game = createBindings();
     const seam = new E2eSeam(game);
     seam.inject([]);
     seam.recordLapSubmission(42_000, 1);
 
     expect(seam.state()).toMatchObject({
-      position: { x: 1, z: 2 }, rotation: 3, velocity: 4,
-      checkpoint: 1, lap: { laps: 0, active: true },
+      position: { x: 1, z: 2 },
+      rotation: 3,
+      velocity: 4,
+      checkpoint: 1,
+      lap: { laps: 0, active: true },
       remotePlayerIds: ["remote-a", "remote-b"],
       injectionFinished: true,
       lapSubmitted: true,
@@ -76,7 +84,7 @@ describe("E2eSeam", () => {
   });
 
   it("rejects invalid step multipliers", () => {
-    const seam = new E2eSeam(bindings());
+    const seam = new E2eSeam(createBindings());
     expect(() => seam.inject(INPUTS, { stepsPerFrame: 0 })).toThrow(/positive integer/);
     expect(() => seam.inject(INPUTS, { stepsPerFrame: 1.5 })).toThrow(/positive integer/);
   });
