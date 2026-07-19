@@ -59,7 +59,8 @@ export class CarPhysics {
   private touchingWall = false;
   private readonly tuning: DifficultyPhysics;
   private readonly samples: TrackSample[];
-  private _accum = 0;
+  /** Carried-over sub-step time (s) not yet consumed by a fixed physics step. */
+  private stepAccumulator = 0;
 
   constructor(difficulty: Difficulty = DEFAULT_DIFFICULTY, samples: TrackSample[]) {
     this.tuning = DIFFICULTY_PHYSICS[difficulty];
@@ -76,7 +77,7 @@ export class CarPhysics {
     this.heading = Math.atan2(s.dirX, s.dirZ);
     this.speed = 0;
     this.centerIndex = index;
-    this._accum = 0;
+    this.stepAccumulator = 0;
   }
 
   /**
@@ -87,10 +88,10 @@ export class CarPhysics {
    * that already supply a fixed dt.
    */
   advance(elapsed: number, input: CarInput): void {
-    this._accum += elapsed;
-    while (this._accum >= PHYSICS_STEP) {
+    this.stepAccumulator += elapsed;
+    while (this.stepAccumulator >= PHYSICS_STEP) {
       this.update(PHYSICS_STEP, input);
-      this._accum -= PHYSICS_STEP;
+      this.stepAccumulator -= PHYSICS_STEP;
     }
   }
 
