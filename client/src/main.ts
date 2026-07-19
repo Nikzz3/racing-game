@@ -61,9 +61,14 @@ net.onMessage((msg) => {
     case "leaderboard":
       lobby.setLeaderboard(msg.entries);
       break;
-    case "joined":
+    case "joined": {
       lobby.hide();
       game?.dispose();
+      const armed = lobby.armedPacer;
+      const matchingPacer =
+        armed && armed.track === msg.track && armed.difficulty === msg.difficulty
+          ? armed
+          : null;
       game = new Game(
         app,
         net,
@@ -71,16 +76,30 @@ net.onMessage((msg) => {
         msg.roomName,
         () => net.send({ type: "leaveRoom" }),
         msg.difficulty,
-        msg.track
+        msg.track,
+        matchingPacer
       );
+      if (matchingPacer) {
+        net.send({
+          type: "getReplay",
+          name: matchingPacer.name,
+          track: matchingPacer.track,
+          difficulty: matchingPacer.difficulty,
+        });
+      }
       break;
+    }
     case "left":
       game?.dispose();
       game = null;
       lobby.show();
       break;
     case "replay":
-      openReplay(msg.name, msg.track, msg.timeMs, msg.frames);
+      if (game) {
+        game.receiveReplayFrames(msg.frames);
+      } else {
+        openReplay(msg.name, msg.track, msg.timeMs, msg.frames);
+      }
       break;
     case "error":
       alert(msg.message);

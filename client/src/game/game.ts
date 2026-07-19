@@ -6,7 +6,9 @@ import {
   resolveTrack,
   TRACK_DIVISIONS,
   type Difficulty,
+  type LeaderboardEntry,
   type PlayerSnapshot,
+  type ReplayFrame,
   type ServerMessage,
   type Track,
 } from "@racing/shared";
@@ -19,6 +21,7 @@ import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
+import { PacerOverlay } from "./pacer";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
@@ -36,6 +39,7 @@ export class Game {
   private car: CarPhysics;
   private carMesh: THREE.Group;
   private remote: RemotePlayers;
+  private pacer: PacerOverlay | null = null;
   private sendTimer: ReturnType<typeof setInterval>;
   private running = true;
   private lastFrame = performance.now();
@@ -66,7 +70,8 @@ export class Game {
     roomName: string,
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
-    trackSlug: string = DEFAULT_TRACK_SLUG
+    trackSlug: string = DEFAULT_TRACK_SLUG,
+    armedPacer?: LeaderboardEntry | null
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpointSampleIndices = this.track.checkpoints.map(
@@ -85,6 +90,7 @@ export class Game {
     this.bundle.scene.add(this.carMesh);
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
+    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
@@ -111,6 +117,10 @@ export class Game {
     };
 
     requestAnimationFrame(this.frame);
+  }
+
+  receiveReplayFrames(frames: ReplayFrame[]): void {
+    this.pacer?.setFrames(frames, performance.now());
   }
 
   onMessage(msg: ServerMessage): void {
@@ -157,6 +167,7 @@ export class Game {
     animateCar(this.carMesh, this.car.speed, input.steer, dt);
 
     this.remote.update(dt);
+    this.pacer?.update(now, dt);
     this.updateCamera(dt);
     updateSun(this.bundle.sun, this.car.x, this.car.z);
 
@@ -231,6 +242,7 @@ export class Game {
     this.touch.dispose();
     window.removeEventListener("resize", this.onResize);
     this.remote.dispose();
+    this.pacer?.dispose();
     this.hud.dispose();
     this.bundle.renderer.dispose();
     this.container.remove();
