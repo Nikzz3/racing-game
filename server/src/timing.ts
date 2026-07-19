@@ -99,11 +99,16 @@ export function updateTiming(
   // Maintain rolling window only during an active lap.
   if (t.lapStartT !== null) {
     t.windowSamples.push({ t: now, x, z });
-    while (t.windowSamples.length > 1 && now - t.windowSamples[0].t > PLAUSIBILITY_WINDOW_MS) {
-      t.windowSamples.shift();
-    }
+    // Check the speed bound on the untrimmed window *before* trimming. Trimming
+    // first can collapse the buffer to a single sample whenever the gap since
+    // the previous sample exceeds the window width, which makes
+    // windowExceedsSpeedBound return false and lets a client pacing its updates
+    // more than a window apart teleport any distance per hop undetected.
     if (!t.lapImplausible && windowExceedsSpeedBound(t.windowSamples, now, maxSpeedMs)) {
       t.lapImplausible = true;
+    }
+    while (t.windowSamples.length > 1 && now - t.windowSamples[0].t > PLAUSIBILITY_WINDOW_MS) {
+      t.windowSamples.shift();
     }
   }
 
@@ -118,9 +123,12 @@ export function updateTiming(
       const lapTimeMs = now - t.lapStartT;
       t.laps += 1;
       t.lastLapMs = lapTimeMs;
-      const isPersonalBest = t.bestLapMs === null || lapTimeMs < t.bestLapMs;
-      if (isPersonalBest) t.bestLapMs = lapTimeMs;
       const isPlausible = !t.lapImplausible && lapTimeMs >= minLapMs;
+      // Only a plausible lap can become the personal best. An implausible lap
+      // must not overwrite bestLapMs or report isPersonalBest — that PB state is
+      // broadcast to the room even though the lap is barred from the leaderboard.
+      const isPersonalBest = isPlausible && (t.bestLapMs === null || lapTimeMs < t.bestLapMs);
+      if (isPersonalBest) t.bestLapMs = lapTimeMs;
       result = { lapTimeMs, isPersonalBest, isPlausible };
     }
     // Reset plausibility state for the new lap.

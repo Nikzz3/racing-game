@@ -141,4 +141,38 @@ describe("updateTiming — LapResult fields", () => {
     const result = updateTiming(t, x, z, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     expect(result).toBeNull();
   });
+
+  it("an implausible lap does not set isPersonalBest or overwrite bestLapMs", () => {
+    const t = createTiming();
+    const { x: x0, z: z0 } = atCP(0);
+    let now = 0;
+    // Teleport through the lap so the speed bound flags it implausible.
+    updateTiming(t, x0, z0, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    for (let k = 1; k < CHECKPOINTS.length; k++) {
+      now += 1;
+      const { x, z } = atCP(k);
+      updateTiming(t, x, z, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    }
+    now += 1;
+    const lap = updateTiming(t, x0, z0, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(lap).not.toBeNull();
+    expect(lap!.isPlausible).toBe(false);
+    // A cheated lap must not be advertised as a PB nor become the session best.
+    expect(lap!.isPersonalBest).toBe(false);
+    expect(t.bestLapMs).toBeNull();
+  });
+});
+
+describe("updateTiming — plausibility: sparse sampling", () => {
+  it("flags a single teleport even when samples are spaced beyond the window", () => {
+    const t = createTiming();
+    const { x: x0, z: z0 } = atCP(0);
+    // Start the lap at CP0.
+    updateTiming(t, x0, z0, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    // One hop, spaced longer than the 1 s plausibility window, covering an
+    // impossible distance. Trimming the window before the speed check would
+    // collapse it to a single sample and let this slip through undetected.
+    updateTiming(t, x0 + 100_000, z0, 1500, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(t.lapImplausible).toBe(true);
+  });
 });

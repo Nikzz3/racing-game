@@ -148,6 +148,19 @@ export class PacerOverlay {
 
   dispose(): void {
     this.scene.remove(this.mesh);
+    // Release the per-instance GPU resources createPacerMesh() allocated: the
+    // cloned car materials and the replay badge's SpriteMaterial + CanvasTexture.
+    // Shared geometry is owned by createCarMesh() and left untouched, so repeated
+    // arm/dismiss cycles don't leak GPU memory.
+    this.mesh.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of materials) m.dispose();
+      } else if (obj instanceof THREE.Sprite) {
+        obj.material.map?.dispose();
+        obj.material.dispose();
+      }
+    });
     this.frames = [];
     this.startMs = null;
   }

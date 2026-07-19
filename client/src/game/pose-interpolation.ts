@@ -13,6 +13,12 @@ export interface Pose {
  * No Three.js dependency — safe to share between ReplayViewer and the Pacer overlay.
  */
 export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
+  // Guard against empty frames: destructuring frames[i] below would otherwise
+  // throw. pacerPoseAt() screens this out, but ReplayViewer.applyFrameAt() can
+  // reach here directly with malformed/empty replay data from the server.
+  if (frames.length === 0) {
+    throw new Error("interpolatePose: frames must not be empty");
+  }
   let i = 0;
   while (i < frames.length - 2 && frames[i + 1][0] <= t) {
     i++;

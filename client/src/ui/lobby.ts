@@ -229,6 +229,19 @@ export class Lobby {
   }
 
   private renderBoard(): void {
+    // A pacer armed for one (track, difficulty) no longer applies once the
+    // player switches away from it — main.ts silently drops the mismatched
+    // pacer at race start, so clear it here and hide the banner rather than
+    // leave a stale pacer advertised. Both the track and difficulty click
+    // handlers route through renderBoard(), so this covers both.
+    if (
+      this._armedPacer &&
+      (this._armedPacer.track !== this.selectedTrack ||
+        this._armedPacer.difficulty !== this.selectedDifficulty)
+    ) {
+      this._armedPacer = null;
+      this.renderPacerBanner();
+    }
     const shown = this.entries.filter(
       (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
     );
