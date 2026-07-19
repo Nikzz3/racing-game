@@ -162,6 +162,100 @@ describe('Lobby room list tracks', () => {
   });
 });
 
+describe('Lobby Pacer arming UX', () => {
+  let parent: HTMLElement;
+  let lobby: Lobby;
+  let cbs: LobbyCallbacks;
+
+  const replayEntry: LeaderboardEntry = {
+    name: 'Alice', timeMs: 62340, date: '2026-01-01', hasReplay: true, difficulty: 'medium', track: 'sunset-ridge',
+  };
+  const noReplayEntry: LeaderboardEntry = {
+    name: 'Bob', timeMs: 65000, date: '2026-01-02', hasReplay: false, difficulty: 'medium', track: 'sunset-ridge',
+  };
+  const replayEntry2: LeaderboardEntry = {
+    name: 'Carol', timeMs: 63000, date: '2026-01-03', hasReplay: true, difficulty: 'medium', track: 'sunset-ridge',
+  };
+
+  beforeEach(() => {
+    parent = makeParent();
+    cbs = makeCallbacks();
+    lobby = new Lobby(parent, cbs);
+    lobby.setLeaderboard([replayEntry, noReplayEntry, replayEntry2]);
+  });
+  afterEach(() => parent.remove());
+
+  it('replay-bearing row shows a Pace button', () => {
+    const aliceRow = [...parent.querySelectorAll('.lb-list li')].find(li => li.textContent!.includes('Alice'));
+    expect(aliceRow!.querySelector('button[data-pace]')).not.toBeNull();
+  });
+
+  it('non-replay row shows no Pace button', () => {
+    const bobRow = [...parent.querySelectorAll('.lb-list li')].find(li => li.textContent!.includes('Bob'));
+    expect(bobRow!.querySelector('button[data-pace]')).toBeNull();
+  });
+
+  it('non-replay row shows no Watch button', () => {
+    const bobRow = [...parent.querySelectorAll('.lb-list li')].find(li => li.textContent!.includes('Bob'));
+    expect(bobRow!.querySelector('button[data-replay]')).toBeNull();
+  });
+
+  it('armed-pacer banner is hidden initially', () => {
+    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(true);
+  });
+
+  it('armedPacer is null initially', () => {
+    expect(lobby.armedPacer).toBeNull();
+  });
+
+  it('clicking Pace shows the armed-pacer banner', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(false);
+  });
+
+  it('banner shows the entry name after arming', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('Alice');
+  });
+
+  it('banner shows a formatted lap time after arming', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('1:02');
+  });
+
+  it('armedPacer getter returns the armed entry', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    expect(lobby.armedPacer).toEqual(replayEntry);
+  });
+
+  it('clicking the clear button hides the banner and nulls armedPacer', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    parent.querySelector<HTMLButtonElement>('.pacer-clear')!.click();
+    expect(parent.querySelector<HTMLElement>('.pacer-banner')!.hidden).toBe(true);
+    expect(lobby.armedPacer).toBeNull();
+  });
+
+  it('arming a new entry replaces the previous one', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Alice"]')!.click();
+    parent.querySelector<HTMLButtonElement>('button[data-pace="Carol"]')!.click();
+    expect(lobby.armedPacer).toEqual(replayEntry2);
+    expect(parent.querySelector('.pacer-banner')!.textContent).toContain('Carol');
+    expect(parent.querySelector('.pacer-banner')!.textContent).not.toContain('Alice');
+  });
+
+  it('Pace buttons are only shown for entries matching selected Track and Difficulty', () => {
+    const otherTrackEntry: LeaderboardEntry = {
+      name: 'Dave', timeMs: 60000, date: '2026-01-04', hasReplay: true, difficulty: 'medium', track: 'stormhaven',
+    };
+    lobby.setLeaderboard([replayEntry, otherTrackEntry]);
+    // Default view is sunset-ridge / medium — Dave (stormhaven) should not be visible
+    const paceButtons = parent.querySelectorAll('button[data-pace]');
+    const names = [...paceButtons].map(b => (b as HTMLButtonElement).dataset.pace);
+    expect(names).toContain('Alice');
+    expect(names).not.toContain('Dave');
+  });
+});
+
 describe('Lobby AI Record control', () => {
   let parent: HTMLElement;
   let cbs: LobbyCallbacks;

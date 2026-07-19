@@ -62,6 +62,8 @@ export class Lobby {
   /** Currently selected difficulty — drives both create-Room and leaderboard. */
   private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
+  private _armedPacer: LeaderboardEntry | null = null;
+  private pacerBanner: HTMLElement;
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
@@ -109,6 +111,10 @@ export class Lobby {
             <h2><i class="dot gold"></i>Best Laps — All Time</h2>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
+            <div class="pacer-banner" hidden>
+              <span class="pacer-banner-info"></span>
+              <button type="button" class="pacer-clear" aria-label="Clear pacer">&#x2715;</button>
+            </div>
             <div class="lb-ai-record" hidden>
               <button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button>
             </div>
@@ -122,6 +128,11 @@ export class Lobby {
     this.nameInput = this.root.querySelector<HTMLInputElement>("#driver-name")!;
     this.roomList = this.root.querySelector<HTMLElement>(".room-list")!;
     this.lbList = this.root.querySelector<HTMLElement>(".lb-list")!;
+    this.pacerBanner = this.root.querySelector<HTMLElement>(".pacer-banner")!;
+    this.pacerBanner.querySelector<HTMLButtonElement>(".pacer-clear")!.addEventListener("click", () => {
+      this._armedPacer = null;
+      this.renderPacerBanner();
+    });
 
     this.nameInput.value =
       localStorage.getItem(NAME_KEY) ?? `Racer${Math.floor(Math.random() * 900) + 100}`;
@@ -174,6 +185,16 @@ export class Lobby {
     this.lbList.addEventListener("click", (e) => {
       const replayBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
       if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.track!, replayBtn.dataset.diff as Difficulty);
+      const paceBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-pace]");
+      if (paceBtn) {
+        const entry = this.entries.find(
+          (en) => en.name === paceBtn.dataset.pace && en.track === paceBtn.dataset.track && en.difficulty === paceBtn.dataset.diff
+        );
+        if (entry) {
+          this._armedPacer = entry;
+          this.renderPacerBanner();
+        }
+      }
     });
 
     this.root.querySelector<HTMLElement>(".lb-ai-record")!.addEventListener("click", () => {
@@ -219,7 +240,7 @@ export class Lobby {
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Watch replay">▶</button>` : ""}
+          ${e.hasReplay ? `<button class="lb-replay" data-replay="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Watch replay">▶</button><button class="lb-pace" data-pace="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="Arm as Pacer">🏁</button>` : ""}
         </li>`
       )
       .join("");
@@ -227,6 +248,20 @@ export class Lobby {
     const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
     aiRecordEl.hidden =
       !TRACKS_WITH_POLICY.has(this.selectedTrack) || this.selectedDifficulty !== "medium";
+  }
+
+  get armedPacer(): LeaderboardEntry | null {
+    return this._armedPacer;
+  }
+
+  private renderPacerBanner(): void {
+    if (this._armedPacer) {
+      this.pacerBanner.hidden = false;
+      this.pacerBanner.querySelector<HTMLElement>(".pacer-banner-info")!.textContent =
+        `🏁 ${this._armedPacer.name} — ${formatMs(this._armedPacer.timeMs)}`;
+    } else {
+      this.pacerBanner.hidden = true;
+    }
   }
 
   show(): void {
