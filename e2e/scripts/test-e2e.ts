@@ -25,6 +25,15 @@ function stopContainer(): Promise<void> {
 
 async function getDatabaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
+    // The suite truncates rooms, best_laps, and replays between tests, so an
+    // external database must be explicitly marked disposable before we touch it.
+    if (process.env.E2E_DATABASE_ALLOW_TRUNCATE !== "1") {
+      throw new Error(
+        "E2E_DATABASE_URL is set, but the e2e suite erases the rooms, best_laps, and " +
+          "replays tables of whatever database it runs against. Set " +
+          "E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that database is disposable.",
+      );
+    }
     return process.env.E2E_DATABASE_URL;
   }
 
@@ -62,7 +71,9 @@ function runPlaywright(databaseUrl: string): Promise<number> {
       ["playwright", "test", "--config", "e2e/playwright.config.ts", ...process.argv.slice(2)],
       {
         stdio: "inherit",
-        env: { ...process.env, DATABASE_URL: databaseUrl },
+        // ALLOW_TRUNCATE is safe to grant here: either the wrapper provisioned a
+        // throwaway container, or the caller already opted in (checked above).
+        env: { ...process.env, DATABASE_URL: databaseUrl, E2E_DATABASE_ALLOW_TRUNCATE: "1" },
       },
     );
     playwrightProcess.once("error", reject);

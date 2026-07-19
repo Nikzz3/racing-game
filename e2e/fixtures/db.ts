@@ -50,6 +50,23 @@ interface WorkerFixtures {
   databasePool: Pool;
 }
 
+/**
+ * The suite erases rooms, best_laps, and replays, so it must never run against a
+ * database nobody marked disposable. scripts/test-e2e.ts grants the flag for the
+ * throwaway container it provisions (or after the caller opts in for an external
+ * E2E_DATABASE_URL); this backstop catches Playwright invocations that bypass
+ * the wrapper with a hand-set DATABASE_URL.
+ */
+function assertDatabaseIsDisposable(): void {
+  if (process.env.E2E_DATABASE_ALLOW_TRUNCATE !== "1") {
+    throw new Error(
+      "Refusing to truncate the e2e database: E2E_DATABASE_ALLOW_TRUNCATE=1 is not set. " +
+        "Run the suite through `npm run test:e2e`, or set the flag yourself only if " +
+        "every row in the target database is disposable.",
+    );
+  }
+}
+
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   databasePool: [
     async ({}, use) => {
@@ -57,10 +74,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       if (!connectionString) {
         throw new Error("DATABASE_URL must be set by the e2e test runner");
       }
+      assertDatabaseIsDisposable();
 
       const pool = new Pool({ connectionString });
       try {
         await use(pool);
+        // Don't leave the final test's writes behind after the run.
+        await pool.query("TRUNCATE rooms, best_laps, replays");
       } finally {
         await pool.end();
       }
@@ -72,6 +92,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   // If the suite becomes parallel, provision a separate database per worker.
   resetDatabase: [
     async ({ databasePool }, use) => {
+      assertDatabaseIsDisposable();
       await databasePool.query("TRUNCATE rooms, best_laps, replays");
       await use();
     },
