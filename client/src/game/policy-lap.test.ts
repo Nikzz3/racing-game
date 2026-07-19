@@ -15,6 +15,37 @@ function loadPolicy(): PolicyWeights {
   return JSON.parse(readFileSync(POLICY_PATH, 'utf-8')) as PolicyWeights;
 }
 
+describe('policyForward — VecNormalize clip_obs=5 parity', () => {
+  it('clips normalized obs to [-5, 5] before the first layer (mirrors VecNormalize clip_obs=5)', () => {
+    // Single-layer policy: identity normalization (mean=0, var=1), weight=0.1, bias=0.
+    // With no clip: policyForward([10]) → normalized=10 → 0.1*10=1.0 → final_clip(1.0)=1.0
+    // With correct clip: normalized=clip(10,-5,5)=5 → 0.1*5=0.5 → final_clip(0.5)=0.5
+    const policy: PolicyWeights = {
+      obs_mean: [0],
+      obs_var: [1],
+      net_arch: [1],
+      activation: 'tanh',
+      layers: [{ weight: [[0.1]], bias: [0] }],
+    };
+    expect(policyForward([10], policy)[0]).toBeCloseTo(0.5, 5);   // clipped to +5
+    expect(policyForward([-10], policy)[0]).toBeCloseTo(-0.5, 5); // clipped to -5
+    expect(policyForward([3], policy)[0]).toBeCloseTo(0.3, 5);    // within range, unchanged
+  });
+
+  it('does not clip when normalized value is within [-5, 5]', () => {
+    const policy: PolicyWeights = {
+      obs_mean: [0],
+      obs_var: [1],
+      net_arch: [1],
+      activation: 'tanh',
+      layers: [{ weight: [[0.1]], bias: [0] }],
+    };
+    // obs=5 normalizes to exactly 5 — should not be clamped
+    expect(policyForward([5], policy)[0]).toBeCloseTo(0.5, 5);
+    expect(policyForward([-5], policy)[0]).toBeCloseTo(-0.5, 5);
+  });
+});
+
 describe('policyForward', () => {
   it.skipIf(!policyExists)('returns a 2-element action given a 7-element obs', () => {
     const policy = loadPolicy();

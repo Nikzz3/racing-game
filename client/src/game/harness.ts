@@ -202,8 +202,13 @@ function computePolicyObs(car: CarPhysics, samples: TrackSample[]): number[] {
  * Applies VecNormalize stats then runs tanh-MLP + output clip.
  */
 export function policyForward(obs: number[], policy: PolicyWeights): number[] {
-  // Normalize observation using VecNormalize running stats
-  let x = obs.map((v, i) => (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8));
+  // Normalize observation using VecNormalize running stats, then clamp to [-5, 5]
+  // (mirrors VecNormalize clip_obs=5.0 in train.py — omitting this clamp feeds
+  // out-of-distribution values to the network when the car deviates sharply).
+  let x = obs.map((v, i) => {
+    const normalized = (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
+    return Math.max(-5, Math.min(5, normalized));
+  });
 
   const numLayers = policy.layers.length;
   for (let i = 0; i < numLayers; i++) {
