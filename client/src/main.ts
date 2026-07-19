@@ -74,10 +74,11 @@ net.onMessage((msg) => {
         armed && armed.track === msg.track && armed.difficulty === msg.difficulty
           ? armed
           : null;
-      // Defer construction until all GLB models have finished loading so the
-      // Game is never built with fallback procedural assets. If the player
-      // leaves before models resolve, the generation counter is bumped and this
-      // callback is a no-op.
+      // Defer construction until the model preload settles so a Game is never
+      // built with fallback procedural assets merely because a download is still
+      // in progress. (preloadModels() resolves even when loads fail; a failed
+      // model's fallback is the deliberate degraded mode.) If the player leaves
+      // before it settles, gameGen is bumped and this callback is a no-op.
       modelsReady.then(() => {
         if (gen !== gameGen) return;
         game = new Game(
