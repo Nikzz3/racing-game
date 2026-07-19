@@ -1,7 +1,7 @@
 // Parallel Planner with Review — four-phase orchestration loop
 //
 // This template drives a multi-phase workflow:
-//   Phase 1 (Plan):             An opus agent analyzes open issues, builds a
+//   Phase 1 (Plan):             A Codex agent analyzes open issues, builds a
 //                               dependency graph, and outputs a <plan> JSON
 //                               listing unblocked issues with branch names.
 //   Phase 2 (Execute + Review): For each issue, a sandbox is created via
@@ -46,6 +46,24 @@ const planSchema = z.object({
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
 
+// Agent providers can be tuned or switched independently for each phase.
+const PLANNER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const IMPLEMENTER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const REVIEWER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const MERGER_AGENT = sandcastle.codex("gpt-5.6-sol");
+
+// Share the host Codex login with every ephemeral Sandcastle container. Run
+// `codex login` on the host to create/refresh this subscription credential.
+const SANDBOX = podman({
+  mounts: [
+    {
+      hostPath: "~/.codex/auth.json",
+      sandboxPath: "/home/agent/.codex/auth.json",
+      readonly: true,
+    },
+  ],
+});
+
 // All completed branches are merged into this branch — never into master
 // directly. Promote integration to master yourself (e.g. via a PR) once
 // you've reviewed the accumulated work.
@@ -79,7 +97,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   // Phase 1: Plan
   //
-  // The planning agent (opus, for deeper reasoning) reads the open issue list,
+  // The planning agent reads the open issue list,
   // builds a dependency graph, and selects the issues that can be worked in
   // parallel right now (i.e., no blocking dependencies on other open issues).
   //
@@ -87,13 +105,13 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   const plan = await sandcastle.run({
     hooks,
-    sandbox: podman(),
+    sandbox: SANDBOX,
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
     // not write code. (Structured output requires maxIterations: 1.)
     maxIterations: 1,
-    // Opus for planning: dependency analysis benefits from deeper reasoning.
-    agent: sandcastle.claudeCode("claude-opus-4-8"),
+    // Use the same Codex model across planning, implementation, and review.
+    agent: PLANNER_AGENT,
     promptFile: "./.sandcastle/plan-prompt.md",
     // Extract and validate the <plan> JSON into a typed object. Throws
     // StructuredOutputError if the tag is missing, the JSON is malformed, or
@@ -131,7 +149,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
       const sandbox = await sandcastle.createSandbox({
         branch: issue.branch,
         baseBranch: INTEGRATION_BRANCH,
-        sandbox: podman(),
+        sandbox: SANDBOX,
         hooks,
         copyToWorktree,
       });
@@ -141,7 +159,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         const implement = await sandbox.run({
           name: "implementer",
           maxIterations: 100,
-          agent: sandcastle.claudeCode("claude-sonnet-4-6"),
+          agent: IMPLEMENTER_AGENT,
           promptFile: "./.sandcastle/implement-prompt.md",
           promptArgs: {
             TASK_ID: issue.id,
@@ -155,7 +173,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
           const review = await sandbox.run({
             name: "reviewer",
             maxIterations: 1,
-            agent: sandcastle.claudeCode("claude-opus-4-8"),
+            agent: REVIEWER_AGENT,
             promptFile: "./.sandcastle/review-prompt.md",
             promptArgs: {
               BRANCH: issue.branch,
@@ -225,10 +243,10 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // -------------------------------------------------------------------------
   await sandcastle.run({
     hooks,
-    sandbox: podman(),
+    sandbox: SANDBOX,
     name: "merger",
     maxIterations: 1,
-    agent: sandcastle.claudeCode("claude-opus-4-8"),
+    agent: MERGER_AGENT,
     promptFile: "./.sandcastle/merge-prompt.md",
     // Run the merger's worktree on the integration branch so merge commits
     // land there instead of on the host's current branch (master).
