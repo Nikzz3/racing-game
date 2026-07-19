@@ -21,6 +21,16 @@ export function isDifficulty(value: unknown): value is Difficulty {
   return value === "easy" || value === "medium" || value === "hard";
 }
 
+/**
+ * Top-speed cap per difficulty in m/s. Single source of truth used by client
+ * physics, server plausibility validation, and the RL harness.
+ */
+export const MAX_SPEED_MS: Record<Difficulty, number> = {
+  easy: 52,
+  medium: 90,
+  hard: 110,
+};
+
 /** Coerce arbitrary input to a valid difficulty, falling back to the default. */
 export function asDifficulty(value: unknown): Difficulty {
   return isDifficulty(value) ? value : DEFAULT_DIFFICULTY;

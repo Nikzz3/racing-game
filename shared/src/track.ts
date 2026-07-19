@@ -254,6 +254,17 @@ export function getTrack(slug: string): Track | undefined {
   return TRACKS.find((t) => t.id === slug);
 }
 
+/** Sum of straight-line segment lengths between consecutive centerline samples (meters). */
+export function trackLength(track: Track): number {
+  const s = track.samples;
+  let len = 0;
+  for (let i = 0; i < s.length; i++) {
+    const next = s[(i + 1) % s.length];
+    len += Math.hypot(next.x - s[i].x, next.z - s[i].z);
+  }
+  return len;
+}
+
 /** Coerce arbitrary input to a valid track slug, falling back to the default. */
 export function asTrackSlug(value: unknown): TrackSlug {
   if (typeof value === "string" && TRACKS.some((t) => t.id === value)) return value;
