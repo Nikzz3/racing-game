@@ -19,6 +19,8 @@ For each branch that was merged, close its issue using the following command:
 
 `gh issue close <ID> --comment "Completed by Sandcastle (merged to {{INTEGRATION_BRANCH}}, pending promotion to master)"`
 
+If there are any parent issues (such as PRD's) which closing the issue would complete, close those too.
+
 Here are all the issues:
 
 {{ISSUES}}
