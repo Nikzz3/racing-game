@@ -32,14 +32,17 @@ function openReplay(
   if (game) return;
   replay?.dispose();
   replay = null;
-  lobby.hide();
   const gen = ++replayGen;
   // Same rationale as the Game gate below: never build a ReplayViewer (and its
   // car mesh) while model preload is still in flight, or it's stuck with fallback
   // procedural assets. If already loaded, skip the microtask hop entirely so
-  // opening a replay after startup feels instant.
+  // opening a replay after startup feels instant. lobby.hide() is deferred to
+  // here (rather than called unconditionally up front) so a still-loading state
+  // leaves the player in the lobby instead of staring at a blank screen with no
+  // way to cancel; the fast path hides immediately, same as before.
   const build = () => {
     if (gen !== replayGen || game) return;
+    lobby.hide();
     replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
       replay = null;
       lobby.show();
