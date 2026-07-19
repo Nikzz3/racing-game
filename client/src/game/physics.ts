@@ -50,11 +50,25 @@ const STEER_RATE = 1.8; // rad/s at full grip
 export const PHYSICS_STEP = 1 / 120;
 
 /**
- * Maximum physics sub-steps drained per advance() call. Caps work on extreme
- * frame stalls ("spiral of death" guard): any accumulated time beyond
- * MAX_STEPS_PER_FRAME * PHYSICS_STEP is dropped rather than replayed.
+ * Maximum physics sub-steps drained per advance() call. This bounds the work a
+ * single frame can do so a burst of accumulated time is spread across several
+ * frames instead of stalling one. Steps still owed after the cap are *carried*
+ * in the accumulator (not dropped) and drained on subsequent frames, which is
+ * what lets the physics clock catch back up to wall-clock after a hitch. The
+ * actual spiral-of-death guard is MAX_ACCUMULATED_TIME, not this cap.
  */
 export const MAX_STEPS_PER_FRAME = 8;
+
+/**
+ * Maximum simulation backlog (seconds) the accumulator retains. Unconsumed time
+ * is normally carried so physics catches up over the next few frames, but after
+ * an extreme stall — a tab backgrounded for minutes, a debugger pause — carrying
+ * it all would trigger a huge catch-up burst (and desync further from the
+ * server's wall-clock lap timer anyway). We cap the backlog at 0.5 s (≈60 fixed
+ * steps, drained in a handful of MAX_STEPS_PER_FRAME-capped frames); time beyond
+ * that is intentionally, unavoidably dropped. This is the spiral-of-death guard.
+ */
+export const MAX_ACCUMULATED_TIME = 0.5;
 
 /** Cars are physically clamped just inside the barrier wall. */
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
@@ -92,27 +106,43 @@ export class CarPhysics {
   }
 
   /**
-   * Advance the simulation by `elapsed` seconds using fixed-step integration.
-   * Sub-step remainders are carried over to the next call, ensuring the total
-   * number of physics steps is deterministic regardless of frame rate.
-   * Use this from the game loop; call update() directly only from harness/tests
-   * that already supply a fixed dt.
+   * Advance the simulation by `elapsed` real wall-clock seconds using fixed-step
+   * integration. This is the ONLY entry point the render loop (game.ts) may call:
+   * feed it the raw frame delta, unclamped, so the physics clock tracks the
+   * server's Date.now()-based lap timer even across frame stalls.
+   *
+   * `elapsed` accumulates and is drained in whole PHYSICS_STEP chunks; the
+   * sub-step remainder plus any steps deferred by MAX_STEPS_PER_FRAME are carried
+   * to the next call, so the total step count is deterministic regardless of how
+   * the wall clock is chopped into frames. Backlog is capped at
+   * MAX_ACCUMULATED_TIME to bound catch-up after an extreme stall.
    */
   advance(elapsed: number, input: CarInput): void {
     this.stepAccumulator += elapsed;
+    // Bound the backlog: after an extreme stall, drop time beyond the cap rather
+    // than schedule an unbounded catch-up burst (spiral-of-death guard).
+    if (this.stepAccumulator > MAX_ACCUMULATED_TIME) {
+      this.stepAccumulator = MAX_ACCUMULATED_TIME;
+    }
+    // Drain whole fixed steps, capped per call. Steps still owed after the cap
+    // stay in the accumulator and run on subsequent frames (physics catches up),
+    // rather than being discarded — that is what keeps the physics clock aligned
+    // with wall-clock after a hitch.
     let steps = 0;
     while (this.stepAccumulator >= PHYSICS_STEP && steps < MAX_STEPS_PER_FRAME) {
       this.update(PHYSICS_STEP, input);
       this.stepAccumulator -= PHYSICS_STEP;
       steps++;
     }
-    // Drop any excess accumulated time beyond the cap so the accumulator cannot
-    // grow unboundedly across stall-heavy frames.
-    if (this.stepAccumulator > PHYSICS_STEP) {
-      this.stepAccumulator = this.stepAccumulator % PHYSICS_STEP;
-    }
   }
 
+  /**
+   * Integrate one raw-dt step. This is the variable-timestep core and is NOT
+   * frame-rate-independent on its own — feeding it wall-clock frame deltas is
+   * exactly the bug issue #39 fixed. Call it directly ONLY from fixed-dt callers:
+   * advance() (with PHYSICS_STEP) and the offline harness/replay/tests (with
+   * their own constant DT). Render-loop code must go through advance().
+   */
   update(dt: number, input: CarInput): void {
     // Throttle / brake / coast
     if (input.throttle > 0) this.speed += this.tuning.engineAccel * input.throttle * dt;
