@@ -27,6 +27,14 @@ import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type
 import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
+/**
+ * Upper bound (s) on the frame delta handed to the visual smoothing systems
+ * (camera follow, wheel-spin animation, remote interpolation, input ramp). The
+ * physics no longer uses this clamp — advance() gets the raw elapsed time and
+ * caps catch-up internally (see MAX_ACCUMULATED_TIME) — but the cosmetic lerps
+ * still want a bounded step so a stall can't make them jump.
+ */
+const MAX_VISUAL_DT = 0.05;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 /** Tolerance in samples before declaring a checkpoint missed (~1.5× CHECKPOINT_RADIUS). */
@@ -73,6 +81,15 @@ export class Game {
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
+  // requestAnimationFrame is paused while the tab is backgrounded, so the first
+  // frame after the tab is revealed would otherwise carry a wall-clock delta of
+  // however long the tab slept (minutes). advance()'s backlog cap already bounds
+  // the physics damage, but resetting lastFrame here keeps that first delta near
+  // zero so neither physics nor the visual lerps see a spurious huge step.
+  private onVisibility = () => {
+    if (!document.hidden) this.lastFrame = performance.now();
+  };
+
   constructor(
     parent: HTMLElement,
     private net: Net,
@@ -110,6 +127,7 @@ export class Game {
     this.input.onRespawn = () => this.respawn();
     this.input.attach();
     window.addEventListener("resize", this.onResize);
+    document.addEventListener("visibilitychange", this.onVisibility);
 
     this.snapCameraBehindCar();
 
@@ -207,11 +225,16 @@ export class Game {
 
   private frame = (now: number) => {
     if (!this.running) return;
-    const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
+    // Real wall-clock elapsed drives physics so the client's simulated distance
+    // stays aligned with the server's Date.now()-based lap clock across frame
+    // stalls (issue #39); advance() caps its own catch-up. A clamped copy drives
+    // the visual smoothing systems, which want a bounded step.
+    const elapsed = (now - this.lastFrame) / 1000;
     this.lastFrame = now;
+    const dt = Math.min(elapsed, MAX_VISUAL_DT);
 
     const input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
-    this.car.advance(dt, input);
+    this.car.advance(elapsed, input);
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
@@ -309,6 +332,7 @@ export class Game {
     this.input.detach();
     this.touch.dispose();
     window.removeEventListener("resize", this.onResize);
+    document.removeEventListener("visibilitychange", this.onVisibility);
     this.remote.dispose();
     this.pacer?.dispose();
     this.hud.dispose();
