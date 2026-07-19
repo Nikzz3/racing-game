@@ -38,6 +38,24 @@ describe("E2eSeam", () => {
     expect(seam.state()).toMatchObject({ frame: 3, injectionFinished: true });
   });
 
+  it("never advances more steps than the caller's real-time budget allows", () => {
+    const game = createBindings();
+    const seam = new E2eSeam(game);
+    seam.inject(INPUTS, { stepsPerFrame: 2 });
+
+    // A budget of 0 stalls the seam: simulating ahead of the server's wall clock
+    // is what makes laps come back implausible.
+    expect(seam.stepFrame(0)).toBe(0);
+    expect(game.step).not.toHaveBeenCalled();
+
+    expect(seam.stepFrame(1)).toBe(1);
+    expect(game.step).toHaveBeenCalledTimes(1);
+
+    // stepsPerFrame still caps a budget larger than the batch.
+    expect(seam.stepFrame(99)).toBe(2);
+    expect(game.step).toHaveBeenCalledTimes(3);
+  });
+
   it("restarts cleanly and produces exactly equal trajectories for equal inputs", () => {
     let x = 0;
     const game = createBindings();

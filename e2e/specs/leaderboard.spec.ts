@@ -11,7 +11,8 @@ test("a driven Plausible Lap persists between seeded rivals and survives reload"
   game,
   page,
 }) => {
-  const playerName = "Persistence Driver";
+  // Server truncates names to 16 chars (see server/src/index.ts), so stay within it.
+  const playerName = "Persist Driver";
   await db.seedBestLap({ name: "Alpha", timeMs: 1_000 });
   await db.seedBestLap({ name: "Omega", timeMs: 9_999_999, withReplay: true });
 

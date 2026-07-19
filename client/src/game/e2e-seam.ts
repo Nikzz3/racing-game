@@ -81,10 +81,16 @@ export class E2eSeam {
     return this.nextInputIndex < this.inputs.length;
   }
 
-  /** Advances at most one configured batch; the outer loop remains real-time rAF. */
-  stepFrame(): number {
+  /**
+   * Advances at most one configured batch, and no more than `budget` steps. The
+   * server times laps off its own wall clock, so simulating faster than real time
+   * yields a lap it rejects as implausible; the caller's budget holds the seam to
+   * real time.
+   */
+  stepFrame(budget = Number.POSITIVE_INFINITY): number {
+    const limit = Math.min(this.stepsPerFrame, budget);
     let steps = 0;
-    while (steps < this.stepsPerFrame && this.driving) {
+    while (steps < limit && this.driving) {
       const input = this.inputs[this.nextInputIndex];
       this.game.step(E2E_DT, input);
       this.nextInputIndex++;

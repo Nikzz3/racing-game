@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./specs",
   workers: 1,
+  // A full injected lap runs under software WebGL; game-seam.ts budgets 240s for it,
+  // which the 30s default test timeout would otherwise cut short.
+  timeout: 300_000,
   retries: process.env.CI ? 2 : 0,
   reporter: [["html", { outputFolder: "playwright-report" }]],
   use: {
@@ -20,7 +23,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: "npm run dev:e2e -w @racing/client -- --port 5174",
+      command: "npm run dev:e2e -w @racing/client -- --port 5174 --host 127.0.0.1",
       env: {
         VITE_SERVER_PORT: "8081",
       },

@@ -76,6 +76,10 @@ export class Game {
 
   private autopilot = false;
   private seam: E2eSeam | null = null;
+  /** Simulated ms accrued toward the next state send while the seam drives. */
+  private seamSendAccumMs = 0;
+  /** Real seconds accrued toward the seam's next fixed-step advance. */
+  private seamStepAccumS = 0;
 
   private onResize = () => {
     const { camera, renderer } = this.bundle;
@@ -135,14 +139,11 @@ export class Game {
     this.snapCameraBehindCar();
 
     this.sendTimer = setInterval(() => {
-      this.net.send({
-        type: "state",
-        x: this.car.x,
-        y: 0,
-        z: this.car.z,
-        rot: this.car.heading,
-        speed: this.car.speed,
-      });
+      // While the seam drives, physics advances per rendered frame rather than in
+      // real time, so frame() paces sends off simulated time instead (issue: fast
+      // renderers outran this timer and the server missed checkpoints).
+      if (this.seam?.driving) return;
+      this.sendState();
     }, SEND_INTERVAL_MS);
 
     // Debug/testing hook: drives the car around the track automatically.
@@ -201,6 +202,17 @@ export class Game {
     this.hud.setMyProgress(me);
     this.curLapBaseMs = me.lapStartT === null ? null : serverT - me.lapStartT;
     this.curLapReceivedAt = performance.now();
+  }
+
+  private sendState(): void {
+    this.net.send({
+      type: "state",
+      x: this.car.x,
+      y: 0,
+      z: this.car.z,
+      rot: this.car.heading,
+      speed: this.car.speed,
+    });
   }
 
   /**
@@ -269,9 +281,21 @@ export class Game {
     if (this.seam?.driving) {
       // The seam advances physics itself in fixed E2E_DT steps; the visual
       // systems below get the simulated time those steps covered.
-      const steps = this.seam.stepFrame();
+      // Spend real elapsed time as the step budget so the seam never simulates
+      // faster than the server's wall clock (which would make every lap implausible).
+      this.seamStepAccumS += elapsed;
+      const budget = Math.floor(this.seamStepAccumS / E2E_DT);
+      const steps = this.seam.stepFrame(budget);
+      this.seamStepAccumS -= steps * E2E_DT;
       dt = steps * E2E_DT;
       input = IDLE_INPUT;
+      // Keep the server's sample spacing tied to simulated time, so checkpoint
+      // proximity checks see the same density regardless of how fast we render.
+      this.seamSendAccumMs += dt * 1000;
+      while (this.seamSendAccumMs >= SEND_INTERVAL_MS) {
+        this.seamSendAccumMs -= SEND_INTERVAL_MS;
+        this.sendState();
+      }
     } else {
       input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
       this.car.advance(elapsed, input);
