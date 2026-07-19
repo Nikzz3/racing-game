@@ -1,12 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createTiming, respawnTiming, updateTiming } from "./timing";
-import { CHECKPOINT_RADIUS, MAX_SPEED_MS, SUNSET_RIDGE, trackLength } from "@racing/shared";
+import { MAX_SPEED_MS, minPlausibleLapMs, SUNSET_RIDGE } from "@racing/shared";
 
 const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
 const MAX_SPEED = MAX_SPEED_MS["medium"]; // 90 m/s
-const TRACK_LEN = trackLength(SUNSET_RIDGE);
-// Per ADR-0005: floor = 0.85 × track length / max speed
-const MIN_LAP_MS = Math.floor((0.85 * TRACK_LEN) / MAX_SPEED * 1000);
+const MIN_LAP_MS = minPlausibleLapMs(SUNSET_RIDGE, MAX_SPEED);
 
 function atCP(k: number) {
   return { x: CHECKPOINTS[k].x, z: CHECKPOINTS[k].z };

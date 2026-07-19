@@ -7,8 +7,8 @@ import {
   asDifficulty,
   asTrackSlug,
   MAX_SPEED_MS,
+  minPlausibleLapMs,
   parseClientMessage,
-  trackLength,
   type ClientMessage,
   type Difficulty,
   type ServerMessage,
@@ -88,7 +88,7 @@ async function handleState(
   const prevStart = player.timing.lapStartT;
   const now = Date.now();
   const maxSpeedMs = MAX_SPEED_MS[room.difficulty];
-  const minLapMs = Math.floor(0.85 * trackLength(room.track) / maxSpeedMs * 1000);
+  const minLapMs = minPlausibleLapMs(room.track, maxSpeedMs);
   const lap = updateTiming(player.timing, msg.x, msg.z, now, room.track.checkpoints, maxSpeedMs, minLapMs);
 
   if (!lap) {
