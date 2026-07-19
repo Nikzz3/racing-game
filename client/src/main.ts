@@ -81,16 +81,24 @@ net.onMessage((msg) => {
       // before it settles, gameGen is bumped and this callback is a no-op.
       modelsReady.then(() => {
         if (gen !== gameGen) return;
-        game = new Game(
-          app,
-          net,
-          myId,
-          msg.roomName,
-          () => net.send({ type: "leaveRoom" }),
-          msg.difficulty,
-          msg.track,
-          matchingPacer
-        );
+        try {
+          game = new Game(
+            app,
+            net,
+            myId,
+            msg.roomName,
+            () => net.send({ type: "leaveRoom" }),
+            msg.difficulty,
+            msg.track,
+            matchingPacer
+          );
+        } catch (err) {
+          // e.g. WebGL context creation failure; leaveRoom makes the server
+          // send "left", which restores the lobby.
+          console.error("Failed to start game", err);
+          net.send({ type: "leaveRoom" });
+          return;
+        }
         if (matchingPacer) {
           net.send({
             type: "getReplay",
