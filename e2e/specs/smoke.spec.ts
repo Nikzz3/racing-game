@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/db";
 
 test("lobby renders the driver name input", async ({ page }) => {
   await page.goto("/");
