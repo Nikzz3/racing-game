@@ -89,12 +89,12 @@ export function pacerCheckpointTimes(
  * Returns null if the Pacer never crossed that Checkpoint.
  */
 export function pacerDelta(
-  pacerCpTimes: (number | null)[],
+  pacerCrossingTimes: (number | null)[],
   cpIndex: number,
   driverLapTimeMs: number
 ): number | null {
-  if (cpIndex < 0 || cpIndex >= pacerCpTimes.length) return null;
-  const t = pacerCpTimes[cpIndex];
+  if (cpIndex < 0 || cpIndex >= pacerCrossingTimes.length) return null;
+  const t = pacerCrossingTimes[cpIndex];
   if (t === null) return null;
   return driverLapTimeMs - t;
 }
@@ -122,10 +122,19 @@ export class PacerOverlay {
     this.mesh.visible = false;
   }
 
-  /** Restart from frame zero (driver crossed the start line). */
-  restart(): void {
+  /**
+   * Restart from frame zero (driver crossed the start line). `nowMs` is the
+   * caller's rAF timestamp, so the Pacer's t=0 coincides exactly with the
+   * local lap clock's t=0.
+   */
+  restart(nowMs: number): void {
     if (!this.frames.length) return;
-    this.startMs = performance.now();
+    this.startMs = nowMs;
+  }
+
+  /** Whether the Pacer is actively playing back frames (started and has frames). */
+  isPlaying(): boolean {
+    return this.startMs !== null;
   }
 
   /** Hide after a Respawn; re-appears on the next restart() call. */

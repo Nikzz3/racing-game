@@ -176,12 +176,14 @@ export class Game {
     if (crossed === 0) {
       // Start line: begin a fresh local lap and race the recording from frame zero.
       this.localLapStartMs = nowMs;
-      this.pacer.restart();
+      this.pacer.restart(nowMs);
       return;
     }
     // Delta toast at intermediate checkpoints (no delta at CP0 — it is the lap
-    // boundary, where the driver already gets the lap-time toast).
-    if (this.localLapStartMs !== null) {
+    // boundary, where the driver already gets the lap-time toast). Suppressed
+    // when the Pacer isn't playing (e.g. replay frames arrived after this lap's
+    // start-line crossing), since there's no visible Pacer to compare against.
+    if (this.localLapStartMs !== null && this.pacer.isPlaying()) {
       const delta = pacerDelta(this.pacerCrossingTimes, crossed, nowMs - this.localLapStartMs);
       if (delta !== null) {
         const abs = (Math.abs(delta) / 1000).toFixed(1);
@@ -279,6 +281,10 @@ export class Game {
     this.pacer?.dispose();
     this.pacer = null;
     this.pacerCrossingTimes = [];
+    // Reset the local crossing detector too, so no stale state survives if a
+    // re-arm path is ever added.
+    this.localLapStartMs = null;
+    this.localNextCheckpoint = 0;
     this.hud.hidePacerChip();
   }
 
