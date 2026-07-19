@@ -1276,3 +1276,239 @@ input:focus {
     max-width: 120px;
   }
 }
+
+/* ============================================================================
+   PROTOTYPE — lobby Pacer-selection variants (?variant=A|B|C). Throwaway.
+   Pacer colour is violet: distinct from leaderboard gold and AI-record cyan.
+   ========================================================================== */
+
+:root {
+  --pacer: #c77dff;
+  --pacer-soft: rgba(199, 125, 255, 0.16);
+}
+
+/* --- shared: armed row highlight + badge (variants A & B) ----------------- */
+
+.lb-list li.pacer-armed {
+  border-left-color: var(--pacer);
+  background: linear-gradient(90deg, var(--pacer-soft), rgba(255, 255, 255, 0.02));
+}
+
+.lb-pacer-badge {
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #14101c;
+  background: var(--pacer);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+/* --- variant A: labelled row toggle + start echo -------------------------- */
+
+.lb-pace-btn {
+  align-self: center;
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  background: var(--pacer-soft);
+  border: 1px solid rgba(199, 125, 255, 0.45);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.lb-pace-btn:hover {
+  background: var(--pacer);
+  color: #14101c;
+}
+
+.lb-pace-btn.armed {
+  background: var(--pacer);
+  color: #14101c;
+}
+
+.create-form .vs-echo {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: rgba(20, 16, 28, 0.75);
+}
+
+/* --- variant B: pacer tray above the board -------------------------------- */
+
+.pacer-tray {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 9px 12px;
+  border: 1px dashed rgba(199, 125, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(199, 125, 255, 0.05);
+}
+
+.pacer-tray.filled {
+  border-style: solid;
+  background: var(--pacer-soft);
+}
+
+.pacer-tray-lead {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pacer);
+  flex: 0 0 auto;
+}
+
+.pacer-tray-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.pacer-tray-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.pacer-tray-who {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pacer-tray-time {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.pacer-tray-clear {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+}
+
+.pacer-tray-clear:hover {
+  background: var(--accent);
+}
+
+.lb-pick-btn {
+  align-self: center;
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--pacer);
+  background: transparent;
+  border: 1px solid rgba(199, 125, 255, 0.45);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.lb-pick-btn:hover {
+  background: var(--pacer-soft);
+}
+
+.lb-pick-btn.armed {
+  background: var(--pacer);
+  color: #14101c;
+  border-color: var(--pacer);
+}
+
+/* --- variant C: picker in the Starting Grid panel ------------------------- */
+
+.pacer-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(199, 125, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(199, 125, 255, 0.05);
+}
+
+.pacer-picker-lead {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pacer);
+}
+
+.pacer-select {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.pacer-select:disabled {
+  opacity: 0.5;
+}
+
+.pacer-select option {
+  background: #1a1626;
+}
+
+/* --- floating variant switcher (dev only) --------------------------------- */
+
+.proto-switcher {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #f2f4f8;
+  color: #14101c;
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.proto-switcher button {
+  color: #14101c;
+  background: rgba(0, 0, 0, 0.08);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.proto-switcher button:hover {
+  background: rgba(0, 0, 0, 0.2);
+}

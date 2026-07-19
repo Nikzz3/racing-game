@@ -10,6 +10,9 @@ import {
   type Difficulty,
 } from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
+// PROTOTYPE — three variants of the lobby Pacer-selection UI on this route,
+// switchable via ?variant=A|B|C. See prototype-switcher.ts. Throwaway.
+import { currentVariant, mountPrototypeSwitcher, type PacerVariant } from "./prototype-switcher";
 
 export interface LobbyCallbacks {
   onCreate: (roomName: string, track: TrackSlug, difficulty: Difficulty) => void;
@@ -74,7 +77,14 @@ export class Lobby {
   private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
   private _armedPacer: LeaderboardEntry | null = null;
-  private pacerBanner: HTMLElement;
+
+  // PROTOTYPE state
+  private variant: PacerVariant = currentVariant();
+  private createBtn: HTMLButtonElement;
+  private pacerTray: HTMLElement | null = null; // variant B
+  private pacerSelect: HTMLSelectElement | null = null; // variant C
+  /** Entries eligible as Pacers for the current (track, difficulty) — variant C option index. */
+  private eligible: LeaderboardEntry[] = [];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
@@ -86,6 +96,22 @@ export class Lobby {
       (d) =>
         `<button type="button" class="diff-opt diff-${d}${d === this.selectedDifficulty ? " active" : ""}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
     ).join("");
+
+    // PROTOTYPE — per-variant extra chrome.
+    const trayHtml =
+      this.variant === "B"
+        ? `<div class="pacer-tray">
+             <span class="pacer-tray-lead">Pacer opponent</span>
+             <span class="pacer-tray-body"><span class="pacer-tray-empty">Pick a lap below to race its Pacer &darr;</span></span>
+           </div>`
+        : "";
+    const pickerHtml =
+      this.variant === "C"
+        ? `<label class="pacer-picker">
+             <span class="pacer-picker-lead">Pacer</span>
+             <select class="pacer-select"></select>
+           </label>`
+        : "";
 
     this.root.innerHTML = `
       <div class="lobby-scene" aria-hidden="true">
@@ -113,6 +139,7 @@ export class Lobby {
           <section class="panel-rooms">
             <h2><i class="dot"></i>Starting Grid</h2>
             <div class="room-list"></div>
+            ${pickerHtml}
             <form class="create-form">
               <input maxlength="24" placeholder="New room name" />
               <button type="submit">Create &amp; Race</button>
@@ -120,12 +147,9 @@ export class Lobby {
           </section>
           <section class="panel-laps">
             <h2><i class="dot gold"></i>Best Laps — All Time</h2>
+            ${trayHtml}
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
-            <div class="pacer-banner" hidden>
-              <span class="pacer-banner-info"></span>
-              <button type="button" class="pacer-clear" aria-label="Clear pacer">&#x2715;</button>
-            </div>
             <div class="lb-ai-record" hidden>
               <button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button>
             </div>
@@ -139,10 +163,22 @@ export class Lobby {
     this.nameInput = this.root.querySelector<HTMLInputElement>("#driver-name")!;
     this.roomList = this.root.querySelector<HTMLElement>(".room-list")!;
     this.lbList = this.root.querySelector<HTMLElement>(".lb-list")!;
-    this.pacerBanner = this.root.querySelector<HTMLElement>(".pacer-banner")!;
-    this.pacerBanner.querySelector<HTMLButtonElement>(".pacer-clear")!.addEventListener("click", () => {
-      this._armedPacer = null;
-      this.renderPacerBanner();
+    this.createBtn = this.root.querySelector<HTMLButtonElement>(".create-form button")!;
+    this.pacerTray = this.root.querySelector<HTMLElement>(".pacer-tray");
+    this.pacerSelect = this.root.querySelector<HTMLSelectElement>(".pacer-select");
+
+    this.pacerTray?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".pacer-tray-clear")) {
+        this._armedPacer = null;
+        this.renderPacerState();
+        this.renderBoard();
+      }
+    });
+
+    this.pacerSelect?.addEventListener("change", () => {
+      const idx = Number(this.pacerSelect!.value);
+      this._armedPacer = Number.isInteger(idx) && idx >= 0 ? (this.eligible[idx] ?? null) : null;
+      this.renderPacerState();
     });
 
     this.nameInput.value =
@@ -201,10 +237,10 @@ export class Lobby {
         const entry = this.entries.find(
           (en) => en.name === paceBtn.dataset.pace && en.track === paceBtn.dataset.track && en.difficulty === paceBtn.dataset.diff
         );
-        if (entry) {
-          this._armedPacer = entry;
-          this.renderPacerBanner();
-        }
+        // PROTOTYPE — the row button is a toggle: clicking the armed row clears it.
+        this._armedPacer = entry && entry !== this._armedPacer ? entry : null;
+        this.renderPacerState();
+        this.renderBoard();
       }
     });
 
@@ -214,6 +250,10 @@ export class Lobby {
 
     this.setRooms([]);
     this.setLeaderboard([]);
+
+    // PROTOTYPE — variant switcher pill; lives inside the lobby root so it
+    // hides during a race, and only takes arrow keys while the lobby shows.
+    mountPrototypeSwitcher(this.root, () => this.root.style.display !== "none");
   }
 
   get playerName(): string {
@@ -239,32 +279,48 @@ export class Lobby {
     this.renderBoard();
   }
 
+  /** PROTOTYPE — per-variant action buttons on a leaderboard row. */
+  private rowActionsHtml(e: LeaderboardEntry): string {
+    if (!e.hasReplay) return "";
+    const replay = entryButton(e, "lb-replay", "replay", "Watch replay", "▶");
+    const armed = this._armedPacer === e;
+    switch (this.variant) {
+      case "A":
+        return `${replay}${entryButton(e, `lb-pace-btn${armed ? " armed" : ""}`, "pace", armed ? "Clear Pacer" : "Race this lap as your Pacer", armed ? "✕ RACING" : "RACE ⚑")}`;
+      case "B":
+        return `${replay}${entryButton(e, `lb-pick-btn${armed ? " armed" : ""}`, "pace", armed ? "Remove from tray" : "Pick as Pacer opponent", armed ? "PICKED" : "+ PACE")}`;
+      case "C":
+        return replay; // selection lives in the Starting Grid picker
+    }
+  }
+
   private renderBoard(): void {
     // A pacer armed for one (track, difficulty) no longer applies once the
     // player switches away from it — main.ts silently drops the mismatched
-    // pacer at race start, so clear it here and hide the banner rather than
-    // leave a stale pacer advertised. Both the track and difficulty click
-    // handlers route through renderBoard(), so this covers both.
+    // pacer at race start, so clear it here rather than leave a stale pacer
+    // advertised. Both the track and difficulty click handlers route through
+    // renderBoard(), so this covers both.
     if (
       this._armedPacer &&
       (this._armedPacer.track !== this.selectedTrack ||
         this._armedPacer.difficulty !== this.selectedDifficulty)
     ) {
       this._armedPacer = null;
-      this.renderPacerBanner();
     }
     const shown = this.entries.filter(
       (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
     );
+    this.eligible = shown.filter((e) => e.hasReplay);
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
     empty.hidden = shown.length > 0;
     this.lbList.innerHTML = shown
       .map(
         (e) => `
-        <li>
+        <li class="${this._armedPacer === e ? "pacer-armed" : ""}">
           <span class="lb-name">${escapeHtml(e.name)}</span>
+          ${this._armedPacer === e ? `<span class="lb-pacer-badge">PACER</span>` : ""}
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `${entryButton(e, "lb-replay", "replay", "Watch replay", "▶")}${entryButton(e, "lb-pace", "pace", "Arm as Pacer", "🏁")}` : ""}
+          ${this.rowActionsHtml(e)}
         </li>`
       )
       .join("");
@@ -272,19 +328,37 @@ export class Lobby {
     const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
     aiRecordEl.hidden =
       !TRACKS_WITH_POLICY.has(this.selectedTrack) || this.selectedDifficulty !== "medium";
+    this.renderPacerState();
   }
 
   get armedPacer(): LeaderboardEntry | null {
     return this._armedPacer;
   }
 
-  private renderPacerBanner(): void {
-    if (this._armedPacer) {
-      this.pacerBanner.hidden = false;
-      this.pacerBanner.querySelector<HTMLElement>(".pacer-banner-info")!.textContent =
-        `🏁 ${this._armedPacer.name} — ${formatMs(this._armedPacer.timeMs)}`;
-    } else {
-      this.pacerBanner.hidden = true;
+  /** PROTOTYPE — reflect the armed Pacer into the variant's chrome. */
+  private renderPacerState(): void {
+    const p = this._armedPacer;
+    // Variant A: echo the opponent at the moment of race creation.
+    this.createBtn.innerHTML =
+      this.variant === "A" && p
+        ? `Create &amp; Race <span class="vs-echo">vs ${escapeHtml(p.name)} — ${formatMs(p.timeMs)}</span>`
+        : "Create &amp; Race";
+    // Variant B: fill or empty the tray.
+    if (this.pacerTray) {
+      this.pacerTray.classList.toggle("filled", !!p);
+      this.pacerTray.querySelector<HTMLElement>(".pacer-tray-body")!.innerHTML = p
+        ? `<span class="pacer-tray-who">⚑ ${escapeHtml(p.name)}</span><span class="pacer-tray-time">${formatMs(p.timeMs)}</span><button type="button" class="pacer-tray-clear" aria-label="Clear pacer">✕</button>`
+        : `<span class="pacer-tray-empty">Pick a lap below to race its Pacer ↓</span>`;
+    }
+    // Variant C: rebuild the picker's options for the current (track, difficulty).
+    if (this.pacerSelect) {
+      this.pacerSelect.innerHTML =
+        `<option value="-1">No Pacer — race alone</option>` +
+        this.eligible
+          .map((e, i) => `<option value="${i}">⚑ ${escapeHtml(e.name)} — ${formatMs(e.timeMs)}</option>`)
+          .join("");
+      this.pacerSelect.value = p ? String(this.eligible.indexOf(p)) : "-1";
+      this.pacerSelect.disabled = this.eligible.length === 0;
     }
   }
 
