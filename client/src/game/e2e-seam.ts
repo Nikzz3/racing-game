@@ -26,8 +26,12 @@ export interface E2eState extends E2eLocalState {
   serverLaps: number;
 }
 
+export interface E2eInjectionOptions {
+  stepsPerFrame?: number;
+}
+
 export interface E2eGameApi {
-  inject(inputs: CarInput[], options?: { stepsPerFrame?: number }): void;
+  inject(inputs: CarInput[], options?: E2eInjectionOptions): void;
   state(): E2eState;
   trajectory(): E2eLocalState[];
 }
@@ -59,14 +63,15 @@ export class E2eSeam {
     window.__game = this.api;
   }
 
-  inject(inputs: CarInput[], options: { stepsPerFrame?: number } = {}): void {
-    const multiplier = options.stepsPerFrame ?? 1;
-    if (!Number.isInteger(multiplier) || multiplier < 1) {
+  inject(inputs: CarInput[], options: E2eInjectionOptions = {}): void {
+    const stepsPerFrame = options.stepsPerFrame ?? 1;
+    if (!Number.isInteger(stepsPerFrame) || stepsPerFrame < 1) {
       throw new RangeError("stepsPerFrame must be a positive integer");
     }
+
     this.inputs = inputs.map((input) => ({ ...input }));
     this.nextInputIndex = 0;
-    this.stepsPerFrame = multiplier;
+    this.stepsPerFrame = stepsPerFrame;
     this.samples = [];
     this.serverLapMs = null;
     this.serverLaps = 0;
@@ -80,7 +85,8 @@ export class E2eSeam {
   stepFrame(): number {
     let steps = 0;
     while (steps < this.stepsPerFrame && this.driving) {
-      this.game.step(E2E_DT, this.inputs[this.nextInputIndex]);
+      const input = this.inputs[this.nextInputIndex];
+      this.game.step(E2E_DT, input);
       this.nextInputIndex++;
       steps++;
       this.samples.push(structuredClone(this.game.localState()));

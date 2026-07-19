@@ -1,9 +1,11 @@
 import type { Page } from "@playwright/test";
-import type { E2eLocalState, E2eState } from "../../client/src/game/e2e-seam";
+import type {
+  E2eInjectionOptions,
+  E2eLocalState,
+  E2eState,
+} from "../../client/src/game/e2e-seam";
 import lapInputs from "../lap-inputs.json" with { type: "json" };
 import { expect, test as dbTest } from "./db";
-
-export type GameState = E2eState;
 
 export interface CreateRaceOptions {
   playerName: string;
@@ -11,18 +13,18 @@ export interface CreateRaceOptions {
 }
 
 export interface DrivenLap {
-  state: GameState;
+  state: E2eState;
   /** Distinct server-observed Checkpoints, including CP0 at both lap boundaries. */
   checkpoints: number[];
 }
 
 export interface GameSeamFixture {
   createRace(options: CreateRaceOptions): Promise<void>;
-  driveLap(options?: { stepsPerFrame?: number }): Promise<DrivenLap>;
-  state(): Promise<GameState>;
+  driveLap(options?: E2eInjectionOptions): Promise<DrivenLap>;
+  state(): Promise<E2eState>;
 }
 
-async function seamState(page: Page): Promise<GameState> {
+async function seamState(page: Page): Promise<E2eState> {
   return page.evaluate(() => {
     if (!window.__game) throw new Error("window.__game is not installed");
     return window.__game.state();
@@ -45,11 +47,11 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
 
       async driveLap({ stepsPerFrame = 1 } = {}) {
         await page.evaluate(
-          ({ inputs, multiplier }) => {
+          ({ inputs, stepsPerFrame }) => {
             if (!window.__game) throw new Error("window.__game is not installed");
-            window.__game.inject(inputs, { stepsPerFrame: multiplier });
+            window.__game.inject(inputs, { stepsPerFrame });
           },
-          { inputs: lapInputs, multiplier: stepsPerFrame },
+          { inputs: lapInputs, stepsPerFrame },
         );
 
         await page.waitForFunction(

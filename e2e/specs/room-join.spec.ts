@@ -24,12 +24,7 @@ function playerIdFromWelcome(page: Page): Promise<string> {
 }
 
 async function remotePlayerIds(page: Page): Promise<string[] | undefined> {
-  return page.evaluate(
-    () =>
-      (window as unknown as {
-        __game?: { state(): { remotePlayerIds: string[] } };
-      }).__game?.state().remotePlayerIds,
-  );
+  return page.evaluate(() => window.__game?.state().remotePlayerIds);
 }
 
 test("two players create and join a Room and see each other", async ({ playerA, playerB }) => {
