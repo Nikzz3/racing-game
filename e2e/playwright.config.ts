@@ -20,6 +20,9 @@ export default defineConfig({
         PORT: "8081",
       },
       url: "http://127.0.0.1:8081",
+      // Surfaced in CI logs; a silent webServer timeout is undiagnosable otherwise.
+      stdout: "pipe",
+      stderr: "pipe",
       reuseExistingServer: !process.env.CI,
     },
     {
@@ -28,6 +31,8 @@ export default defineConfig({
         VITE_SERVER_PORT: "8081",
       },
       url: "http://127.0.0.1:5174",
+      stdout: "pipe",
+      stderr: "pipe",
       reuseExistingServer: !process.env.CI,
     },
   ],

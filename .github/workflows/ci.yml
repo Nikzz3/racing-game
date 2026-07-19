@@ -36,7 +36,9 @@ jobs:
         if: failure()
         with:
           name: playwright-report
-          path: playwright-report/
+          # outputFolder in playwright.config.ts resolves relative to that config's
+          # directory, so the report lands under e2e/, not the repo root.
+          path: e2e/playwright-report/
           retention-days: 7
 
   python-golden-tests:
