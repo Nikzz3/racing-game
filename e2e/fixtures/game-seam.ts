@@ -1,44 +1,9 @@
 import type { Page } from "@playwright/test";
+import type { E2eLocalState, E2eState } from "../../client/src/game/e2e-seam";
 import lapInputs from "../lap-inputs.json" with { type: "json" };
 import { expect, test as dbTest } from "./db";
 
-interface CarInput {
-  throttle: number;
-  brake: number;
-  steer: number;
-}
-
-export interface GameState {
-  position: { x: number; z: number };
-  rotation: number;
-  velocity: number;
-  checkpoint: number;
-  lap: {
-    laps: number;
-    active: boolean;
-    lastLapMs?: number | null;
-    bestLapMs?: number | null;
-  };
-  remotePlayerIds: string[];
-  frame: number;
-  inputCount: number;
-  injectionFinished: boolean;
-  lapSubmitted: boolean;
-  serverLapMs: number | null;
-  serverLaps: number;
-}
-
-interface BrowserGameApi {
-  inject(inputs: CarInput[], options?: { stepsPerFrame?: number }): void;
-  state(): GameState;
-  trajectory(): GameState[];
-}
-
-declare global {
-  interface Window {
-    __game?: BrowserGameApi;
-  }
-}
+export type GameState = E2eState;
 
 export interface CreateRaceOptions {
   playerName: string;
@@ -100,7 +65,7 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
 
         const [state, trajectory] = await Promise.all([
           seamState(page),
-          page.evaluate(() => window.__game?.trajectory() ?? []),
+          page.evaluate<E2eLocalState[]>(() => window.__game?.trajectory() ?? []),
         ]);
         const checkpoints = trajectory
           .map((sample) => sample.checkpoint)
