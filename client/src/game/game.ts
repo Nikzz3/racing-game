@@ -103,7 +103,7 @@ export class Game {
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     if (this.pacer) {
-      this.hud.showPacerChip(() => this.dismissPacer());
+      this.hud.showPacerChip(() => this.dismissPacer(), armedPacer?.name ?? "");
     }
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
@@ -186,8 +186,8 @@ export class Game {
     if (this.localLapStartMs !== null && this.pacer.isPlaying()) {
       const delta = pacerDelta(this.pacerCrossingTimes, crossed, nowMs - this.localLapStartMs);
       if (delta !== null) {
-        const abs = (Math.abs(delta) / 1000).toFixed(1);
-        this.hud.toast(delta < 0 ? `vs Pacer −${abs}s` : `vs Pacer +${abs}s`);
+        const abs = Math.round(Math.abs(delta));
+        this.hud.toast(delta < 0 ? `vs Pacer −${abs}ms` : `vs Pacer +${abs}ms`);
       }
     }
   }

@@ -32,6 +32,15 @@ describe("Hud pacer chip", () => {
     expect(chip!.classList.contains("visible")).toBe(true);
   });
 
+  it("chip renders inside the top-left HUD panel", () => {
+    expect(parent.querySelector(".hud-top-left .pacer-chip")).not.toBeNull();
+  });
+
+  it("chip shows the Pacer's name", () => {
+    hud.showPacerChip(vi.fn(), "ByteRacer");
+    expect(parent.querySelector(".pacer-chip")!.textContent).toContain("ByteRacer");
+  });
+
   it("chip shows a dismiss button with label ✕", () => {
     hud.showPacerChip(vi.fn());
     const btn = parent.querySelector<HTMLButtonElement>(".pacer-chip-dismiss");

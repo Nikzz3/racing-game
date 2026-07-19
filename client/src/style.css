@@ -953,6 +953,54 @@ input:focus {
   font-family: var(--mono);
 }
 
+/* Pacer chip — sits inside the top-left HUD box, under the lap/CP lines. */
+.pacer-chip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(199, 125, 255, 0.35);
+  border-radius: 6px;
+  background: var(--pacer-soft);
+}
+
+.pacer-chip.visible {
+  display: flex;
+}
+
+.pacer-chip-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--pacer);
+}
+
+.pacer-chip-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pacer-chip-dismiss {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+}
+
+.pacer-chip-dismiss:hover {
+  background: var(--accent);
+}
+
 .hud-leave {
   margin-top: 10px;
   background: rgba(255, 255, 255, 0.1);
