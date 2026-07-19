@@ -5,7 +5,7 @@ import {
   type Difficulty,
   type TrackSlug,
 } from "@racing/shared";
-import pg, { type QueryResult, type QueryResultRow } from "pg";
+import { Pool, type QueryResult, type QueryResultRow } from "pg";
 
 export interface SeedBestLapOptions {
   name: string;
@@ -26,7 +26,7 @@ interface TestFixtures {
 }
 
 interface WorkerFixtures {
-  databasePool: pg.Pool;
+  databasePool: Pool;
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -37,9 +37,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         throw new Error("DATABASE_URL must be set by the e2e test runner");
       }
 
-      const pool = new pg.Pool({ connectionString });
-      await use(pool);
-      await pool.end();
+      const pool = new Pool({ connectionString });
+      try {
+        await use(pool);
+      } finally {
+        await pool.end();
+      }
     },
     { scope: "worker" },
   ],

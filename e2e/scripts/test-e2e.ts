@@ -2,7 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
 const POSTGRES_IMAGE = "postgres:17-alpine";
-const POSTGRES_PORT = 5433;
+const POSTGRES_CONTAINER_PORT = 5432;
+const POSTGRES_HOST_PORT = 5433;
 const POSTGRES_CREDENTIALS = {
   user: "postgres",
   password: "postgres",
@@ -14,11 +15,15 @@ let playwrightProcess: ChildProcess | undefined;
 let receivedSignal: NodeJS.Signals | undefined;
 let stopPromise: Promise<void> | undefined;
 
-function stopContainer(): Promise<void> {
-  if (!postgresContainer) return Promise.resolve();
+function stopPostgresContainer(): Promise<void> {
+  if (!postgresContainer) {
+    return Promise.resolve();
+  }
+
   if (!stopPromise) {
     stopPromise = postgresContainer.stop().then(() => undefined);
   }
+
   return stopPromise;
 }
 
@@ -33,7 +38,7 @@ async function resolveDatabaseUrl(): Promise<string> {
       POSTGRES_PASSWORD: POSTGRES_CREDENTIALS.password,
       POSTGRES_DB: POSTGRES_CREDENTIALS.database,
     })
-    .withExposedPorts({ container: 5432, host: POSTGRES_PORT })
+    .withExposedPorts({ container: POSTGRES_CONTAINER_PORT, host: POSTGRES_HOST_PORT })
     .withWaitStrategy(Wait.forHealthCheck())
     .withHealthCheck({
       test: [
@@ -47,7 +52,7 @@ async function resolveDatabaseUrl(): Promise<string> {
     .start();
 
   const { user, password, database } = POSTGRES_CREDENTIALS;
-  return `postgres://${user}:${password}@${postgresContainer.getHost()}:${POSTGRES_PORT}/${database}`;
+  return `postgres://${user}:${password}@${postgresContainer.getHost()}:${POSTGRES_HOST_PORT}/${database}`;
 }
 
 function runPlaywright(databaseUrl: string): Promise<number> {
@@ -62,8 +67,12 @@ function runPlaywright(databaseUrl: string): Promise<number> {
     );
     playwrightProcess.once("error", reject);
     playwrightProcess.once("close", (code, signal) => {
-      if (signal) resolve(1);
-      else resolve(code ?? 1);
+      if (signal) {
+        resolve(1);
+        return;
+      }
+
+      resolve(code ?? 1);
     });
   });
 }
@@ -72,7 +81,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     receivedSignal = signal;
     playwrightProcess?.kill(signal);
-    void stopContainer();
+    void stopPostgresContainer();
   });
 }
 
@@ -81,6 +90,7 @@ try {
   const databaseUrl = await resolveDatabaseUrl();
   exitCode = receivedSignal ? 1 : await runPlaywright(databaseUrl);
 } finally {
-  await stopContainer();
+  await stopPostgresContainer();
 }
+
 process.exitCode = exitCode;
