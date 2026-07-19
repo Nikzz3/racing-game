@@ -74,7 +74,9 @@ export class Lobby {
   private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
   private _armedPacer: LeaderboardEntry | null = null;
-  private pacerBanner: HTMLElement;
+  private pacerSelect: HTMLSelectElement;
+  /** Entries selectable as Pacers for the current (track, difficulty); option values index into this. */
+  private eligible: LeaderboardEntry[] = [];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
@@ -113,6 +115,10 @@ export class Lobby {
           <section class="panel-rooms">
             <h2><i class="dot"></i>Starting Grid</h2>
             <div class="room-list"></div>
+            <label class="pacer-picker">
+              <span class="pacer-picker-lead">Pacer</span>
+              <select class="pacer-select"></select>
+            </label>
             <form class="create-form">
               <input maxlength="24" placeholder="New room name" />
               <button type="submit">Create &amp; Race</button>
@@ -122,10 +128,6 @@ export class Lobby {
             <h2><i class="dot gold"></i>Best Laps — All Time</h2>
             <ol class="lb-list"></ol>
             <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
-            <div class="pacer-banner" hidden>
-              <span class="pacer-banner-info"></span>
-              <button type="button" class="pacer-clear" aria-label="Clear pacer">&#x2715;</button>
-            </div>
             <div class="lb-ai-record" hidden>
               <button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button>
             </div>
@@ -139,10 +141,9 @@ export class Lobby {
     this.nameInput = this.root.querySelector<HTMLInputElement>("#driver-name")!;
     this.roomList = this.root.querySelector<HTMLElement>(".room-list")!;
     this.lbList = this.root.querySelector<HTMLElement>(".lb-list")!;
-    this.pacerBanner = this.root.querySelector<HTMLElement>(".pacer-banner")!;
-    this.pacerBanner.querySelector<HTMLButtonElement>(".pacer-clear")!.addEventListener("click", () => {
-      this._armedPacer = null;
-      this.renderPacerBanner();
+    this.pacerSelect = this.root.querySelector<HTMLSelectElement>(".pacer-select")!;
+    this.pacerSelect.addEventListener("change", () => {
+      this._armedPacer = this.eligible[Number(this.pacerSelect.value)] ?? null;
     });
 
     this.nameInput.value =
@@ -196,16 +197,6 @@ export class Lobby {
     this.lbList.addEventListener("click", (e) => {
       const replayBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
       if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.track!, replayBtn.dataset.diff as Difficulty);
-      const paceBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-pace]");
-      if (paceBtn) {
-        const entry = this.entries.find(
-          (en) => en.name === paceBtn.dataset.pace && en.track === paceBtn.dataset.track && en.difficulty === paceBtn.dataset.diff
-        );
-        if (entry) {
-          this._armedPacer = entry;
-          this.renderPacerBanner();
-        }
-      }
     });
 
     this.root.querySelector<HTMLElement>(".lb-ai-record")!.addEventListener("click", () => {
@@ -240,22 +231,23 @@ export class Lobby {
   }
 
   private renderBoard(): void {
-    // A pacer armed for one (track, difficulty) no longer applies once the
-    // player switches away from it — main.ts silently drops the mismatched
-    // pacer at race start, so clear it here and hide the banner rather than
-    // leave a stale pacer advertised. Both the track and difficulty click
-    // handlers route through renderBoard(), so this covers both.
-    if (
-      this._armedPacer &&
-      (this._armedPacer.track !== this.selectedTrack ||
-        this._armedPacer.difficulty !== this.selectedDifficulty)
-    ) {
-      this._armedPacer = null;
-      this.renderPacerBanner();
-    }
     const shown = this.entries.filter(
       (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
     );
+    this.eligible = shown.filter((e) => e.hasReplay);
+    // Re-anchor the armed Pacer against the entries now shown: the player may
+    // have switched (track, difficulty) away from it, or a leaderboard refresh
+    // may have replaced or dropped its entry. main.ts silently drops a
+    // mismatched pacer at race start, so reflect that here rather than
+    // advertise a stale one. Both the track and difficulty click handlers
+    // route through renderBoard(), so this covers both.
+    if (this._armedPacer) {
+      const p = this._armedPacer;
+      this._armedPacer =
+        this.eligible.find(
+          (e) => e.name === p.name && e.track === p.track && e.difficulty === p.difficulty
+        ) ?? null;
+    }
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
     empty.hidden = shown.length > 0;
     this.lbList.innerHTML = shown
@@ -264,7 +256,7 @@ export class Lobby {
         <li>
           <span class="lb-name">${escapeHtml(e.name)}</span>
           <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? `${entryButton(e, "lb-replay", "replay", "Watch replay", "▶")}${entryButton(e, "lb-pace", "pace", "Arm as Pacer", "🏁")}` : ""}
+          ${e.hasReplay ? entryButton(e, "lb-replay", "replay", "Watch replay", "▶") : ""}
         </li>`
       )
       .join("");
@@ -272,20 +264,24 @@ export class Lobby {
     const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
     aiRecordEl.hidden =
       !TRACKS_WITH_POLICY.has(this.selectedTrack) || this.selectedDifficulty !== "medium";
+    this.renderPacerPicker();
   }
 
   get armedPacer(): LeaderboardEntry | null {
     return this._armedPacer;
   }
 
-  private renderPacerBanner(): void {
-    if (this._armedPacer) {
-      this.pacerBanner.hidden = false;
-      this.pacerBanner.querySelector<HTMLElement>(".pacer-banner-info")!.textContent =
-        `🏁 ${this._armedPacer.name} — ${formatMs(this._armedPacer.timeMs)}`;
-    } else {
-      this.pacerBanner.hidden = true;
-    }
+  /** Rebuild the Pacer picker's options for the current (track, difficulty). */
+  private renderPacerPicker(): void {
+    this.pacerSelect.innerHTML =
+      `<option value="-1">No Pacer — race alone</option>` +
+      this.eligible
+        .map((e, i) => `<option value="${i}">⚑ ${escapeHtml(e.name)} — ${formatMs(e.timeMs)}</option>`)
+        .join("");
+    this.pacerSelect.value = this._armedPacer
+      ? String(this.eligible.indexOf(this._armedPacer))
+      : "-1";
+    this.pacerSelect.disabled = this.eligible.length === 0;
   }
 
   show(): void {

@@ -28,6 +28,14 @@ import { buildTrack } from "./trackMesh";
 import { E2eSeam, E2E_DT } from "./e2e-seam";
 
 const SEND_INTERVAL_MS = 50;
+/**
+ * Upper bound (s) on the frame delta handed to the visual smoothing systems
+ * (camera follow, wheel-spin animation, remote interpolation, input ramp). The
+ * physics no longer uses this clamp — advance() gets the raw elapsed time and
+ * caps catch-up internally (see MAX_ACCUMULATED_TIME) — but the cosmetic lerps
+ * still want a bounded step so a stall can't make them jump.
+ */
+const MAX_VISUAL_DT = 0.05;
 /** Spawn just before the start/finish line so crossing it starts the lap timer. */
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 /** Tolerance in samples before declaring a checkpoint missed (~1.5× CHECKPOINT_RADIUS). */
@@ -76,6 +84,15 @@ export class Game {
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
+  // requestAnimationFrame is paused while the tab is backgrounded, so the first
+  // frame after the tab is revealed would otherwise carry a wall-clock delta of
+  // however long the tab slept (minutes). advance()'s backlog cap already bounds
+  // the physics damage, but resetting lastFrame here keeps that first delta near
+  // zero so neither physics nor the visual lerps see a spurious huge step.
+  private onVisibility = () => {
+    if (!document.hidden) this.lastFrame = performance.now();
+  };
+
   constructor(
     parent: HTMLElement,
     private net: Net,
@@ -106,13 +123,14 @@ export class Game {
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     if (this.pacer) {
-      this.hud.showPacerChip(() => this.dismissPacer());
+      this.hud.showPacerChip(() => this.dismissPacer(), armedPacer?.name ?? "");
     }
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
     this.input.attach();
     window.addEventListener("resize", this.onResize);
+    document.addEventListener("visibilitychange", this.onVisibility);
 
     this.snapCameraBehindCar();
 
@@ -215,8 +233,8 @@ export class Game {
     if (this.localLapStartMs !== null && this.pacer.isPlaying()) {
       const delta = pacerDelta(this.pacerCrossingTimes, crossed, nowMs - this.localLapStartMs);
       if (delta !== null) {
-        const abs = (Math.abs(delta) / 1000).toFixed(1);
-        this.hud.toast(delta < 0 ? `vs Pacer −${abs}s` : `vs Pacer +${abs}s`);
+        const abs = Math.round(Math.abs(delta));
+        this.hud.toast(delta < 0 ? `vs Pacer −${abs}ms` : `vs Pacer +${abs}ms`);
       }
     }
   }
@@ -238,17 +256,25 @@ export class Game {
 
   private frame = (now: number) => {
     if (!this.running) return;
-    let dt = Math.min((now - this.lastFrame) / 1000, 0.05);
+    // Real wall-clock elapsed drives physics so the client's simulated distance
+    // stays aligned with the server's Date.now()-based lap clock across frame
+    // stalls (issue #39); advance() caps its own catch-up. A clamped copy drives
+    // the visual smoothing systems, which want a bounded step.
+    const elapsed = (now - this.lastFrame) / 1000;
     this.lastFrame = now;
+    // Not const: under the e2e seam the fixed-step count replaces the visual dt.
+    let dt = Math.min(elapsed, MAX_VISUAL_DT);
 
     let input: CarInput;
     if (this.seam?.driving) {
+      // The seam advances physics itself in fixed E2E_DT steps; the visual
+      // systems below get the simulated time those steps covered.
       const steps = this.seam.stepFrame();
       dt = steps * E2E_DT;
       input = IDLE_INPUT;
     } else {
       input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
-      this.car.advance(dt, input);
+      this.car.advance(elapsed, input);
     }
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
@@ -347,6 +373,7 @@ export class Game {
     this.input.detach();
     this.touch.dispose();
     window.removeEventListener("resize", this.onResize);
+    document.removeEventListener("visibilitychange", this.onVisibility);
     this.remote.dispose();
     this.pacer?.dispose();
     this.hud.dispose();

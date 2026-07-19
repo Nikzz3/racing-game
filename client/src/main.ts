@@ -2,7 +2,7 @@ import "./style.css";
 import { Net } from "./net";
 import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
-import { preloadModels } from "./game/models";
+import { areModelsLoaded, preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
 import { buildReferenceLap } from "./game/reference-lap";
 import type { ReplayFrame, TrackSlug } from "@racing/shared";
@@ -17,6 +17,10 @@ let replay: ReplayViewer | null = null;
 // Incremented on every "joined" and "left" so a modelsReady.then() callback can
 // detect whether it has been superseded before constructing the Game.
 let gameGen = 0;
+// Incremented on every openReplay() call and whenever a Game supersedes a pending
+// replay, so a deferred modelsReady.then() callback can detect it's stale before
+// constructing the ReplayViewer.
+let replayGen = 0;
 
 /** Swap the lobby for a replay viewer that restores the lobby when closed. */
 function openReplay(
@@ -27,11 +31,28 @@ function openReplay(
 ): void {
   if (game) return;
   replay?.dispose();
-  lobby.hide();
-  replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
-    replay = null;
-    lobby.show();
-  });
+  replay = null;
+  const gen = ++replayGen;
+  // Same rationale as the Game gate below: never build a ReplayViewer (and its
+  // car mesh) while model preload is still in flight, or it's stuck with fallback
+  // procedural assets. If already loaded, skip the microtask hop entirely so
+  // opening a replay after startup feels instant. lobby.hide() is deferred to
+  // here (rather than called unconditionally up front) so a still-loading state
+  // leaves the player in the lobby instead of staring at a blank screen with no
+  // way to cancel; the fast path hides immediately, same as before.
+  const build = () => {
+    if (gen !== replayGen || game) return;
+    lobby.hide();
+    replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
+      replay = null;
+      lobby.show();
+    });
+  };
+  if (areModelsLoaded()) {
+    build();
+  } else {
+    modelsReady.then(build);
+  }
 }
 
 const lobby = new Lobby(app, {
@@ -68,6 +89,9 @@ net.onMessage((msg) => {
       lobby.hide();
       game?.dispose();
       game = null;
+      replay?.dispose();
+      replay = null;
+      ++replayGen; // cancel any pending openReplay() construction; Game takes priority
       const gen = ++gameGen;
       const armed = lobby.armedPacer;
       const matchingPacer =
@@ -81,16 +105,24 @@ net.onMessage((msg) => {
       // before it settles, gameGen is bumped and this callback is a no-op.
       modelsReady.then(() => {
         if (gen !== gameGen) return;
-        game = new Game(
-          app,
-          net,
-          myId,
-          msg.roomName,
-          () => net.send({ type: "leaveRoom" }),
-          msg.difficulty,
-          msg.track,
-          matchingPacer
-        );
+        try {
+          game = new Game(
+            app,
+            net,
+            myId,
+            msg.roomName,
+            () => net.send({ type: "leaveRoom" }),
+            msg.difficulty,
+            msg.track,
+            matchingPacer
+          );
+        } catch (err) {
+          // e.g. WebGL context creation failure; leaveRoom makes the server
+          // send "left", which restores the lobby.
+          console.error("Failed to start game", err);
+          net.send({ type: "leaveRoom" });
+          return;
+        }
         if (matchingPacer) {
           net.send({
             type: "getReplay",
