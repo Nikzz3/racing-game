@@ -5,13 +5,16 @@
   "workspaces": [
     "shared",
     "server",
-    "client"
+    "client",
+    "e2e"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npx tsx e2e/scripts/test-e2e.ts",
     "sandcastle": "npx tsx .sandcastle/main.ts"
   },
   "devDependencies": {
@@ -20,7 +23,10 @@
     "typescript": "^6.0.3"
   },
   "allowScripts": {
-    "esbuild@0.28.1": true
+    "esbuild@0.28.1": true,
+    "cpu-features@0.0.10": true,
+    "protobufjs@7.6.5": true,
+    "ssh2@1.17.0": true
   },
   "dependencies": {
     "zod": "^4.4.3"

@@ -1,17 +1,28 @@
 name: CI
 
+# A branch with an open PR matches both `push` and `pull_request`, which used to run
+# the whole workflow twice per commit. Restricting `push` to master keeps trunk covered
+# while feature branches are covered exactly once, by their PR.
 on:
   push:
-    branches: ["**"]
+    branches: [master]
   pull_request:
     branches: ["**"]
+
+# Every job only reads the repo; none should hold a writable token, and test code
+# must not be able to lift credentials out of .git/config.
+permissions:
+  contents: read
 
 jobs:
   js-tests:
     name: TypeScript typecheck + vitest
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,11 +31,42 @@ jobs:
       - run: npm run typecheck
       - run: npm run test --workspaces --if-present
 
+  e2e:
+    name: Playwright e2e tests
+    runs-on: ubuntu-latest
+    # docs/agents/e2e-testing.md budgets 15 minutes of CI wall time for this suite.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The server serves client/dist and 404s without it, so Playwright's
+      # readiness probe on / never passes until the client is built.
+      - run: npm run build
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          # outputFolder in playwright.config.ts resolves relative to that config's
+          # directory, so the report lands under e2e/, not the repo root.
+          path: e2e/playwright-report/
+          retention-days: 7
+
   python-golden-tests:
     name: Python physics golden tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

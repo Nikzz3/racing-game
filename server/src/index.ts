@@ -222,6 +222,12 @@ const MIME_TYPES: Record<string, string> = {
 
 const httpServer = createServer((req, res) => {
   const urlPath = (req.url ?? "/").split("?")[0];
+  // Readiness probe. Static serving 404s until the client is built, and e2e serves the
+  // client from Vite instead, so liveness must not depend on CLIENT_DIST existing.
+  if (urlPath === "/healthz") {
+    res.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
+    return;
+  }
   const safePath = normalize(urlPath).replace(/^(\.\.[/\\])+/, "");
   let filePath = join(CLIENT_DIST, safePath);
   if (!filePath.startsWith(CLIENT_DIST)) {

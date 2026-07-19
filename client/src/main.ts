@@ -160,7 +160,7 @@ const modelsReady = preloadModels();
 
 try {
   const wsUrl = import.meta.env.DEV
-    ? `ws://${location.hostname}:8080`
+    ? `ws://${location.hostname}:${import.meta.env.VITE_SERVER_PORT ?? "8080"}`
     : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   await net.connect(wsUrl);
   await modelsReady;

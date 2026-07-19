@@ -22,3 +22,8 @@ See `docs/agents/triage-labels.md`.
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### End-to-end testing
+
+Playwright is the outside-in bookend and Vitest is the feature-development inner loop.
+See `docs/agents/e2e-testing.md` for suite conventions, commands, and growth rules.
