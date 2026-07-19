@@ -29,6 +29,7 @@ export class Hud {
         <div class="hud-room">${escapeHtml(roomName)}</div>
         <div class="hud-lap">LAP 0</div>
         <div class="hud-cp">CP 0/${checkpointCount}</div>
+        <div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer">✕</button></div>
         <button class="hud-leave">Leave race</button>
       </div>
       <div class="hud-panel hud-timer">
@@ -48,7 +49,6 @@ export class Hud {
       </div>
       <div class="offtrack-warn">OFF TRACK</div>
       <div class="cp-miss-warn">CHECKPOINT MISSED — LAP WON'T COUNT<br><span>Respawn or drive back through the gate</span></div>
-      <div class="pacer-chip"><span class="pacer-chip-label">PACER</span><button class="pacer-chip-dismiss">✕</button></div>
       <div class="toasts"></div>
     `;
     parent.appendChild(this.root);
@@ -112,8 +112,9 @@ export class Hud {
       .join("");
   }
 
-  showPacerChip(onDismiss: () => void): void {
+  showPacerChip(onDismiss: () => void, name = ""): void {
     this.pacerDismissEl.onclick = onDismiss;
+    this.pacerChipEl.querySelector<HTMLElement>(".pacer-chip-name")!.textContent = name;
     this.pacerChipEl.classList.add("visible");
   }
 
