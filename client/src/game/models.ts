@@ -28,6 +28,7 @@ const NATURE_MODELS = [
 ] as const;
 
 const models = new Map<string, THREE.Group>();
+let modelsLoaded = false;
 
 /**
  * Swaps PBR materials for Lambert. The scene's lighting is tuned for the flat low-poly
@@ -76,6 +77,12 @@ export async function preloadModels(): Promise<void> {
       }
     })
   );
+  modelsLoaded = true;
+}
+
+/** True once preloadModels() has resolved (whether or not every model loaded successfully). */
+export function areModelsLoaded(): boolean {
+  return modelsLoaded;
 }
 
 export function getModel(key: string): THREE.Group | null {

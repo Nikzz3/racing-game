@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { PlayerSnapshot } from "@racing/shared";
-import { animateCar, createCarMesh } from "./car";
+import { animateCar, createCarMesh, disposeCarMesh } from "./car";
 
 interface BufferedSnapshot {
   t: number; // local receive time (performance.now)
@@ -36,6 +36,7 @@ export class RemotePlayers {
     }
     for (const [id, mesh] of this.meshes) {
       if (!others.has(id)) {
+        disposeCarMesh(mesh);
         this.scene.remove(mesh);
         this.meshes.delete(id);
       }
@@ -81,7 +82,10 @@ export class RemotePlayers {
   }
 
   dispose(): void {
-    for (const mesh of this.meshes.values()) this.scene.remove(mesh);
+    for (const mesh of this.meshes.values()) {
+      disposeCarMesh(mesh);
+      this.scene.remove(mesh);
+    }
     this.meshes.clear();
     this.snapshots = [];
   }

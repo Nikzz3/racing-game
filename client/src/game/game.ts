@@ -23,7 +23,7 @@ import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
-import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
+import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
@@ -211,7 +211,7 @@ export class Game {
     this.lastFrame = now;
 
     const input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
-    this.car.update(dt, input);
+    this.car.advance(dt, input);
 
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
@@ -312,7 +312,7 @@ export class Game {
     this.remote.dispose();
     this.pacer?.dispose();
     this.hud.dispose();
-    this.bundle.renderer.dispose();
+    disposeRenderer(this.bundle.renderer);
     this.container.remove();
     delete (window as unknown as Record<string, unknown>).__autopilot;
   }

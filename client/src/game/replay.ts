@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { ReplayFrame, TrackSlug } from "@racing/shared";
 import { formatMs, escapeHtml } from "../util";
 import { animateCar, createCarMesh } from "./car";
-import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
+import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { resolveTrack } from "@racing/shared";
 import { buildTrack } from "./trackMesh";
 import { interpolatePose } from "./pose-interpolation";
@@ -131,7 +131,7 @@ export class ReplayViewer {
   dispose(): void {
     this.running = false;
     window.removeEventListener("resize", this.onResize);
-    this.bundle.renderer.dispose();
+    disposeRenderer(this.bundle.renderer);
     this.container.remove();
     this.overlay.remove();
   }

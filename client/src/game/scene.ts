@@ -70,6 +70,18 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   return { scene, camera, renderer, sun };
 }
 
+/**
+ * Properly tears down a WebGLRenderer: forceContextLoss() actively relinquishes
+ * the WebGL context so the browser can reclaim it immediately, then dispose()
+ * cleans up Three.js's internal caches. Without forceContextLoss(), the context
+ * stays alive until GC, exhausting the browser's ~16-context limit on repeated
+ * room joins/replays.
+ */
+export function disposeRenderer(renderer: THREE.WebGLRenderer): void {
+  renderer.forceContextLoss();
+  renderer.dispose();
+}
+
 /** Keeps the shadow camera centered on the action so shadows stay crisp everywhere on the map. */
 export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): void {
   sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z);
