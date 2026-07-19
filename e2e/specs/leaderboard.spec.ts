@@ -1,7 +1,10 @@
+import type { Page } from "@playwright/test";
+import { DEFAULT_DIFFICULTY, DEFAULT_TRACK_SLUG } from "@racing/shared";
 import { expect, test } from "../fixtures/game-seam";
 
-const leaderboardNames = (page: import("@playwright/test").Page) =>
-  page.locator(".lb-list .lb-name").allTextContents();
+function leaderboardNames(page: Page): Promise<string[]> {
+  return page.locator(".lb-list .lb-name").allTextContents();
+}
 
 test("a driven Plausible Lap persists between seeded rivals and survives reload", async ({
   db,
@@ -17,7 +20,7 @@ test("a driven Plausible Lap persists between seeded rivals and survives reload"
 
   const persisted = await db.query<{ name: string }>(
     "SELECT name FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
-    [playerName, "sunset-ridge", "medium"],
+    [playerName, DEFAULT_TRACK_SLUG, DEFAULT_DIFFICULTY],
   );
   expect(persisted.rows).toEqual([{ name: playerName }]);
   await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
@@ -45,13 +48,11 @@ test("a slower driven lap does not overwrite the driver's better time", async ({
   await db.seedBestLap({ name: playerName, timeMs: 1_000 });
   await game.createRace({ playerName, roomName: "Personal Best Room" });
 
-  // If the suite's lap budget becomes costly, this conditional-upsert case can
-  // move to a server/DB integration test; for now it deliberately stays end-to-end.
   await game.driveLap();
 
   const persisted = await db.query<{ time_ms: number }>(
     "SELECT time_ms FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
-    [playerName, "sunset-ridge", "medium"],
+    [playerName, DEFAULT_TRACK_SLUG, DEFAULT_DIFFICULTY],
   );
   expect(persisted.rows).toEqual([{ time_ms: 1_000 }]);
 });
