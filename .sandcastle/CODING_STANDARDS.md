@@ -14,10 +14,11 @@
 
 ## Testing
 
-<!-- Example:
-- Every public function must have at least one test
-- Use descriptive test names that explain the expected behavior
--->
+- Follow `docs/agents/e2e-testing.md` for the outside-in workflow and suite conventions.
+- Use `.spec.ts` for Playwright e2e tests and `.test.ts` for Vitest unit tests.
+- Extend an existing e2e journey unless the feature introduces a genuinely new flow.
+- Keep e2e coverage focused on integration; logic reachable by a unit test belongs in
+  Vitest.
 
 ## Architecture
 
