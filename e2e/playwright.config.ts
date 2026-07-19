@@ -21,6 +21,9 @@ export default defineConfig({
     },
     {
       command: "npm run dev:e2e -w @racing/client -- --port 5174",
+      env: {
+        VITE_SERVER_PORT: "8081",
+      },
       url: "http://127.0.0.1:5174",
       reuseExistingServer: !process.env.CI,
     },
