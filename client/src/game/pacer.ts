@@ -39,11 +39,23 @@ export class PacerOverlay {
     scene.add(this.mesh);
   }
 
-  /** Load replay frames; `startMs` anchors elapsed-time calculation (use performance.now()). */
-  setFrames(frames: ReplayFrame[], startMs: number): void {
+  /** Load replay frames. Playback stays hidden until restart() is called. */
+  setFrames(frames: ReplayFrame[]): void {
     this.frames = frames;
-    this.startMs = startMs;
-    this.mesh.visible = frames.length > 0;
+    this.startMs = null;
+    this.mesh.visible = false;
+  }
+
+  /** Restart from frame zero (driver crossed the start line). */
+  restart(): void {
+    if (!this.frames.length) return;
+    this.startMs = performance.now();
+  }
+
+  /** Hide after a Respawn; re-appears on the next restart() call. */
+  onRespawn(): void {
+    this.startMs = null;
+    this.mesh.visible = false;
   }
 
   update(nowMs: number, dt: number): void {

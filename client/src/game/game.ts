@@ -51,6 +51,10 @@ export class Game {
   private curLapReceivedAt = 0;
 
   private lastMe: PlayerSnapshot | null = null;
+  // Previous snapshot's lapStartT, used to detect start-line crossings for the
+  // Pacer. undefined = no snapshot received yet (see the skip-first-snapshot
+  // guard in applyMyProgress).
+  private prevLapStartT: number | null | undefined = undefined;
   /** Sample index of each checkpoint, pre-computed for checkpointMissed. */
   private checkpointSampleIndices: number[];
 
@@ -92,6 +96,9 @@ export class Game {
     this.remote = new RemotePlayers(this.bundle.scene, myId);
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
+    if (this.pacer) {
+      this.hud.showPacerChip(() => this.dismissPacer());
+    }
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
@@ -120,7 +127,7 @@ export class Game {
   }
 
   receiveReplayFrames(frames: ReplayFrame[]): void {
-    this.pacer?.setFrames(frames, performance.now());
+    this.pacer?.setFrames(frames);
   }
 
   onMessage(msg: ServerMessage): void {
@@ -139,6 +146,18 @@ export class Game {
     this.hud.setMyProgress(me);
     this.curLapBaseMs = me.lapStartT === null ? null : serverT - me.lapStartT;
     this.curLapReceivedAt = performance.now();
+
+    // Detect start-line crossing: lapStartT changes to a new non-null value.
+    // Skip the very first snapshot (prevLapStartT === undefined) so joining
+    // mid-lap doesn't immediately restart the Pacer.
+    if (
+      this.prevLapStartT !== undefined &&
+      me.lapStartT !== null &&
+      me.lapStartT !== this.prevLapStartT
+    ) {
+      this.pacer?.restart();
+    }
+    this.prevLapStartT = me.lapStartT;
   }
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
@@ -218,6 +237,13 @@ export class Game {
     this.snapCameraBehindCar();
     this.curLapBaseMs = null;
     this.hud.setCurrentLap(null);
+    this.pacer?.onRespawn();
+  }
+
+  private dismissPacer(): void {
+    this.pacer?.dispose();
+    this.pacer = null;
+    this.hud.hidePacerChip();
   }
 
   private autopilotInput(): CarInput {
