@@ -41,6 +41,21 @@ const DRAG = 0.01; // quadratic drag coefficient
 const GRASS_DECEL = 110; // extra slowdown while above grass speed limit
 const STEER_RATE = 1.8; // rad/s at full grip
 
+/**
+ * Fixed physics integration step. All simulation advances are quantised to
+ * this size so the trajectory is frame-rate-independent: a 30 fps client and
+ * a 144 fps client accumulate the same number of steps per unit time and
+ * therefore follow identical paths for identical inputs.
+ */
+export const PHYSICS_STEP = 1 / 120;
+
+/**
+ * Maximum physics sub-steps drained per advance() call. Caps work on extreme
+ * frame stalls ("spiral of death" guard): any accumulated time beyond
+ * MAX_STEPS_PER_FRAME * PHYSICS_STEP is dropped rather than replayed.
+ */
+export const MAX_STEPS_PER_FRAME = 8;
+
 /** Cars are physically clamped just inside the barrier wall. */
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
 
@@ -55,6 +70,8 @@ export class CarPhysics {
   private touchingWall = false;
   private readonly tuning: DifficultyPhysics;
   private readonly samples: TrackSample[];
+  /** Carried-over sub-step time (s) not yet consumed by a fixed physics step. */
+  private stepAccumulator = 0;
 
   constructor(difficulty: Difficulty = DEFAULT_DIFFICULTY, samples: TrackSample[]) {
     this.tuning = DIFFICULTY_PHYSICS[difficulty];
@@ -71,6 +88,29 @@ export class CarPhysics {
     this.heading = Math.atan2(s.dirX, s.dirZ);
     this.speed = 0;
     this.centerIndex = index;
+    this.stepAccumulator = 0;
+  }
+
+  /**
+   * Advance the simulation by `elapsed` seconds using fixed-step integration.
+   * Sub-step remainders are carried over to the next call, ensuring the total
+   * number of physics steps is deterministic regardless of frame rate.
+   * Use this from the game loop; call update() directly only from harness/tests
+   * that already supply a fixed dt.
+   */
+  advance(elapsed: number, input: CarInput): void {
+    this.stepAccumulator += elapsed;
+    let steps = 0;
+    while (this.stepAccumulator >= PHYSICS_STEP && steps < MAX_STEPS_PER_FRAME) {
+      this.update(PHYSICS_STEP, input);
+      this.stepAccumulator -= PHYSICS_STEP;
+      steps++;
+    }
+    // Drop any excess accumulated time beyond the cap so the accumulator cannot
+    // grow unboundedly across stall-heavy frames.
+    if (this.stepAccumulator > PHYSICS_STEP) {
+      this.stepAccumulator = this.stepAccumulator % PHYSICS_STEP;
+    }
   }
 
   update(dt: number, input: CarInput): void {
