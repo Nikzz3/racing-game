@@ -6,8 +6,7 @@ vi.mock("./car", async (importOriginal) => {
   return { ...original, createCarMesh: vi.fn(), animateCar: vi.fn() };
 });
 
-import { createCarMesh } from "./car";
-import { disposeCarMesh } from "./car";
+import { createCarMesh, disposeCarMesh } from "./car";
 import { RemotePlayers } from "./remote";
 
 function makeSnapshot(id: string, name = "Player") {
