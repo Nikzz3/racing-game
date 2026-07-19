@@ -51,9 +51,9 @@ export class Game {
   private curLapReceivedAt = 0;
 
   private lastMe: PlayerSnapshot | null = null;
-  // Tracks lapStartT across snapshots to detect start-line crossings for the Pacer.
-  // undefined = no snapshot received yet; skips the first snapshot so joining
-  // mid-lap does not immediately restart the Pacer.
+  // Previous snapshot's lapStartT, used to detect start-line crossings for the
+  // Pacer. undefined = no snapshot received yet (see the skip-first-snapshot
+  // guard in applyMyProgress).
   private prevLapStartT: number | null | undefined = undefined;
   /** Sample index of each checkpoint, pre-computed for checkpointMissed. */
   private checkpointSampleIndices: number[];
