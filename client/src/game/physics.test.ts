@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_DIFFICULTY, SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
-import { CarPhysics, PHYSICS_STEP } from "./physics";
+import { CarPhysics, PHYSICS_STEP, MAX_STEPS_PER_FRAME } from "./physics";
 import type { CarInput } from "./input";
 
 const FULL_THROTTLE: CarInput = { throttle: 1, brake: 0, steer: 0 };
@@ -96,5 +96,23 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
     expect(car1.speed).toBeCloseTo(car2.speed, 10);
     expect(car1.x).toBeCloseTo(car2.x, 10);
     expect(car1.z).toBeCloseTo(car2.z, 10);
+  });
+
+  it("substep cap: a huge frame delta runs at most MAX_STEPS_PER_FRAME steps", () => {
+    // A 10-second stall would normally drain 10 / PHYSICS_STEP = 1200 steps.
+    // The cap should clamp it to MAX_STEPS_PER_FRAME steps.
+    const car = new CarPhysics("medium", SUNSET_RIDGE.samples);
+    car.spawnAtSample(TRACK_DIVISIONS - 14, 0);
+
+    // Advance one capped step first so stepAccumulator carries a known residual.
+    const cappedCar = new CarPhysics("medium", SUNSET_RIDGE.samples);
+    cappedCar.spawnAtSample(TRACK_DIVISIONS - 14, 0);
+    cappedCar.advance(MAX_STEPS_PER_FRAME * PHYSICS_STEP, FULL_THROTTLE);
+
+    // A 10 s stall should produce the same result as MAX_STEPS_PER_FRAME steps.
+    car.advance(10, FULL_THROTTLE);
+    expect(car.speed).toBeCloseTo(cappedCar.speed, 6);
+    expect(car.x).toBeCloseTo(cappedCar.x, 6);
+    expect(car.z).toBeCloseTo(cappedCar.z, 6);
   });
 });

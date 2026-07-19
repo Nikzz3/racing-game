@@ -45,6 +45,13 @@ const STEER_RATE = 1.8; // rad/s at full grip
  */
 export const PHYSICS_STEP = 1 / 120;
 
+/**
+ * Maximum physics sub-steps drained per advance() call. Caps work on extreme
+ * frame stalls ("spiral of death" guard): any accumulated time beyond
+ * MAX_STEPS_PER_FRAME * PHYSICS_STEP is dropped rather than replayed.
+ */
+export const MAX_STEPS_PER_FRAME = 8;
+
 /** Cars are physically clamped just inside the barrier wall. */
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
 
@@ -89,9 +96,16 @@ export class CarPhysics {
    */
   advance(elapsed: number, input: CarInput): void {
     this.stepAccumulator += elapsed;
-    while (this.stepAccumulator >= PHYSICS_STEP) {
+    let steps = 0;
+    while (this.stepAccumulator >= PHYSICS_STEP && steps < MAX_STEPS_PER_FRAME) {
       this.update(PHYSICS_STEP, input);
       this.stepAccumulator -= PHYSICS_STEP;
+      steps++;
+    }
+    // Drop any excess accumulated time beyond the cap so the accumulator cannot
+    // grow unboundedly across stall-heavy frames.
+    if (this.stepAccumulator > PHYSICS_STEP) {
+      this.stepAccumulator = this.stepAccumulator % PHYSICS_STEP;
     }
   }
 
