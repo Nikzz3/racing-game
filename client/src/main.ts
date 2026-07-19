@@ -14,6 +14,9 @@ const net = new Net();
 let myId = "";
 let game: Game | null = null;
 let replay: ReplayViewer | null = null;
+// Incremented on every "joined" and "left" so a modelsReady.then() callback can
+// detect whether it has been superseded before constructing the Game.
+let gameGen = 0;
 
 /** Swap the lobby for a replay viewer that restores the lobby when closed. */
 function openReplay(
@@ -64,32 +67,43 @@ net.onMessage((msg) => {
     case "joined": {
       lobby.hide();
       game?.dispose();
+      game = null;
+      const gen = ++gameGen;
       const armed = lobby.armedPacer;
       const matchingPacer =
         armed && armed.track === msg.track && armed.difficulty === msg.difficulty
           ? armed
           : null;
-      game = new Game(
-        app,
-        net,
-        myId,
-        msg.roomName,
-        () => net.send({ type: "leaveRoom" }),
-        msg.difficulty,
-        msg.track,
-        matchingPacer
-      );
-      if (matchingPacer) {
-        net.send({
-          type: "getReplay",
-          name: matchingPacer.name,
-          track: matchingPacer.track,
-          difficulty: matchingPacer.difficulty,
-        });
-      }
+      // Defer construction until the model preload settles so a Game is never
+      // built with fallback procedural assets merely because a download is still
+      // in progress. (preloadModels() resolves even when loads fail; a failed
+      // model's fallback is the deliberate degraded mode.) If the player leaves
+      // before it settles, gameGen is bumped and this callback is a no-op.
+      modelsReady.then(() => {
+        if (gen !== gameGen) return;
+        game = new Game(
+          app,
+          net,
+          myId,
+          msg.roomName,
+          () => net.send({ type: "leaveRoom" }),
+          msg.difficulty,
+          msg.track,
+          matchingPacer
+        );
+        if (matchingPacer) {
+          net.send({
+            type: "getReplay",
+            name: matchingPacer.name,
+            track: matchingPacer.track,
+            difficulty: matchingPacer.difficulty,
+          });
+        }
+      });
       break;
     }
     case "left":
+      ++gameGen; // cancel any pending modelsReady.then() game creation
       game?.dispose();
       game = null;
       lobby.show();
