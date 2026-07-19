@@ -23,7 +23,7 @@ import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
-import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
+import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
 const SEND_INTERVAL_MS = 50;
@@ -312,7 +312,7 @@ export class Game {
     this.remote.dispose();
     this.pacer?.dispose();
     this.hud.dispose();
-    this.bundle.renderer.dispose();
+    disposeRenderer(this.bundle.renderer);
     this.container.remove();
     delete (window as unknown as Record<string, unknown>).__autopilot;
   }
