@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import {
+  CHECKPOINT_RADIUS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   nearestCenterline,
   resolveTrack,
   TRACK_DIVISIONS,
   type Difficulty,
+  type LeaderboardEntry,
   type PlayerSnapshot,
+  type ReplayFrame,
   type ServerMessage,
   type Track,
 } from "@racing/shared";
@@ -19,6 +22,7 @@ import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
+import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
 
@@ -36,6 +40,7 @@ export class Game {
   private car: CarPhysics;
   private carMesh: THREE.Group;
   private remote: RemotePlayers;
+  private pacer: PacerOverlay | null = null;
   private sendTimer: ReturnType<typeof setInterval>;
   private running = true;
   private lastFrame = performance.now();
@@ -47,6 +52,15 @@ export class Game {
   private curLapReceivedAt = 0;
 
   private lastMe: PlayerSnapshot | null = null;
+  // Local lap clock anchored to the client-detected start-line crossing. Drives
+  // the Pacer restart and delta toast only (PRD #27: immediate visual response);
+  // the HUD lap clock stays server-derived via curLapBaseMs.
+  private localLapStartMs: number | null = null;
+  // Next checkpoint the local crossing detector expects (mirrors the server's
+  // in-order timing rules; see updateLocalCrossings).
+  private localNextCheckpoint = 0;
+  // Pacer's pre-computed checkpoint-crossing times (ms, lap-relative).
+  private pacerCrossingTimes: (number | null)[] = [];
   /** Sample index of each checkpoint, pre-computed for checkpointMissed. */
   private checkpointSampleIndices: number[];
 
@@ -66,7 +80,8 @@ export class Game {
     roomName: string,
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
-    trackSlug: string = DEFAULT_TRACK_SLUG
+    trackSlug: string = DEFAULT_TRACK_SLUG,
+    armedPacer?: LeaderboardEntry | null
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpointSampleIndices = this.track.checkpoints.map(
@@ -85,7 +100,11 @@ export class Game {
     this.bundle.scene.add(this.carMesh);
 
     this.remote = new RemotePlayers(this.bundle.scene, myId);
+    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
+    if (this.pacer) {
+      this.hud.showPacerChip(() => this.dismissPacer());
+    }
     this.touch = new TouchControls(parent);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
@@ -113,6 +132,12 @@ export class Game {
     requestAnimationFrame(this.frame);
   }
 
+  receiveReplayFrames(frames: ReplayFrame[]): void {
+    if (!this.pacer) return;
+    this.pacer.setFrames(frames);
+    this.pacerCrossingTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
+  }
+
   onMessage(msg: ServerMessage): void {
     if (msg.type === "snapshot") {
       this.remote.onSnapshot(msg.players);
@@ -129,6 +154,42 @@ export class Game {
     this.hud.setMyProgress(me);
     this.curLapBaseMs = me.lapStartT === null ? null : serverT - me.lapStartT;
     this.curLapReceivedAt = performance.now();
+  }
+
+  /**
+   * Client-detected checkpoint crossings: entering CHECKPOINT_RADIUS of the next
+   * expected checkpoint, in lap order (mirrors the server's timing rules and
+   * CheckpointTracker in harness.ts). Anchors the Pacer restart and delta toast
+   * to the local crossing for immediate response (PRD #27); the server stays
+   * authoritative for lap timing and the HUD clock.
+   */
+  private updateLocalCrossings(nowMs: number): void {
+    if (!this.pacer) return;
+    const cp = this.track.checkpoints[this.localNextCheckpoint];
+    const dx = this.car.x - cp.x;
+    const dz = this.car.z - cp.z;
+    if (dx * dx + dz * dz > CHECKPOINT_RADIUS * CHECKPOINT_RADIUS) return;
+
+    const crossed = this.localNextCheckpoint;
+    this.localNextCheckpoint = (crossed + 1) % this.track.checkpoints.length;
+
+    if (crossed === 0) {
+      // Start line: begin a fresh local lap and race the recording from frame zero.
+      this.localLapStartMs = nowMs;
+      this.pacer.restart(nowMs);
+      return;
+    }
+    // Delta toast at intermediate checkpoints (no delta at CP0 — it is the lap
+    // boundary, where the driver already gets the lap-time toast). Suppressed
+    // when the Pacer isn't playing (e.g. replay frames arrived after this lap's
+    // start-line crossing), since there's no visible Pacer to compare against.
+    if (this.localLapStartMs !== null && this.pacer.isPlaying()) {
+      const delta = pacerDelta(this.pacerCrossingTimes, crossed, nowMs - this.localLapStartMs);
+      if (delta !== null) {
+        const abs = (Math.abs(delta) / 1000).toFixed(1);
+        this.hud.toast(delta < 0 ? `vs Pacer −${abs}s` : `vs Pacer +${abs}s`);
+      }
+    }
   }
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
@@ -157,6 +218,8 @@ export class Game {
     animateCar(this.carMesh, this.car.speed, input.steer, dt);
 
     this.remote.update(dt);
+    this.updateLocalCrossings(now);
+    this.pacer?.update(now, dt);
     this.updateCamera(dt);
     updateSun(this.bundle.sun, this.car.x, this.car.z);
 
@@ -207,6 +270,22 @@ export class Game {
     this.snapCameraBehindCar();
     this.curLapBaseMs = null;
     this.hud.setCurrentLap(null);
+    // Reset the local detector to the start line so the Pacer stays hidden
+    // until the next client-detected crossing.
+    this.localLapStartMs = null;
+    this.localNextCheckpoint = 0;
+    this.pacer?.onRespawn();
+  }
+
+  private dismissPacer(): void {
+    this.pacer?.dispose();
+    this.pacer = null;
+    this.pacerCrossingTimes = [];
+    // Reset the local crossing detector too, so no stale state survives if a
+    // re-arm path is ever added.
+    this.localLapStartMs = null;
+    this.localNextCheckpoint = 0;
+    this.hud.hidePacerChip();
   }
 
   private autopilotInput(): CarInput {
@@ -231,6 +310,7 @@ export class Game {
     this.touch.dispose();
     window.removeEventListener("resize", this.onResize);
     this.remote.dispose();
+    this.pacer?.dispose();
     this.hud.dispose();
     this.bundle.renderer.dispose();
     this.container.remove();

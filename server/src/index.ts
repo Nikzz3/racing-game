@@ -6,6 +6,8 @@ import { WebSocketServer, type WebSocket } from "ws";
 import {
   asDifficulty,
   asTrackSlug,
+  MAX_SPEED_MS,
+  minPlausibleLapMs,
   parseClientMessage,
   type ClientMessage,
   type Difficulty,
@@ -85,7 +87,9 @@ async function handleState(
 
   const prevStart = player.timing.lapStartT;
   const now = Date.now();
-  const lap = updateTiming(player.timing, msg.x, msg.z, now, room.track.checkpoints);
+  const maxSpeedMs = MAX_SPEED_MS[room.difficulty];
+  const minLapMs = minPlausibleLapMs(room.track, maxSpeedMs);
+  const lap = updateTiming(player.timing, msg.x, msg.z, now, room.track.checkpoints, maxSpeedMs, minLapMs);
 
   if (!lap) {
     // No lap completed: keep recording the lap in progress.
@@ -110,12 +114,19 @@ async function handleState(
   const frames =
     player.lapFramesValid && player.lapFrames.length >= 2 ? player.lapFrames : null;
 
-  // Track records are per (track, difficulty), so compare against this room's board only.
-  const prevRecord = (await bestTime(room.track.id, room.difficulty)) ?? Infinity;
   let isTrackRecord = false;
-  if (await submitLap(player.name, room.track.id, room.difficulty, lap.lapTimeMs, frames)) {
-    isTrackRecord = lap.lapTimeMs < prevRecord;
-    broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
+  if (!lap.isPlausible) {
+    console.info(
+      `Implausible lap rejected: player=${player.name} track=${room.track.id}` +
+      ` difficulty=${room.difficulty} lapTimeMs=${lap.lapTimeMs} minLapMs=${minLapMs}`
+    );
+  } else {
+    // Track records are per (track, difficulty), so compare against this room's board only.
+    const prevRecord = (await bestTime(room.track.id, room.difficulty)) ?? Infinity;
+    if (await submitLap(player.name, room.track.id, room.difficulty, lap.lapTimeMs, frames)) {
+      isTrackRecord = lap.lapTimeMs < prevRecord;
+      broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
+    }
   }
 
   // Seed the next lap's buffer with the boundary sample at t = 0.

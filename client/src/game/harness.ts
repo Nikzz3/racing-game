@@ -1,5 +1,6 @@
 import {
   CHECKPOINT_RADIUS,
+  MAX_SPEED_MS,
   ROAD_HALF_WIDTH,
   SUNSET_RIDGE,
   TRACK_DIVISIONS,
@@ -160,8 +161,11 @@ export interface PolicyWeights {
   layers: Array<{ weight: number[][]; bias: number[] }>;
 }
 
-// Physics constants mirrored from Python env (medium difficulty)
-const MEDIUM_MAX_SPEED = 90;
+// Observation normalization matches the Python training env, which used the
+// medium top speed (90 at training time). Sourced from the shared table
+// (ADR-0005); if MAX_SPEED_MS.medium is ever retuned, the policy must be
+// retrained or this normalization pinned to the training-time value.
+const MEDIUM_MAX_SPEED = MAX_SPEED_MS.medium;
 const POLICY_LOOKAHEADS = [5, 10, 20, 40] as const;
 
 function normalizeAngle(a: number): number {

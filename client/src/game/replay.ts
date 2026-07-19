@@ -5,6 +5,7 @@ import { animateCar, createCarMesh } from "./car";
 import { createScene, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { resolveTrack } from "@racing/shared";
 import { buildTrack } from "./trackMesh";
+import { interpolatePose } from "./pose-interpolation";
 
 const FINISH_HOLD_MS = 1500;
 
@@ -19,7 +20,6 @@ export class ReplayViewer {
   private running = true;
   private lastFrame = performance.now();
   private playStart = performance.now();
-  private index = 0;
   private finishedAt: number | null = null;
 
   private onResize = () => {
@@ -105,34 +105,14 @@ export class ReplayViewer {
 
   private restart(now: number): void {
     this.playStart = now;
-    this.index = 0;
     this.finishedAt = null;
     this.finishedEl.hidden = true;
     this.applyFrameAt(0);
     this.snapCameraBehindCar();
   }
 
-  /** Interpolates the recorded pose at time `t` and applies it to the car mesh. */
   private applyFrameAt(t: number, dt = 0): void {
-    const frames = this.frames;
-    while (this.index < frames.length - 2 && frames[this.index + 1][0] <= t) {
-      this.index++;
-    }
-    const f0 = frames[this.index];
-    const f1 = frames[Math.min(this.index + 1, frames.length - 1)];
-    const span = f1[0] - f0[0];
-    const a = span > 0 ? Math.max(0, Math.min(1, (t - f0[0]) / span)) : 0;
-
-    const x = f0[1] + (f1[1] - f0[1]) * a;
-    const z = f0[2] + (f1[2] - f0[2]) * a;
-    const speed = f0[4] + (f1[4] - f0[4]) * a;
-
-    // Shortest-arc heading interpolation.
-    let d = (f1[3] - f0[3]) % (Math.PI * 2);
-    if (d > Math.PI) d -= Math.PI * 2;
-    if (d < -Math.PI) d += Math.PI * 2;
-    const heading = f0[3] + d * a;
-
+    const { x, z, heading, speed } = interpolatePose(this.frames, t);
     this.carMesh.position.set(x, 0, z);
     this.carMesh.rotation.y = heading;
     animateCar(this.carMesh, speed, 0, dt);
