@@ -40,7 +40,7 @@ declare global {
 
 export class E2eSeam {
   private inputs: CarInput[] = [];
-  private frame = 0;
+  private nextInputIndex = 0;
   private stepsPerFrame = 1;
   private samples: E2eLocalState[] = [];
   private serverLapMs: number | null = null;
@@ -65,7 +65,7 @@ export class E2eSeam {
       throw new RangeError("stepsPerFrame must be a positive integer");
     }
     this.inputs = inputs.map((input) => ({ ...input }));
-    this.frame = 0;
+    this.nextInputIndex = 0;
     this.stepsPerFrame = multiplier;
     this.samples = [];
     this.serverLapMs = null;
@@ -73,15 +73,15 @@ export class E2eSeam {
   }
 
   get driving(): boolean {
-    return this.frame < this.inputs.length;
+    return this.nextInputIndex < this.inputs.length;
   }
 
   /** Advances at most one configured batch; the outer loop remains real-time rAF. */
   stepFrame(): number {
     let steps = 0;
     while (steps < this.stepsPerFrame && this.driving) {
-      this.game.step(E2E_DT, this.inputs[this.frame]);
-      this.frame++;
+      this.game.step(E2E_DT, this.inputs[this.nextInputIndex]);
+      this.nextInputIndex++;
       steps++;
       this.samples.push(structuredClone(this.game.localState()));
     }
@@ -97,7 +97,7 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
-      frame: this.frame,
+      frame: this.nextInputIndex,
       inputCount: this.inputs.length,
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,

@@ -224,11 +224,12 @@ export class Game {
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
     if (msg.playerId === this.myId) {
       this.seam?.recordLapSubmission(msg.lapTimeMs, msg.laps);
-      const suffix = msg.isTrackRecord
-        ? "  TRACK RECORD!"
-        : msg.isPersonalBest
-          ? "  Personal best!"
-          : "";
+      let suffix = "";
+      if (msg.isTrackRecord) {
+        suffix = "  TRACK RECORD!";
+      } else if (msg.isPersonalBest) {
+        suffix = "  Personal best!";
+      }
       this.hud.toast(`Lap ${msg.laps} — ${formatMs(msg.lapTimeMs)}${suffix}`, msg.isTrackRecord);
     } else if (msg.isTrackRecord) {
       this.hud.toast(`${msg.name} set a track record: ${formatMs(msg.lapTimeMs)}`, true);
