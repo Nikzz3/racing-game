@@ -1,21 +1,18 @@
 import type { Page, WebSocket } from "@playwright/test";
+import type { ServerMessage } from "@racing/shared";
+import { createRoom } from "../fixtures/lobby";
 import { expect, test } from "../fixtures/players";
 
 const PLAYER_A = "Player Alpha";
 const PLAYER_B = "Player Bravo";
 const ROOM_NAME = "Two Player Room";
 
-interface WelcomeMessage {
-  type: "welcome";
-  playerId: string;
-}
-
 function playerIdFromWelcome(page: Page): Promise<string> {
   return new Promise((resolve) => {
     page.on("websocket", (socket: WebSocket) => {
       socket.on("framereceived", ({ payload }) => {
-        const message = JSON.parse(payload.toString()) as Partial<WelcomeMessage>;
-        if (message.type === "welcome" && typeof message.playerId === "string") {
+        const message = JSON.parse(payload.toString()) as ServerMessage;
+        if (message.type === "welcome") {
           resolve(message.playerId);
         }
       });
@@ -34,9 +31,7 @@ test("two players create and join a Room and see each other", async ({ playerA, 
   await Promise.all([playerA.goto("/"), playerB.goto("/")]);
   const [playerAId, playerBId] = await Promise.all([playerAIdPromise, playerBIdPromise]);
 
-  await playerA.getByLabel("Driver").fill(PLAYER_A);
-  await playerA.getByPlaceholder("New room name").fill(ROOM_NAME);
-  await playerA.getByRole("button", { name: "Create & Race" }).click();
+  await createRoom(playerA, { playerName: PLAYER_A, roomName: ROOM_NAME });
 
   await playerB.getByLabel("Driver").fill(PLAYER_B);
   const room = playerB.locator(".room-row").filter({ hasText: ROOM_NAME });

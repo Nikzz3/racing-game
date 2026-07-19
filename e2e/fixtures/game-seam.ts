@@ -1,16 +1,11 @@
 import type { Page } from "@playwright/test";
-import type {
-  E2eInjectionOptions,
-  E2eLocalState,
-  E2eState,
-} from "../../client/src/game/e2e-seam";
+import type { E2eLocalState, E2eState } from "../../client/src/game/e2e-seam";
+import type { CarInput } from "../../client/src/game/input";
 import lapInputs from "../lap-inputs.json" with { type: "json" };
 import { expect, test as dbTest } from "./db";
+import { createRoom, type CreateRoomOptions } from "./lobby";
 
-export interface CreateRaceOptions {
-  playerName: string;
-  roomName: string;
-}
+export type CreateRaceOptions = CreateRoomOptions;
 
 export interface DrivenLap {
   state: E2eState;
@@ -20,7 +15,9 @@ export interface DrivenLap {
 
 export interface GameSeamFixture {
   createRace(options: CreateRaceOptions): Promise<void>;
-  driveLap(options?: E2eInjectionOptions): Promise<DrivenLap>;
+  /** Replays the inputs in the browser and resolves with the recorded trajectory. */
+  driveInputs(inputs: CarInput[]): Promise<E2eLocalState[]>;
+  driveLap(): Promise<DrivenLap>;
   state(): Promise<E2eState>;
 }
 
@@ -37,38 +34,38 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
     await page.setViewportSize({ width: 320, height: 240 });
 
     const game: GameSeamFixture = {
-      async createRace({ playerName, roomName }) {
+      async createRace(options) {
         await page.goto("/");
-        await page.getByLabel("Driver").fill(playerName);
-        await page.getByPlaceholder("New room name").fill(roomName);
-        await page.getByRole("button", { name: "Create & Race" }).click();
+        await createRoom(page, options);
         await page.waitForFunction(() => window.__game !== undefined);
       },
 
-      async driveLap({ stepsPerFrame = 1 } = {}) {
-        await page.evaluate(
-          ({ inputs, stepsPerFrame }) => {
-            if (!window.__game) throw new Error("window.__game is not installed");
-            window.__game.inject(inputs, { stepsPerFrame });
-          },
-          { inputs: lapInputs, stepsPerFrame },
-        );
+      async driveInputs(inputs) {
+        await page.evaluate((inputs) => {
+          if (!window.__game) throw new Error("window.__game is not installed");
+          window.__game.inject(inputs);
+        }, inputs);
 
+        // The seam is held to real time, so a full lap's worth of inputs takes minutes.
         await page.waitForFunction(
           () => window.__game?.state().injectionFinished === true,
           undefined,
           { timeout: 240_000 },
         );
+
+        return page.evaluate<E2eLocalState[]>(() => window.__game?.trajectory() ?? []);
+      },
+
+      async driveLap() {
+        const trajectory = await game.driveInputs(lapInputs);
+
         await page.waitForFunction(
           () => window.__game?.state().lapSubmitted === true,
           undefined,
           { timeout: 10_000 },
         );
 
-        const [state, trajectory] = await Promise.all([
-          seamState(page),
-          page.evaluate<E2eLocalState[]>(() => window.__game?.trajectory() ?? []),
-        ]);
+        const state = await seamState(page);
         const checkpoints = trajectory
           .map((sample) => sample.checkpoint)
           .filter((checkpoint, index, all) => index === 0 || checkpoint !== all[index - 1]);

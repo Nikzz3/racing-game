@@ -7,6 +7,25 @@ import {
 } from "@racing/shared";
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
 
+/**
+ * The `(Track, Difficulty)` pair a Track Record is segregated by (see CONTEXT.md).
+ * Defaults to the pair a Room is created with.
+ */
+export interface TrackRecordScope {
+  track: TrackSlug;
+  difficulty: Difficulty;
+}
+
+export const DEFAULT_SCOPE: TrackRecordScope = {
+  track: DEFAULT_TRACK_SLUG,
+  difficulty: DEFAULT_DIFFICULTY,
+};
+
+export interface BestLapRow extends QueryResultRow {
+  name: string;
+  time_ms: number;
+}
+
 export interface SeedBestLapOptions {
   name: string;
   timeMs: number;
@@ -18,6 +37,8 @@ export interface SeedBestLapOptions {
 export interface DbFixture {
   query<Row extends QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<Row>>;
   seedBestLap(options: SeedBestLapOptions): Promise<void>;
+  /** Track Records held by `name` within one `(Track, Difficulty)` scope. */
+  bestLapFor(name: string, scope?: TrackRecordScope): Promise<BestLapRow[]>;
 }
 
 interface TestFixtures {
@@ -60,6 +81,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   db: async ({ databasePool, resetDatabase: _resetDatabase }, use) => {
     const db: DbFixture = {
       query: (text, values) => databasePool.query(text, values),
+      async bestLapFor(name, scope = DEFAULT_SCOPE) {
+        const result = await databasePool.query<BestLapRow>(
+          `SELECT name, time_ms FROM best_laps
+           WHERE name = $1 AND track = $2 AND difficulty = $3`,
+          [name, scope.track, scope.difficulty],
+        );
+        return result.rows;
+      },
       async seedBestLap({
         name,
         timeMs,

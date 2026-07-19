@@ -27,9 +27,8 @@ jobs:
   e2e:
     name: Playwright e2e tests
     runs-on: ubuntu-latest
-    # Driven laps are paced to real time, so this suite is inherently minutes long.
-    # Without a ceiling a hung run would sit on GitHub's 6h default.
-    timeout-minutes: 25
+    # docs/agents/e2e-testing.md budgets 15 minutes of CI wall time for this suite.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

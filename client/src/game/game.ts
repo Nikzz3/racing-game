@@ -25,7 +25,7 @@ import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
 import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
-import { E2eSeam, E2E_DT } from "./e2e-seam";
+import { E2eSeam } from "./e2e-seam";
 
 const SEND_INTERVAL_MS = 50;
 /**
@@ -76,10 +76,6 @@ export class Game {
 
   private autopilot = false;
   private seam: E2eSeam | null = null;
-  /** Simulated ms accrued toward the next state send while the seam drives. */
-  private seamSendAccumMs = 0;
-  /** Real seconds accrued toward the seam's next fixed-step advance. */
-  private seamStepAccumS = 0;
 
   private onResize = () => {
     const { camera, renderer } = this.bundle;
@@ -157,22 +153,26 @@ export class Game {
   private installE2eSeam(): void {
     if (!import.meta.env.VITE_E2E) return;
 
-    this.seam = new E2eSeam({
-      step: (dt, input) => this.car.update(dt, input),
-      localState: () => ({
-        position: { x: this.car.x, z: this.car.z },
-        rotation: this.car.heading,
-        velocity: this.car.speed,
-        checkpoint: this.lastMe?.nextCheckpoint ?? 0,
-        lap: {
-          laps: this.lastMe?.laps ?? 0,
-          active: this.lastMe?.lapStartT !== null && this.lastMe?.lapStartT !== undefined,
-          lastLapMs: this.lastMe?.lastLapMs ?? null,
-          bestLapMs: this.lastMe?.bestLapMs ?? null,
-        },
-      }),
-      remotePlayerIds: () => this.remote.playerIds(),
-    });
+    this.seam = new E2eSeam(
+      {
+        step: (dt, input) => this.car.update(dt, input),
+        localState: () => ({
+          position: { x: this.car.x, z: this.car.z },
+          heading: this.car.heading,
+          speed: this.car.speed,
+          checkpoint: this.lastMe?.nextCheckpoint ?? 0,
+          lap: {
+            laps: this.lastMe?.laps ?? 0,
+            active: this.lastMe?.lapStartT !== null && this.lastMe?.lapStartT !== undefined,
+            lastLapMs: this.lastMe?.lastLapMs ?? null,
+            bestLapMs: this.lastMe?.bestLapMs ?? null,
+          },
+        }),
+        remotePlayerIds: () => this.remote.playerIds(),
+        sendState: () => this.sendState(),
+      },
+      SEND_INTERVAL_MS,
+    );
     this.seam.install();
   }
 
@@ -253,7 +253,7 @@ export class Game {
 
   private onLap(msg: Extract<ServerMessage, { type: "lap" }>): void {
     if (msg.playerId === this.myId) {
-      this.seam?.recordLapSubmission(msg.lapTimeMs, msg.laps);
+      this.seam?.recordLapSubmission(msg.laps);
       let suffix = "";
       if (msg.isTrackRecord) {
         suffix = "  TRACK RECORD!";
@@ -279,23 +279,12 @@ export class Game {
 
     let input: CarInput;
     if (this.seam?.driving) {
-      // The seam advances physics itself in fixed E2E_DT steps; the visual
-      // systems below get the simulated time those steps covered.
-      // Spend real elapsed time as the step budget so the seam never simulates
-      // faster than the server's wall clock (which would make every lap implausible).
-      this.seamStepAccumS += elapsed;
-      const budget = Math.floor(this.seamStepAccumS / E2E_DT);
-      const steps = this.seam.stepFrame(budget);
-      this.seamStepAccumS -= steps * E2E_DT;
-      dt = steps * E2E_DT;
+      // The seam advances physics itself in fixed steps, spending the real elapsed
+      // time so it never simulates faster than the server's wall clock (which would
+      // make every lap implausible), and paces sends off that simulated time; the
+      // visual systems below get the simulated time those steps covered.
+      dt = this.seam.advance(elapsed);
       input = IDLE_INPUT;
-      // Keep the server's sample spacing tied to simulated time, so checkpoint
-      // proximity checks see the same density regardless of how fast we render.
-      this.seamSendAccumMs += dt * 1000;
-      while (this.seamSendAccumMs >= SEND_INTERVAL_MS) {
-        this.seamSendAccumMs -= SEND_INTERVAL_MS;
-        this.sendState();
-      }
     } else {
       input = this.autopilot ? this.autopilotInput() : this.input.read(dt);
       this.car.advance(elapsed, input);

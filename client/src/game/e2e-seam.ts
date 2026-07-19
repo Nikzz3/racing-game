@@ -4,8 +4,8 @@ export const E2E_DT = 1 / 60;
 
 export interface E2eLocalState {
   position: { x: number; z: number };
-  rotation: number;
-  velocity: number;
+  heading: number;
+  speed: number;
   checkpoint: number;
   lap: { laps: number; active: boolean; lastLapMs?: number | null; bestLapMs?: number | null };
 }
@@ -14,24 +14,19 @@ export interface E2eGameBindings {
   step(dt: number, input: CarInput): void;
   localState(): E2eLocalState;
   remotePlayerIds(): string[];
+  /** Pushes local state to the server; the seam paces these off simulated time. */
+  sendState(): void;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
-  frame: number;
-  inputCount: number;
   injectionFinished: boolean;
   lapSubmitted: boolean;
-  serverLapMs: number | null;
   serverLaps: number;
 }
 
-export interface E2eInjectionOptions {
-  stepsPerFrame?: number;
-}
-
 export interface E2eGameApi {
-  inject(inputs: CarInput[], options?: E2eInjectionOptions): void;
+  inject(inputs: CarInput[]): void;
   state(): E2eState;
   trajectory(): E2eLocalState[];
 }
@@ -45,15 +40,20 @@ declare global {
 export class E2eSeam {
   private inputs: CarInput[] = [];
   private nextInputIndex = 0;
-  private stepsPerFrame = 1;
   private samples: E2eLocalState[] = [];
-  private serverLapMs: number | null = null;
   private serverLaps = 0;
+  /** Real seconds accrued toward the next fixed-step advance. */
+  private stepAccumS = 0;
+  /** Simulated ms accrued toward the next state send. */
+  private sendAccumMs = 0;
   private readonly api: E2eGameApi;
 
-  constructor(private readonly game: E2eGameBindings) {
+  constructor(
+    private readonly game: E2eGameBindings,
+    private readonly sendIntervalMs: number,
+  ) {
     this.api = {
-      inject: (inputs, options) => this.inject(inputs, options),
+      inject: (inputs) => this.inject(inputs),
       state: () => this.state(),
       trajectory: () => this.trajectory(),
     };
@@ -63,18 +63,13 @@ export class E2eSeam {
     window.__game = this.api;
   }
 
-  inject(inputs: CarInput[], options: E2eInjectionOptions = {}): void {
-    const stepsPerFrame = options.stepsPerFrame ?? 1;
-    if (!Number.isInteger(stepsPerFrame) || stepsPerFrame < 1) {
-      throw new RangeError("stepsPerFrame must be a positive integer");
-    }
-
+  inject(inputs: CarInput[]): void {
     this.inputs = inputs.map((input) => ({ ...input }));
     this.nextInputIndex = 0;
-    this.stepsPerFrame = stepsPerFrame;
     this.samples = [];
-    this.serverLapMs = null;
     this.serverLaps = 0;
+    this.stepAccumS = 0;
+    this.sendAccumMs = 0;
   }
 
   get driving(): boolean {
@@ -82,15 +77,14 @@ export class E2eSeam {
   }
 
   /**
-   * Advances at most one configured batch, and no more than `budget` steps. The
-   * server times laps off its own wall clock, so simulating faster than real time
-   * yields a lap it rejects as implausible; the caller's budget holds the seam to
-   * real time.
+   * Advances at most `budget` fixed steps. There is deliberately no fast-forward
+   * multiplier: the server times laps off its own wall clock, so simulating faster
+   * than real time yields a lap it rejects as implausible. The caller's budget,
+   * spent from real elapsed time, is what holds the seam to real time.
    */
-  stepFrame(budget = Number.POSITIVE_INFINITY): number {
-    const limit = Math.min(this.stepsPerFrame, budget);
+  stepFrame(budget: number): number {
     let steps = 0;
-    while (steps < limit && this.driving) {
+    while (steps < budget && this.driving) {
       const input = this.inputs[this.nextInputIndex];
       this.game.step(E2E_DT, input);
       this.nextInputIndex++;
@@ -100,8 +94,28 @@ export class E2eSeam {
     return steps;
   }
 
-  recordLapSubmission(lapTimeMs: number, laps: number): void {
-    this.serverLapMs = lapTimeMs;
+  /**
+   * Spends `elapsedSeconds` of real time on the fixed-step schedule and returns the
+   * simulated time those steps covered, so the caller's visual systems advance by
+   * what was simulated rather than by wall clock. State sends are paced off that
+   * same simulated time, keeping the server's sample spacing (and so its checkpoint
+   * proximity checks) independent of how fast the client renders.
+   */
+  advance(elapsedSeconds: number): number {
+    this.stepAccumS += elapsedSeconds;
+    const steps = this.stepFrame(Math.floor(this.stepAccumS / E2E_DT));
+    this.stepAccumS -= steps * E2E_DT;
+
+    const dt = steps * E2E_DT;
+    this.sendAccumMs += dt * 1000;
+    while (this.sendAccumMs >= this.sendIntervalMs) {
+      this.sendAccumMs -= this.sendIntervalMs;
+      this.game.sendState();
+    }
+    return dt;
+  }
+
+  recordLapSubmission(laps: number): void {
     this.serverLaps = laps;
   }
 
@@ -109,11 +123,8 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
-      frame: this.nextInputIndex,
-      inputCount: this.inputs.length,
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
-      serverLapMs: this.serverLapMs,
       serverLaps: this.serverLaps,
     };
   }
