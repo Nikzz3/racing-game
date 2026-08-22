@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, RoomInfo, Track, TrackSlug } from "@racing/shared";
+import type { LeaderboardEntry, ReplayFrame, RoomInfo, Track, TrackSlug } from "@racing/shared";
 import {
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
@@ -9,6 +9,8 @@ import {
   trackPath,
   type Difficulty,
 } from "@racing/shared";
+import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
+import policy from "../../../rl/policy.json";
 import { escapeHtml, formatMs } from "../util";
 
 export interface LobbyCallbacks {
@@ -18,8 +20,22 @@ export interface LobbyCallbacks {
   onReferenceLap: () => void;
 }
 
+/**
+ * The single Pacer armed from the Starting Grid picker. A human Replay carries
+ * its leaderboard entry (frames are fetched via getReplay at race start); the
+ * AI Reference Lap carries its baked frames directly — it is never a
+ * LeaderboardEntry and nothing is fetched for it (ADR-0006).
+ */
+export type ArmedPacer =
+  | { kind: "replay"; name: string; track: TrackSlug; difficulty: Difficulty; entry: LeaderboardEntry }
+  | { kind: "ai"; name: "AI Record"; track: TrackSlug; difficulty: "medium"; frames: ReplayFrame[] };
+
 /** Track slugs that have a trained AI policy (Reference Lap available). */
 const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
+
+function replayPacer(entry: LeaderboardEntry): ArmedPacer {
+  return { kind: "replay", name: entry.name, track: entry.track, difficulty: entry.difficulty, entry };
+}
 
 const NAME_KEY = "racer-name";
 
@@ -73,10 +89,12 @@ export class Lobby {
   /** Currently selected difficulty — drives both create-Room and leaderboard. */
   private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
-  private _armedPacer: LeaderboardEntry | null = null;
+  private _armedPacer: ArmedPacer | null = null;
   private pacerSelect: HTMLSelectElement;
-  /** Entries selectable as Pacers for the current (track, difficulty); option values index into this. */
+  /** Entries selectable as Pacers for the current (track, difficulty); numeric option values index into this. */
   private eligible: LeaderboardEntry[] = [];
+  /** Memoized AI Reference Lap bake; undefined = not yet baked, null = policy failed to lap. */
+  private referenceLap: ReferenceLap | null | undefined = undefined;
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
@@ -143,7 +161,22 @@ export class Lobby {
     this.lbList = this.root.querySelector<HTMLElement>(".lb-list")!;
     this.pacerSelect = this.root.querySelector<HTMLSelectElement>(".pacer-select")!;
     this.pacerSelect.addEventListener("change", () => {
-      this._armedPacer = this.eligible[Number(this.pacerSelect.value)] ?? null;
+      const value = this.pacerSelect.value;
+      if (value === "ai") {
+        const lap = this.getReferenceLap();
+        this._armedPacer = lap
+          ? {
+              kind: "ai",
+              name: "AI Record",
+              track: this.selectedTrack,
+              difficulty: "medium",
+              frames: lap.frames,
+            }
+          : null;
+      } else {
+        const entry = this.eligible[Number(value)];
+        this._armedPacer = entry ? replayPacer(entry) : null;
+      }
     });
 
     this.nameInput.value =
@@ -235,7 +268,7 @@ export class Lobby {
       (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
     );
     this.eligible = shown.filter((e) => e.hasReplay);
-    // Re-anchor the armed Pacer against the entries now shown: the player may
+    // Re-anchor the armed Pacer against the context now shown: the player may
     // have switched (track, difficulty) away from it, or a leaderboard refresh
     // may have replaced or dropped its entry. main.ts silently drops a
     // mismatched pacer at race start, so reflect that here rather than
@@ -243,10 +276,14 @@ export class Lobby {
     // route through renderBoard(), so this covers both.
     if (this._armedPacer) {
       const p = this._armedPacer;
-      this._armedPacer =
-        this.eligible.find(
+      if (p.kind === "ai") {
+        this._armedPacer = this.aiPacerEligible() && p.track === this.selectedTrack ? p : null;
+      } else {
+        const entry = this.eligible.find(
           (e) => e.name === p.name && e.track === p.track && e.difficulty === p.difficulty
-        ) ?? null;
+        );
+        this._armedPacer = entry ? replayPacer(entry) : null;
+      }
     }
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
     empty.hidden = shown.length > 0;
@@ -267,21 +304,58 @@ export class Lobby {
     this.renderPacerPicker();
   }
 
-  get armedPacer(): LeaderboardEntry | null {
+  get armedPacer(): ArmedPacer | null {
     return this._armedPacer;
+  }
+
+  /**
+   * The AI Reference Lap, baked lazily from the bundled policy weights on the
+   * first eligible render and memoized for the page (ADR-0006). This is the
+   * single source of the picker option's displayed time, the armed AI Pacer's
+   * frames, and the standalone viewer's lap, so they cannot diverge. Null when
+   * the policy fails to complete a lap.
+   */
+  getReferenceLap(): ReferenceLap | null {
+    if (this.referenceLap === undefined) this.referenceLap = buildReferenceLap(policy);
+    return this.referenceLap;
+  }
+
+  /** Whether the AI Record can be offered as a Pacer in the current context (and its bake succeeded). */
+  private aiPacerEligible(): boolean {
+    return (
+      TRACKS_WITH_POLICY.has(this.selectedTrack) &&
+      this.selectedDifficulty === "medium" &&
+      this.getReferenceLap() !== null
+    );
   }
 
   /** Rebuild the Pacer picker's options for the current (track, difficulty). */
   private renderPacerPicker(): void {
+    const aiLap = this.aiPacerEligible() ? this.getReferenceLap() : null;
+    const options = this.eligible.map((e, i) => ({
+      timeMs: e.timeMs,
+      html: `<option value="${i}">⚑ ${escapeHtml(e.name)} — ${formatMs(e.timeMs)}</option>`,
+    }));
+    if (aiLap) {
+      // Insert at the time-sorted position without reordering the human options.
+      const ai = {
+        timeMs: aiLap.timeMs,
+        html: `<option value="ai" class="pacer-opt-ai">⚑ AI Record — ${formatMs(aiLap.timeMs)}</option>`,
+      };
+      const at = options.findIndex((o) => o.timeMs > aiLap.timeMs);
+      options.splice(at === -1 ? options.length : at, 0, ai);
+    }
     this.pacerSelect.innerHTML =
-      `<option value="-1">No Pacer — race alone</option>` +
-      this.eligible
-        .map((e, i) => `<option value="${i}">⚑ ${escapeHtml(e.name)} — ${formatMs(e.timeMs)}</option>`)
-        .join("");
-    this.pacerSelect.value = this._armedPacer
-      ? String(this.eligible.indexOf(this._armedPacer))
-      : "-1";
-    this.pacerSelect.disabled = this.eligible.length === 0;
+      `<option value="-1">No Pacer — race alone</option>` + options.map((o) => o.html).join("");
+    const armed = this._armedPacer;
+    if (!armed) {
+      this.pacerSelect.value = "-1";
+    } else if (armed.kind === "ai") {
+      this.pacerSelect.value = "ai";
+    } else {
+      this.pacerSelect.value = String(this.eligible.indexOf(armed.entry));
+    }
+    this.pacerSelect.disabled = this.eligible.length === 0 && !aiLap;
   }
 
   show(): void {

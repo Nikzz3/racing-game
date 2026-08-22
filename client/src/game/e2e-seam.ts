@@ -10,16 +10,35 @@ export interface E2eLocalState {
   lap: { laps: number; active: boolean; lastLapMs?: number | null; bestLapMs?: number | null };
 }
 
+/**
+ * Snapshot of the in-Room Pacer overlay. Pose-source-agnostic: identical for a
+ * human Replay's fetched frames and the AI Record's baked frames, so both
+ * journeys can assert through it.
+ */
+export interface E2ePacerState {
+  /** Number of replay frames loaded (0 until they arrive). */
+  frameCount: number;
+  /** Playback has started (driver crossed the start line). */
+  playing: boolean;
+  /** The overlay car is currently visible in the scene. */
+  visible: boolean;
+  /** Opacity of the overlay car's least-translucent material (< 1 → translucent). */
+  opacity: number;
+}
+
 export interface E2eGameBindings {
   step(dt: number, input: CarInput): void;
   localState(): E2eLocalState;
   remotePlayerIds(): string[];
   /** Pushes local state to the server; the seam paces these off simulated time. */
   sendState(): void;
+  /** Current Pacer overlay state, or null when no Pacer is armed (or it was dismissed). */
+  pacerState(): E2ePacerState | null;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
+  pacer: E2ePacerState | null;
   injectionFinished: boolean;
   lapSubmitted: boolean;
   serverLaps: number;
@@ -123,6 +142,7 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
+      pacer: this.game.pacerState(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
       serverLaps: this.serverLaps,

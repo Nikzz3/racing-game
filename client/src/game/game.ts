@@ -7,7 +7,6 @@ import {
   resolveTrack,
   TRACK_DIVISIONS,
   type Difficulty,
-  type LeaderboardEntry,
   type PlayerSnapshot,
   type ReplayFrame,
   type ServerMessage,
@@ -15,6 +14,7 @@ import {
 } from "@racing/shared";
 import { checkpointMissed } from "./checkpoint-miss";
 import type { Net } from "../net";
+import type { ArmedPacer } from "../ui/lobby";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh } from "./car";
@@ -101,7 +101,7 @@ export class Game {
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
     trackSlug: string = DEFAULT_TRACK_SLUG,
-    armedPacer?: LeaderboardEntry | null
+    armedPacer?: ArmedPacer | null
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpointSampleIndices = this.track.checkpoints.map(
@@ -170,6 +170,7 @@ export class Game {
         }),
         remotePlayerIds: () => this.remote.playerIds(),
         sendState: () => this.sendState(),
+        pacerState: () => this.pacer?.state() ?? null,
       },
       SEND_INTERVAL_MS,
     );

@@ -4,9 +4,7 @@ import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
 import { areModelsLoaded, preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
-import { buildReferenceLap } from "./game/reference-lap";
 import type { ReplayFrame, TrackSlug } from "@racing/shared";
-import policy from "../../rl/policy.json";
 
 const app = document.getElementById("app")!;
 const net = new Net();
@@ -67,7 +65,7 @@ const lobby = new Lobby(app, {
   onReplay: (name, track, difficulty) => net.send({ type: "getReplay", name, track, difficulty }),
   onReferenceLap: () => {
     if (game) return;
-    const lap = buildReferenceLap(policy);
+    const lap = lobby.getReferenceLap();
     if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames);
   },
 });
@@ -124,12 +122,19 @@ net.onMessage((msg) => {
           return;
         }
         if (matchingPacer) {
-          net.send({
-            type: "getReplay",
-            name: matchingPacer.name,
-            track: matchingPacer.track,
-            difficulty: matchingPacer.difficulty,
-          });
+          if (matchingPacer.kind === "ai") {
+            // The AI Pacer's frames are already baked and memoized in the
+            // lobby; hand them straight to the Game — no getReplay round trip,
+            // no server involvement (ADR-0006).
+            game.receiveReplayFrames(matchingPacer.frames);
+          } else {
+            net.send({
+              type: "getReplay",
+              name: matchingPacer.name,
+              track: matchingPacer.track,
+              difficulty: matchingPacer.difficulty,
+            });
+          }
         }
       });
       break;

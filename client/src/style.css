@@ -768,6 +768,11 @@ input:focus {
   background: #1a1626;
 }
 
+/* AI Record option: cyan to match the Pacer overlay (PACER_COLOR in pacer.ts). */
+.pacer-select option.pacer-opt-ai {
+  color: #00e5ff;
+}
+
 .replay-hud {
   position: absolute;
   inset: 0;

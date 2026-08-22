@@ -22,6 +22,7 @@ function createBindings(): E2eGameBindings {
     }),
     remotePlayerIds: () => ["remote-b", "remote-a"],
     sendState: vi.fn(),
+    pacerState: () => null,
   };
 }
 
@@ -122,6 +123,20 @@ describe("E2eSeam", () => {
       injectionFinished: true,
       lapSubmitted: true,
       serverLaps: 1,
+    });
+  });
+
+  it("surfaces the Pacer overlay's state and null when no Pacer is armed", () => {
+    const game = createBindings();
+    const seam = new E2eSeam(game, SEND_INTERVAL_MS);
+    expect(seam.state().pacer).toBeNull();
+
+    game.pacerState = () => ({ frameCount: 1429, playing: true, visible: true, opacity: 0.5 });
+    expect(seam.state().pacer).toEqual({
+      frameCount: 1429,
+      playing: true,
+      visible: true,
+      opacity: 0.5,
     });
   });
 });

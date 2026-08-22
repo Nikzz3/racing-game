@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+// @vitest-environment jsdom
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import * as THREE from "three";
 import type { ReplayFrame } from "@racing/shared";
-import { pacerPoseAt, pacerCheckpointTimes, pacerDelta } from "./pacer";
+import { PacerOverlay, pacerPoseAt, pacerCheckpointTimes, pacerDelta } from "./pacer";
 
 const frames: ReplayFrame[] = [
   [0,   0,  0,  0, 0],
@@ -168,5 +170,58 @@ describe("pacerDelta", () => {
 
   it("returns null for an out-of-range checkpoint index", () => {
     expect(pacerDelta(pacerTimes, 99, 1000)).toBeNull();
+  });
+});
+
+describe("PacerOverlay.state", () => {
+  // jsdom has no 2d canvas; the badge only needs the calls it makes to exist.
+  beforeAll(() => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      beginPath: vi.fn(),
+      roundRect: vi.fn(),
+      fill: vi.fn(),
+      fillText: vi.fn(),
+    })) as never;
+  });
+
+  function createOverlay(): PacerOverlay {
+    return new PacerOverlay(new THREE.Scene());
+  }
+
+  it("reports no frames, not playing, and hidden before frames arrive", () => {
+    expect(createOverlay().state()).toMatchObject({
+      frameCount: 0,
+      playing: false,
+      visible: false,
+    });
+  });
+
+  it("reports the loaded frame count while still hidden (pre start-line)", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    expect(overlay.state()).toMatchObject({ frameCount: 3, playing: false, visible: false });
+  });
+
+  it("reports playing and visible once restarted and updated mid-recording", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    overlay.restart(1000);
+    overlay.update(1100, 1 / 60);
+    expect(overlay.state()).toMatchObject({ playing: true, visible: true });
+  });
+
+  it("reports a translucent car: opacity strictly between 0 and 1", () => {
+    const { opacity } = createOverlay().state();
+    expect(opacity).toBeGreaterThan(0);
+    expect(opacity).toBeLessThan(1);
+  });
+
+  it("reports not playing and hidden again after a Respawn", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    overlay.restart(1000);
+    overlay.update(1100, 1 / 60);
+    overlay.onRespawn();
+    expect(overlay.state()).toMatchObject({ playing: false, visible: false });
   });
 });

@@ -3,6 +3,11 @@ import type { Page } from "@playwright/test";
 export interface CreateRoomOptions {
   playerName: string;
   roomName: string;
+  /**
+   * Option value to arm in the Starting Grid Pacer picker before creating the
+   * Room: "ai" for the AI Record, or a human row's numeric index value.
+   */
+  pacer?: string;
 }
 
 /**
@@ -11,9 +16,10 @@ export interface CreateRoomOptions {
  */
 export async function createRoom(
   page: Page,
-  { playerName, roomName }: CreateRoomOptions,
+  { playerName, roomName, pacer }: CreateRoomOptions,
 ): Promise<void> {
   await page.getByLabel("Driver").fill(playerName);
+  if (pacer !== undefined) await page.locator(".pacer-select").selectOption(pacer);
   await page.getByPlaceholder("New room name").fill(roomName);
   await page.getByRole("button", { name: "Create & Race" }).click();
 }
