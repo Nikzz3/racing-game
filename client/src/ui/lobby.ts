@@ -33,6 +33,10 @@ export type ArmedPacer =
 /** Track slugs that have a trained AI policy (Reference Lap available). */
 const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
 
+function replayPacer(entry: LeaderboardEntry): ArmedPacer {
+  return { kind: "replay", name: entry.name, track: entry.track, difficulty: entry.difficulty, entry };
+}
+
 const NAME_KEY = "racer-name";
 
 function trackViewBox(track: Track): string {
@@ -171,9 +175,7 @@ export class Lobby {
           : null;
       } else {
         const entry = this.eligible[Number(value)];
-        this._armedPacer = entry
-          ? { kind: "replay", name: entry.name, track: entry.track, difficulty: entry.difficulty, entry }
-          : null;
+        this._armedPacer = entry ? replayPacer(entry) : null;
       }
     });
 
@@ -277,13 +279,10 @@ export class Lobby {
       if (p.kind === "ai") {
         this._armedPacer = this.aiPacerEligible() && p.track === this.selectedTrack ? p : null;
       } else {
-        const entry =
-          this.eligible.find(
-            (e) => e.name === p.name && e.track === p.track && e.difficulty === p.difficulty
-          ) ?? null;
-        this._armedPacer = entry
-          ? { kind: "replay", name: entry.name, track: entry.track, difficulty: entry.difficulty, entry }
-          : null;
+        const entry = this.eligible.find(
+          (e) => e.name === p.name && e.track === p.track && e.difficulty === p.difficulty
+        );
+        this._armedPacer = entry ? replayPacer(entry) : null;
       }
     }
     const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
@@ -312,9 +311,9 @@ export class Lobby {
   /**
    * The AI Reference Lap, baked lazily from the bundled policy weights on the
    * first eligible render and memoized for the page (ADR-0006). This is the
-   * single source of both the picker option's displayed time and the armed AI
-   * Pacer's frames, so the two cannot diverge. Null when the policy fails to
-   * complete a lap.
+   * single source of the picker option's displayed time, the armed AI Pacer's
+   * frames, and the standalone viewer's lap, so they cannot diverge. Null when
+   * the policy fails to complete a lap.
    */
   getReferenceLap(): ReferenceLap | null {
     if (this.referenceLap === undefined) this.referenceLap = buildReferenceLap(policy);
@@ -348,11 +347,14 @@ export class Lobby {
     }
     this.pacerSelect.innerHTML =
       `<option value="-1">No Pacer — race alone</option>` + options.map((o) => o.html).join("");
-    this.pacerSelect.value = !this._armedPacer
-      ? "-1"
-      : this._armedPacer.kind === "ai"
-        ? "ai"
-        : String(this.eligible.indexOf(this._armedPacer.entry));
+    const armed = this._armedPacer;
+    if (!armed) {
+      this.pacerSelect.value = "-1";
+    } else if (armed.kind === "ai") {
+      this.pacerSelect.value = "ai";
+    } else {
+      this.pacerSelect.value = String(this.eligible.indexOf(armed.entry));
+    }
     this.pacerSelect.disabled = this.eligible.length === 0 && !aiLap;
   }
 
