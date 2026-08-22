@@ -48,7 +48,7 @@ const MAX_ITERATIONS = 10;
 
 // Agent providers can be tuned or switched independently for each phase.
 const PLANNER_AGENT = sandcastle.claudeCode("claude-opus-4-8");
-const IMPLEMENTER_AGENT = sandcastle.codex("gpt-5.6-sol");
+const IMPLEMENTER_AGENT = sandcastle.claudeCode("claude-fable-5");
 const REVIEWER_AGENT = sandcastle.claudeCode("claude-fable-5");
 const MERGER_AGENT = sandcastle.claudeCode("claude-opus-4-8");
 
