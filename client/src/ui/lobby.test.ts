@@ -3,7 +3,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { LobbyCallbacks } from './lobby';
 import { Lobby } from './lobby';
-import type { LeaderboardEntry, RoomInfo } from '@racing/shared';
+import type { LeaderboardEntry, RoomInfo, ReplayFrame } from '@racing/shared';
+import type { ReferenceLap } from '../game/reference-lap';
+import { formatMs } from '../util';
+
+// The lobby bakes the AI Reference Lap through buildReferenceLap; mock it so
+// tests control the bake's result (and its call count) without running the
+// policy harness.
+const { buildReferenceLapMock } = vi.hoisted(() => ({ buildReferenceLapMock: vi.fn() }));
+vi.mock('../game/reference-lap', () => ({ buildReferenceLap: buildReferenceLapMock }));
+
+const AI_FRAMES: ReplayFrame[] = [
+  [0, 0, 0, 0, 0],
+  [1000 / 60, 0.5, 0.1, 0.01, 3],
+];
+
+function makeReferenceLap(timeMs = 23800): ReferenceLap {
+  return { name: 'AI Record', track: 'sunset-ridge', timeMs, frames: AI_FRAMES };
+}
+
+beforeEach(() => {
+  buildReferenceLapMock.mockReset();
+  buildReferenceLapMock.mockReturnValue(makeReferenceLap());
+});
 
 function makeCallbacks(): LobbyCallbacks {
   return {
@@ -224,9 +246,15 @@ describe('Lobby Pacer arming UX', () => {
     expect(alice.textContent).toContain('1:02');
   });
 
-  it('picking an entry arms it', () => {
+  it('picking an entry arms it as a kind:"replay" Pacer', () => {
     pickPacer('Alice');
-    expect(lobby.armedPacer).toEqual(replayEntry);
+    expect(lobby.armedPacer).toEqual({
+      kind: 'replay',
+      name: 'Alice',
+      track: 'sunset-ridge',
+      difficulty: 'medium',
+      entry: replayEntry,
+    });
   });
 
   it('picking "No Pacer" clears the armed entry', () => {
@@ -238,7 +266,7 @@ describe('Lobby Pacer arming UX', () => {
   it('picking a new entry replaces the previous one', () => {
     pickPacer('Alice');
     pickPacer('Carol');
-    expect(lobby.armedPacer).toEqual(replayEntry2);
+    expect(lobby.armedPacer).toMatchObject({ kind: 'replay', entry: replayEntry2 });
   });
 
   it('only offers entries matching selected Track and Difficulty', () => {
@@ -262,13 +290,174 @@ describe('Lobby Pacer arming UX', () => {
   it('the armed Pacer survives a leaderboard refresh with new entry objects', () => {
     pickPacer('Alice');
     lobby.setLeaderboard([{ ...replayEntry }, noReplayEntry, replayEntry2]);
-    expect(lobby.armedPacer).toEqual(replayEntry);
+    expect(lobby.armedPacer).toMatchObject({ kind: 'replay', entry: replayEntry });
     expect(picker().value).not.toBe('-1');
   });
 
-  it('is disabled when no entry has a replay', () => {
-    lobby.setLeaderboard([noReplayEntry]);
+  it('is disabled when no entry has a replay and the AI is ineligible', () => {
+    parent.querySelector<HTMLButtonElement>('button[data-diff="hard"]')!.click();
+    lobby.setLeaderboard([{ ...noReplayEntry, difficulty: 'hard' }]);
     expect(picker().disabled).toBe(true);
+  });
+
+  it('is enabled with no replay-bearing entries when the AI option is offered', () => {
+    lobby.setLeaderboard([noReplayEntry]);
+    expect(picker().disabled).toBe(false);
+  });
+});
+
+describe('Lobby AI Record Pacer option', () => {
+  let parent: HTMLElement;
+  let lobby: Lobby;
+
+  const alice: LeaderboardEntry = {
+    name: 'Alice', timeMs: 22000, date: '2026-01-01', hasReplay: true, difficulty: 'medium', track: 'sunset-ridge',
+  };
+  const carol: LeaderboardEntry = {
+    name: 'Carol', timeMs: 63000, date: '2026-01-03', hasReplay: true, difficulty: 'medium', track: 'sunset-ridge',
+  };
+
+  beforeEach(() => {
+    parent = makeParent();
+  });
+  afterEach(() => parent.remove());
+
+  function makeLobby(): Lobby {
+    lobby = new Lobby(parent, makeCallbacks());
+    return lobby;
+  }
+
+  function picker(): HTMLSelectElement {
+    return parent.querySelector<HTMLSelectElement>('.pacer-select')!;
+  }
+
+  function aiOption(): HTMLOptionElement | undefined {
+    return [...picker().options].find((o) => o.value === 'ai');
+  }
+
+  function pick(value: string): void {
+    picker().value = value;
+    picker().dispatchEvent(new Event('change'));
+  }
+
+  it('offers the AI Record with the baked time when eligible', () => {
+    buildReferenceLapMock.mockReturnValue(makeReferenceLap(24680));
+    makeLobby();
+    const opt = aiOption();
+    expect(opt).toBeDefined();
+    // The displayed time is the bake's, never a literal.
+    expect(opt!.textContent).toBe(`⚑ AI Record — ${formatMs(24680)}`);
+  });
+
+  it('is styled to match the Pacer cyan', () => {
+    makeLobby();
+    expect(aiOption()!.classList.contains('pacer-opt-ai')).toBe(true);
+  });
+
+  it('sits at its time-sorted position among the human options', () => {
+    // Alice 22.0s < AI 23.8s < Carol 63.0s
+    makeLobby().setLeaderboard([alice, carol]);
+    const texts = [...picker().options].map((o) => o.textContent!);
+    expect(texts).toEqual([
+      'No Pacer — race alone',
+      `⚑ Alice — ${formatMs(22000)}`,
+      `⚑ AI Record — ${formatMs(23800)}`,
+      `⚑ Carol — ${formatMs(63000)}`,
+    ]);
+  });
+
+  it('is absent on a Track without a trained policy', () => {
+    makeLobby();
+    parent.querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!.click();
+    expect(aiOption()).toBeUndefined();
+  });
+
+  it('is absent on a non-Medium Difficulty', () => {
+    makeLobby();
+    for (const diff of ['easy', 'hard']) {
+      parent.querySelector<HTMLButtonElement>(`button[data-diff="${diff}"]`)!.click();
+      expect(aiOption()).toBeUndefined();
+    }
+  });
+
+  it('a null bake yields no AI option', () => {
+    buildReferenceLapMock.mockReturnValue(null);
+    makeLobby();
+    expect(aiOption()).toBeUndefined();
+  });
+
+  it('selecting it arms a kind:"ai" Pacer whose frames are the memoized bake', () => {
+    makeLobby();
+    pick('ai');
+    expect(lobby.armedPacer).toEqual({
+      kind: 'ai',
+      name: 'AI Record',
+      track: 'sunset-ridge',
+      difficulty: 'medium',
+      frames: AI_FRAMES,
+    });
+    // Same array, not a copy: the armed frames are the bake the time came from.
+    expect((lobby.armedPacer as { frames: ReplayFrame[] }).frames).toBe(AI_FRAMES);
+  });
+
+  it('selecting a human option replaces an armed AI, and vice versa', () => {
+    makeLobby().setLeaderboard([alice]);
+    pick('ai');
+    expect(lobby.armedPacer).toMatchObject({ kind: 'ai' });
+    pick('0');
+    expect(lobby.armedPacer).toMatchObject({ kind: 'replay', entry: alice });
+    pick('ai');
+    expect(lobby.armedPacer).toMatchObject({ kind: 'ai' });
+  });
+
+  it('switching Track to an ineligible context clears an armed AI Pacer', () => {
+    makeLobby();
+    pick('ai');
+    parent.querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!.click();
+    expect(lobby.armedPacer).toBeNull();
+    expect(picker().value).toBe('-1');
+  });
+
+  it('switching Difficulty to an ineligible context clears an armed AI Pacer', () => {
+    makeLobby();
+    pick('ai');
+    parent.querySelector<HTMLButtonElement>('button[data-diff="hard"]')!.click();
+    expect(lobby.armedPacer).toBeNull();
+    expect(picker().value).toBe('-1');
+  });
+
+  it('an armed AI Pacer survives eligible re-renders (leaderboard refreshes)', () => {
+    makeLobby();
+    pick('ai');
+    lobby.setLeaderboard([alice, carol]);
+    expect(lobby.armedPacer).toMatchObject({ kind: 'ai' });
+    expect(picker().value).toBe('ai');
+  });
+
+  it('bakes at most once across repeated renders', () => {
+    makeLobby();
+    lobby.setLeaderboard([alice]);
+    lobby.setLeaderboard([alice, carol]);
+    parent.querySelector<HTMLButtonElement>('button[data-diff="hard"]')!.click();
+    parent.querySelector<HTMLButtonElement>('button[data-diff="medium"]')!.click();
+    expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not bake again for ineligible renders', () => {
+    makeLobby();
+    parent.querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!.click();
+    buildReferenceLapMock.mockClear();
+    lobby.setLeaderboard([alice]);
+    lobby.setLeaderboard([]);
+    expect(buildReferenceLapMock).not.toHaveBeenCalled();
+  });
+
+  it('a null bake is memoized too', () => {
+    buildReferenceLapMock.mockReturnValue(null);
+    makeLobby();
+    lobby.setLeaderboard([alice]);
+    lobby.setLeaderboard([alice, carol]);
+    expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
   });
 });
 

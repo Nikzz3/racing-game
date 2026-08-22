@@ -124,12 +124,19 @@ net.onMessage((msg) => {
           return;
         }
         if (matchingPacer) {
-          net.send({
-            type: "getReplay",
-            name: matchingPacer.name,
-            track: matchingPacer.track,
-            difficulty: matchingPacer.difficulty,
-          });
+          if (matchingPacer.kind === "ai") {
+            // The AI Pacer's frames are already baked and memoized in the
+            // lobby; hand them straight to the Game — no getReplay round trip,
+            // no server involvement (ADR-0006).
+            game.receiveReplayFrames(matchingPacer.frames);
+          } else {
+            net.send({
+              type: "getReplay",
+              name: matchingPacer.name,
+              track: matchingPacer.track,
+              difficulty: matchingPacer.difficulty,
+            });
+          }
         }
       });
       break;

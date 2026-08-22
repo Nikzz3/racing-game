@@ -1,5 +1,9 @@
 # Persisted human Replays may drive as Pacers in live Rooms
 
+> **Partially superseded by [ADR-0006](0006-ai-reference-lap-as-a-pacer.md).** The decision to
+> admit persisted human Replays as Pacers stands; the scope line keeping the AI Reference Lap
+> out of live Rooms is superseded.
+
 ADR-0002 confined the AI **Reference Lap** to a client-only viewer, off the leaderboard and
 out of live Rooms, to respect PRD #7's exclusion of in-game inference. That decision was
 about the *AI benchmark* specifically. This effort (map #53, spec on #27) surfaces a
