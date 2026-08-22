@@ -172,7 +172,7 @@ export class Game {
         },
       }),
       remotePlayerIds: () => this.remote.playerIds(),
-      pacerState: () => null,
+      pacerState: () => this.pacer?.state() ?? null,
     });
     this.seam.install();
   }

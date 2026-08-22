@@ -1,9 +1,5 @@
 import { expect, test } from "../fixtures/game-seam";
 
-// Red bookend for #110: the Game does not surface Pacer overlay state through
-// the seam yet (pacerState is a null stub), so the frameCount poll times out.
-test.fail();
-
 test("arms the AI Record and sees it pacing in a Room", async ({ game, page }) => {
   await game.createRace({
     playerName: "AI Racer",

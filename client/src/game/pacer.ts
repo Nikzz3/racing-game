@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { CHECKPOINT_RADIUS, type ReplayFrame } from "@racing/shared";
 import { animateCar, createCarMesh } from "./car";
+import type { E2ePacerState } from "./e2e-seam";
 import { interpolatePose, type Pose } from "./pose-interpolation";
 
 const PACER_COLOR = 0x00e5ff;
@@ -135,6 +136,29 @@ export class PacerOverlay {
   /** Whether the Pacer is actively playing back frames (started and has frames). */
   isPlaying(): boolean {
     return this.startMs !== null;
+  }
+
+  /**
+   * Pose-source-agnostic snapshot for the e2e seam: playback progress and the
+   * overlay car's scene state, identical for human-Replay and AI Pacers.
+   */
+  state(): E2ePacerState {
+    // The least-translucent car material governs whether the whole car reads
+    // as translucent, so report the max opacity across the car's meshes (the
+    // badge Sprite is not part of the car and is excluded).
+    let opacity = 0;
+    this.mesh.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of materials) opacity = Math.max(opacity, m.opacity);
+      }
+    });
+    return {
+      frameCount: this.frames.length,
+      playing: this.isPlaying(),
+      visible: this.mesh.visible,
+      opacity,
+    };
   }
 
   /** Hide after a Respawn; re-appears on the next restart() call. */
