@@ -19,6 +19,7 @@ function createBindings(): E2eGameBindings {
       lap: { laps: 0, active: true },
     }),
     remotePlayerIds: () => ["remote-b", "remote-a"],
+    pacerState: () => null,
   };
 }
 
@@ -98,6 +99,20 @@ describe("E2eSeam", () => {
       lapSubmitted: true,
       serverLapMs: 42_000,
       serverLaps: 1,
+    });
+  });
+
+  it("surfaces the Pacer overlay's state and null when no Pacer is armed", () => {
+    const game = createBindings();
+    const seam = new E2eSeam(game);
+    expect(seam.state().pacer).toBeNull();
+
+    game.pacerState = () => ({ frameCount: 1429, playing: true, visible: true, opacity: 0.5 });
+    expect(seam.state().pacer).toEqual({
+      frameCount: 1429,
+      playing: true,
+      visible: true,
+      opacity: 0.5,
     });
   });
 

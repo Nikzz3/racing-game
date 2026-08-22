@@ -10,6 +10,11 @@ import { expect, test as dbTest } from "./db";
 export interface CreateRaceOptions {
   playerName: string;
   roomName: string;
+  /**
+   * Option value to arm in the Starting Grid Pacer picker before creating the
+   * Room: "ai" for the AI Record, or a human row's numeric index value.
+   */
+  pacer?: string;
 }
 
 export interface DrivenLap {
@@ -37,9 +42,10 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
     await page.setViewportSize({ width: 320, height: 240 });
 
     const game: GameSeamFixture = {
-      async createRace({ playerName, roomName }) {
+      async createRace({ playerName, roomName, pacer }) {
         await page.goto("/");
         await page.getByLabel("Driver").fill(playerName);
+        if (pacer !== undefined) await page.locator(".pacer-select").selectOption(pacer);
         await page.getByPlaceholder("New room name").fill(roomName);
         await page.getByRole("button", { name: "Create & Race" }).click();
         await page.waitForFunction(() => window.__game !== undefined);
