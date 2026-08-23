@@ -185,6 +185,36 @@ describe("pacerDelta", () => {
 // PacerOverlay Variant (#127)
 // ---------------------------------------------------------------------------
 
+function makeCarGroup(): THREE.Group {
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshLambertMaterial());
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  g.add(mesh);
+  return g;
+}
+
+function makeScene() {
+  return { add: vi.fn(), remove: vi.fn() } as unknown as THREE.Scene;
+}
+
+function mockCarMeshAndCanvas(): void {
+  vi.mocked(createCarMesh).mockReset();
+  vi.mocked(createCarMesh).mockImplementation(() => makeCarGroup());
+  // jsdom has no 2D canvas; the REPLAY badge only needs a context that
+  // swallows its draw calls.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    beginPath: () => {},
+    roundRect: () => {},
+    fill: () => {},
+    fillText: () => {},
+  } as never);
+}
+
 describe("PacerOverlay Variant", () => {
   const FRAMES: ReplayFrame[] = [
     [0, 0, 0, 0, 0],
@@ -195,35 +225,7 @@ describe("PacerOverlay Variant", () => {
   // from the fallback these tests compare against.
   const DRIVER = "Ava";
 
-  function makeCarGroup(): THREE.Group {
-    const g = new THREE.Group();
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshLambertMaterial());
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    g.add(mesh);
-    return g;
-  }
-
-  function makeScene() {
-    return { add: vi.fn(), remove: vi.fn() } as unknown as THREE.Scene;
-  }
-
-  beforeEach(() => {
-    vi.mocked(createCarMesh).mockReset();
-    vi.mocked(createCarMesh).mockImplementation(() => makeCarGroup());
-    // jsdom has no 2D canvas; the REPLAY badge only needs a context that
-    // swallows its draw calls.
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-      fillStyle: "",
-      font: "",
-      textAlign: "",
-      textBaseline: "",
-      beginPath: () => {},
-      roundRect: () => {},
-      fill: () => {},
-      fillText: () => {},
-    } as never);
-  });
+  beforeEach(mockCarMeshAndCanvas);
 
   it("rebuilds the mesh from the recorded Variant when frames arrive", () => {
     const overlay = new PacerOverlay(makeScene(), DRIVER);
@@ -293,5 +295,50 @@ describe("PacerOverlay Variant", () => {
     overlay.setFrames(FRAMES, "taxi");
     // Constructor + the one taxi rebuild.
     expect(createCarMesh).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("PacerOverlay.state", () => {
+  beforeEach(mockCarMeshAndCanvas);
+
+  function createOverlay(): PacerOverlay {
+    return new PacerOverlay(makeScene(), "Ava");
+  }
+
+  it("reports no frames, not playing, and hidden before frames arrive", () => {
+    expect(createOverlay().state()).toMatchObject({
+      frameCount: 0,
+      playing: false,
+      visible: false,
+    });
+  });
+
+  it("reports the loaded frame count while still hidden (pre start-line)", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    expect(overlay.state()).toMatchObject({ frameCount: 3, playing: false, visible: false });
+  });
+
+  it("reports playing and visible once restarted and updated mid-recording", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    overlay.restart(1000);
+    overlay.update(1100, 1 / 60);
+    expect(overlay.state()).toMatchObject({ playing: true, visible: true });
+  });
+
+  it("reports a translucent car: opacity strictly between 0 and 1", () => {
+    const { opacity } = createOverlay().state();
+    expect(opacity).toBeGreaterThan(0);
+    expect(opacity).toBeLessThan(1);
+  });
+
+  it("reports not playing and hidden again after a Respawn", () => {
+    const overlay = createOverlay();
+    overlay.setFrames(frames);
+    overlay.restart(1000);
+    overlay.update(1100, 1 / 60);
+    overlay.onRespawn();
+    expect(overlay.state()).toMatchObject({ playing: false, visible: false });
   });
 });

@@ -1,4 +1,5 @@
 import type { Page, WebSocket } from "@playwright/test";
+import type { ServerMessage } from "@racing/shared";
 import { expect, test } from "../fixtures/players";
 
 const PLAYER_A = "Player Alpha";
@@ -7,17 +8,12 @@ const PLAYER_A_VARIANT = "suv";
 const PLAYER_B_VARIANT = "taxi";
 const ROOM_NAME = "Two Player Room";
 
-interface WelcomeMessage {
-  type: "welcome";
-  playerId: string;
-}
-
 function playerIdFromWelcome(page: Page): Promise<string> {
   return new Promise((resolve) => {
     page.on("websocket", (socket: WebSocket) => {
       socket.on("framereceived", ({ payload }) => {
-        const message = JSON.parse(payload.toString()) as Partial<WelcomeMessage>;
-        if (message.type === "welcome" && typeof message.playerId === "string") {
+        const message = JSON.parse(payload.toString()) as ServerMessage;
+        if (message.type === "welcome") {
           resolve(message.playerId);
         }
       });

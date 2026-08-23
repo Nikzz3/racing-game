@@ -21,7 +21,10 @@ export default defineConfig({
         DATABASE_URL: process.env.DATABASE_URL ?? "",
         PORT: "8081",
       },
-      url: "http://127.0.0.1:8081",
+      // Not "/": the server falls back to client/dist/index.html and 404s until the
+      // client is built, which Playwright never accepts as ready. Nothing in this suite
+      // needs that build — Vite serves the client — so probe liveness directly.
+      url: "http://127.0.0.1:8081/healthz",
       // Surfaced in CI logs; a silent webServer timeout is undiagnosable otherwise.
       stdout: "pipe",
       stderr: "pipe",

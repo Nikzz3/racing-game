@@ -1,5 +1,4 @@
 import type { Page } from "@playwright/test";
-import { DEFAULT_DIFFICULTY, DEFAULT_TRACK_SLUG } from "@racing/shared";
 import { expect, test } from "../fixtures/game-seam";
 
 function leaderboardNames(page: Page): Promise<string[]> {
@@ -19,11 +18,8 @@ test("a driven Plausible Lap persists between seeded rivals and survives reload"
   await game.createRace({ playerName, roomName: "Persistence Room" });
   await game.driveLap();
 
-  const persisted = await db.query<{ name: string }>(
-    "SELECT name FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
-    [playerName, DEFAULT_TRACK_SLUG, DEFAULT_DIFFICULTY],
-  );
-  expect(persisted.rows).toEqual([{ name: playerName }]);
+  const persisted = await db.bestLapFor(playerName);
+  expect(persisted.map((lap) => lap.name)).toEqual([playerName]);
   await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
 
   await page.reload();
@@ -44,6 +40,8 @@ test("keeps leaderboard entries segregated by Track and Difficulty", async ({ db
   await expect.poll(() => leaderboardNames(page)).toEqual(["Current Pair"]);
 });
 
+// Escape hatch (#98): this is really a server/DB-integration concern — if the e2e budget
+// gets tight, move it to a vitest test against the same testcontainers Postgres.
 test("a slower driven lap does not overwrite the driver's better time", async ({ db, game }) => {
   const playerName = "Already Faster";
   await db.seedBestLap({ name: playerName, timeMs: 1_000 });
@@ -51,9 +49,6 @@ test("a slower driven lap does not overwrite the driver's better time", async ({
 
   await game.driveLap();
 
-  const persisted = await db.query<{ time_ms: number }>(
-    "SELECT time_ms FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
-    [playerName, DEFAULT_TRACK_SLUG, DEFAULT_DIFFICULTY],
-  );
-  expect(persisted.rows).toEqual([{ time_ms: 1_000 }]);
+  const persisted = await db.bestLapFor(playerName);
+  expect(persisted.map((lap) => lap.time_ms)).toEqual([1_000]);
 });

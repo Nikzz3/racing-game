@@ -27,8 +27,8 @@ room (or join an existing one), and drive.
 ## End-to-end tests
 
 Install Chromium once, then run the Playwright suite. The test command starts its own
-throwaway Postgres container on host port 5433, plus the server and client on dedicated
-ports 8081 and 5174:
+throwaway Postgres container on a dynamically allocated host port, plus the server and
+client on dedicated ports 8081 and 5174:
 
 ```bash
 npx playwright install chromium
@@ -38,7 +38,10 @@ npm run test:e2e
 Docker must be running. Podman users must expose its Docker-compatible socket and set
 `DOCKER_HOST` to that socket before running the suite. If containers are unavailable, set
 `E2E_DATABASE_URL` to a Postgres connection URL; the wrapper will use it verbatim instead
-of starting a container.
+of starting a container. The suite erases the `rooms`, `best_laps`, and `replays` tables
+of whatever database it runs against, so you must also set
+`E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the database is disposable — the wrapper
+refuses to start without it.
 
 ## Controls
 

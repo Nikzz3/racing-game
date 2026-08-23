@@ -43,7 +43,10 @@ per-test database fixture truncates state between runs.
 Docker must be running. With Podman, expose its Docker-compatible socket and set
 `DOCKER_HOST` to that socket. To use an existing Postgres instead, set
 `E2E_DATABASE_URL`; the wrapper uses that URL verbatim and skips testcontainers. This is
-also the escape hatch when no container socket is available.
+also the escape hatch when no container socket is available. Because the suite truncates
+`rooms`, `best_laps`, and `replays` in the target database, an external URL also
+requires `E2E_DATABASE_ALLOW_TRUNCATE=1` as an explicit "this database is disposable"
+opt-in; both the wrapper and the database fixture refuse to run without it.
 
 ## Outside-in TDD
 
