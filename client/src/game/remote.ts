@@ -31,19 +31,17 @@ export class RemotePlayers {
     for (const [id, p] of others) {
       const variant = resolveVariant(id, p.variant);
       const existing = this.meshes.get(id);
-      if (existing && this.variants.get(id) !== variant) {
+      if (existing) {
+        if (this.variants.get(id) === variant) continue;
         disposeCarMesh(existing);
         this.scene.remove(existing);
-        this.meshes.delete(id);
       }
-      if (!this.meshes.has(id)) {
-        const mesh = createCarMesh(id, p.name, p.variant);
-        mesh.position.set(p.x, 0, p.z);
-        mesh.rotation.y = p.rot;
-        this.meshes.set(id, mesh);
-        this.variants.set(id, variant);
-        this.scene.add(mesh);
-      }
+      const mesh = createCarMesh(id, p.name, variant);
+      mesh.position.set(p.x, 0, p.z);
+      mesh.rotation.y = p.rot;
+      this.meshes.set(id, mesh);
+      this.variants.set(id, variant);
+      this.scene.add(mesh);
     }
     for (const [id, mesh] of this.meshes) {
       if (!others.has(id)) {

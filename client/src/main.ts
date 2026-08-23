@@ -53,20 +53,24 @@ function openReplay(
   }
 }
 
+/** The driver's identity (name + Variant), sent before entering a Room and on every Garage change. */
+function sendHello(): void {
+  net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
+}
+
 const lobby = new Lobby(app, {
   onCreate: (roomName, track, difficulty) => {
-    net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
+    sendHello();
     net.send({ type: "createRoom", roomName, difficulty, track });
   },
   onJoin: (roomId) => {
-    net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
+    sendHello();
     net.send({ type: "joinRoom", roomId });
   },
   onReplay: (name, track, difficulty) => net.send({ type: "getReplay", name, track, difficulty }),
   // The server accepts hello at any time and folds the Variant into the next
   // snapshot, so a Garage change is live without leaving the Lobby.
-  onVariantChange: () =>
-    net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant }),
+  onVariantChange: sendHello,
   onReferenceLap: () => {
     if (game) return;
     const lap = lobby.getReferenceLap();
