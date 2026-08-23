@@ -11,6 +11,7 @@ import {
   type ReplayFrame,
   type ServerMessage,
   type Track,
+  type Variant,
 } from "@racing/shared";
 import { checkpointMissed } from "./checkpoint-miss";
 import type { Net } from "../net";
@@ -105,7 +106,8 @@ export class Game {
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
     trackSlug: string = DEFAULT_TRACK_SLUG,
-    armedPacer?: ArmedPacer | null
+    armedPacer?: ArmedPacer | null,
+    private readonly variant?: Variant
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpointSampleIndices = this.track.checkpoints.map(
@@ -122,7 +124,7 @@ export class Game {
     this.remote = new RemotePlayers(this.bundle.scene, myId);
     this.installE2eSeam();
     this.car.spawnAtSample(SPAWN_SAMPLE, this.spawnOffset());
-    this.carMesh = createCarMesh(myId);
+    this.carMesh = createCarMesh(myId, undefined, this.variant);
     this.bundle.scene.add(this.carMesh);
     if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
@@ -172,10 +174,8 @@ export class Game {
         },
       }),
       remotePlayerIds: () => this.remote.playerIds(),
-      // The local mesh is built without an explicit Variant (the local picker
-      // lands with the Garage, #125), so its resolved Variant is the hash fallback.
       playerVariants: () => ({
-        [this.myId]: resolveVariant(this.myId),
+        [this.myId]: resolveVariant(this.myId, this.variant),
         ...this.remote.resolvedVariants(),
       }),
     });
