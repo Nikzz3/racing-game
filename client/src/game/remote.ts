@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import type { PlayerSnapshot } from "@racing/shared";
-import { animateCar, createCarMesh, disposeCarMesh } from "./car";
+import type { PlayerSnapshot, Variant } from "@racing/shared";
+import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 
 interface BufferedSnapshot {
   t: number; // local receive time (performance.now)
@@ -13,6 +13,8 @@ const RENDER_DELAY_MS = 130;
 export class RemotePlayers {
   private snapshots: BufferedSnapshot[] = [];
   private meshes = new Map<string, THREE.Group>();
+  /** Resolved Variant each mesh was built with, to detect when a snapshot changes it. */
+  private variants = new Map<string, Variant>();
 
   constructor(
     private scene: THREE.Scene,
@@ -24,13 +26,22 @@ export class RemotePlayers {
     this.snapshots.push({ t: performance.now(), players: others });
     if (this.snapshots.length > 30) this.snapshots.shift();
 
-    // Create meshes for new players, remove ones that left.
+    // Create meshes for new players (rebuilding when a snapshot changes a
+    // player's Variant — helloes are accepted mid-Room), remove ones that left.
     for (const [id, p] of others) {
+      const variant = resolveVariant(id, p.variant);
+      const existing = this.meshes.get(id);
+      if (existing && this.variants.get(id) !== variant) {
+        disposeCarMesh(existing);
+        this.scene.remove(existing);
+        this.meshes.delete(id);
+      }
       if (!this.meshes.has(id)) {
-        const mesh = createCarMesh(id, p.name);
+        const mesh = createCarMesh(id, p.name, p.variant);
         mesh.position.set(p.x, 0, p.z);
         mesh.rotation.y = p.rot;
         this.meshes.set(id, mesh);
+        this.variants.set(id, variant);
         this.scene.add(mesh);
       }
     }
@@ -39,6 +50,7 @@ export class RemotePlayers {
         disposeCarMesh(mesh);
         this.scene.remove(mesh);
         this.meshes.delete(id);
+        this.variants.delete(id);
       }
     }
   }
@@ -85,12 +97,18 @@ export class RemotePlayers {
     return [...this.meshes.keys()];
   }
 
+  /** Resolved Variant per remote player id, as currently rendered. */
+  resolvedVariants(): Record<string, Variant> {
+    return Object.fromEntries(this.variants);
+  }
+
   dispose(): void {
     for (const mesh of this.meshes.values()) {
       disposeCarMesh(mesh);
       this.scene.remove(mesh);
     }
     this.meshes.clear();
+    this.variants.clear();
     this.snapshots = [];
   }
 }

@@ -503,3 +503,32 @@ describe('Lobby AI Record control', () => {
     expect(cbs.onReferenceLap).not.toHaveBeenCalled();
   });
 });
+
+describe('Lobby selected Variant', () => {
+  let parent: HTMLElement;
+  let lobby: Lobby;
+
+  beforeEach(() => {
+    localStorage.clear();
+    parent = makeParent();
+    lobby = new Lobby(parent, makeCallbacks());
+  });
+  afterEach(() => {
+    parent.remove();
+    localStorage.clear();
+  });
+
+  it('reads a valid stored Variant', () => {
+    localStorage.setItem('racer-variant', 'taxi');
+    expect(lobby.selectedVariant).toBe('taxi');
+  });
+
+  it('is absent when nothing is stored', () => {
+    expect(lobby.selectedVariant).toBeUndefined();
+  });
+
+  it('normalizes an invalid stored value to absent, never a specific car', () => {
+    localStorage.setItem('racer-variant', 'batmobile');
+    expect(lobby.selectedVariant).toBeUndefined();
+  });
+});

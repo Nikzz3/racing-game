@@ -55,11 +55,11 @@ function openReplay(
 
 const lobby = new Lobby(app, {
   onCreate: (roomName, track, difficulty) => {
-    net.send({ type: "hello", name: lobby.playerName });
+    net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
     net.send({ type: "createRoom", roomName, difficulty, track });
   },
   onJoin: (roomId) => {
-    net.send({ type: "hello", name: lobby.playerName });
+    net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
     net.send({ type: "joinRoom", roomId });
   },
   onReplay: (name, track, difficulty) => net.send({ type: "getReplay", name, track, difficulty }),

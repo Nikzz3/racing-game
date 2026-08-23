@@ -1,3 +1,4 @@
+import type { Variant } from "@racing/shared";
 import type { CarInput } from "./input";
 
 export const E2E_DT = 1 / 60;
@@ -14,10 +15,13 @@ export interface E2eGameBindings {
   step(dt: number, input: CarInput): void;
   localState(): E2eLocalState;
   remotePlayerIds(): string[];
+  /** Resolved (rendered) Variant per player id, local player included. */
+  playerVariants(): Record<string, Variant>;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
+  variants: Record<string, Variant>;
   frame: number;
   inputCount: number;
   injectionFinished: boolean;
@@ -109,6 +113,7 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
+      variants: this.game.playerVariants(),
       frame: this.nextInputIndex,
       inputCount: this.inputs.length,
       injectionFinished: !this.driving,

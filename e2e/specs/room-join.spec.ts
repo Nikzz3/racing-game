@@ -29,20 +29,10 @@ async function remotePlayerIds(page: Page): Promise<string[] | undefined> {
 }
 
 async function resolvedVariant(page: Page, playerId: string): Promise<string | undefined> {
-  return page.evaluate(
-    (id) =>
-      (window.__game?.state() as { variants?: Record<string, string> } | undefined)?.variants?.[
-        id
-      ],
-    playerId,
-  );
+  return page.evaluate((id) => window.__game?.state().variants[id], playerId);
 }
 
 test("two players create and join a Room and see each other", async ({ playerA, playerB }) => {
-  // Red bookend for the Variant wire (#124): remove once the Variant travels
-  // hello → snapshot → remote mesh and this journey goes green.
-  test.fail();
-
   const playerAIdPromise = playerIdFromWelcome(playerA);
   const playerBIdPromise = playerIdFromWelcome(playerB);
 

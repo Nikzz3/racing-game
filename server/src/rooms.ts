@@ -9,6 +9,7 @@ import {
   type RoomInfo,
   type ServerMessage,
   type Track,
+  type Variant,
 } from "@racing/shared";
 import { createTiming, type TimingState } from "./timing";
 import { pool } from "./db";
@@ -18,6 +19,8 @@ export const ROOM_TTL_MS = 60 * 60 * 1000;
 export interface Player {
   id: string;
   name: string;
+  /** Cosmetic car choice from the latest hello; absent → clients hash the id. */
+  variant?: Variant;
   ws: WebSocket;
   room: Room | null;
   x: number;
@@ -71,6 +74,7 @@ export class Room {
     return [...this.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
+      variant: p.variant,
       x: p.x,
       y: p.y,
       z: p.z,

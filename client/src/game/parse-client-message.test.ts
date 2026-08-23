@@ -16,6 +16,25 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "hello", name: 123 })).toBeNull();
   });
 
+  it("carries a valid hello variant through", () => {
+    expect(parseClientMessage({ type: "hello", name: "Ada", variant: "taxi" })).toEqual({
+      type: "hello",
+      name: "Ada",
+      variant: "taxi",
+    });
+  });
+
+  it("normalizes an unknown hello variant to absent instead of coercing it", () => {
+    const msg = parseClientMessage({ type: "hello", name: "Ada", variant: "batmobile" });
+    expect(msg).toEqual({ type: "hello", name: "Ada" });
+    expect((msg as { variant?: string }).variant).toBeUndefined();
+  });
+
+  it("leaves an omitted hello variant absent", () => {
+    const msg = parseClientMessage({ type: "hello", name: "Ada" });
+    expect((msg as { variant?: string }).variant).toBeUndefined();
+  });
+
   it("rejects a createRoom with no roomName", () => {
     expect(parseClientMessage({ type: "createRoom" })).toBeNull();
   });

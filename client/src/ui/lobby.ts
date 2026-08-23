@@ -1,5 +1,6 @@
 import type { LeaderboardEntry, ReplayFrame, RoomInfo, Track, TrackSlug } from "@racing/shared";
 import {
+  asVariant,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
@@ -8,6 +9,7 @@ import {
   resolveTrack,
   trackPath,
   type Difficulty,
+  type Variant,
 } from "@racing/shared";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import policy from "../../../rl/policy.json";
@@ -38,6 +40,7 @@ function replayPacer(entry: LeaderboardEntry): ArmedPacer {
 }
 
 const NAME_KEY = "racer-name";
+const VARIANT_KEY = "racer-variant";
 
 function trackViewBox(track: Track): string {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -242,6 +245,16 @@ export class Lobby {
 
   get playerName(): string {
     return this.nameInput.value.trim().slice(0, 16) || "Racer";
+  }
+
+  /**
+   * The driver's chosen Variant for the next hello, read live from storage.
+   * The Garage picker (follow-up issue) writes this key; until then only the
+   * e2e harness seeds it. Unknown or absent stored values normalize to absent,
+   * so the wire never carries an unvalidated string.
+   */
+  get selectedVariant(): Variant | undefined {
+    return asVariant(localStorage.getItem(VARIANT_KEY));
   }
 
   setRooms(rooms: RoomInfo[]): void {

@@ -17,7 +17,7 @@ import type { Net } from "../net";
 import type { ArmedPacer } from "../ui/lobby";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
-import { animateCar, createCarMesh } from "./car";
+import { animateCar, createCarMesh, resolveVariant } from "./car";
 import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
@@ -172,6 +172,12 @@ export class Game {
         },
       }),
       remotePlayerIds: () => this.remote.playerIds(),
+      // The local mesh is built without an explicit Variant (the local picker
+      // lands with the Garage, #125), so its resolved Variant is the hash fallback.
+      playerVariants: () => ({
+        [this.myId]: resolveVariant(this.myId),
+        ...this.remote.resolvedVariants(),
+      }),
     });
     this.seam.install();
   }

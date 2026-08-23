@@ -19,6 +19,7 @@ function createBindings(): E2eGameBindings {
       lap: { laps: 0, active: true },
     }),
     remotePlayerIds: () => ["remote-b", "remote-a"],
+    playerVariants: () => ({ me: "race", "remote-a": "taxi", "remote-b": "van" }),
   };
 }
 
@@ -94,6 +95,7 @@ describe("E2eSeam", () => {
       checkpoint: 1,
       lap: { laps: 0, active: true },
       remotePlayerIds: ["remote-a", "remote-b"],
+      variants: { me: "race", "remote-a": "taxi", "remote-b": "van" },
       injectionFinished: true,
       lapSubmitted: true,
       serverLapMs: 42_000,
