@@ -34,13 +34,11 @@ async function resolvedVariant(page: Page, playerId: string): Promise<string | u
 }
 
 test("two players create and join a Room and see each other", async ({ playerA, playerB }) => {
-  // Red bookend for the Garage (#125): the .garage-card grid does not exist yet.
-  test.fail();
   const playerAIdPromise = playerIdFromWelcome(playerA);
   const playerBIdPromise = playerIdFromWelcome(playerB);
 
-  // Player B chose the taxi Variant; the Garage picker (follow-up issue #125)
-  // will write this same localStorage key.
+  // Player B chose the taxi Variant, seeded directly into the localStorage key
+  // the Garage picker writes (player A exercises the picker UI itself below).
   await playerB.addInitScript((variant) => localStorage.setItem("racer-variant", variant), PLAYER_B_VARIANT);
 
   await Promise.all([playerA.goto("/"), playerB.goto("/")]);

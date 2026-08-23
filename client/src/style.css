@@ -584,6 +584,73 @@ input:focus {
   background: color-mix(in srgb, var(--diff-color) 16%, transparent);
 }
 
+/* The Garage: Variant cards 4×2 with the Random tile alongside in the last
+   column. The Random tile leads the DOM (explicitly placed), so the Variant
+   cards auto-flow around it. */
+.garage {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) minmax(84px, 0.7fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.garage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 8px 6px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.garage-card:hover {
+  color: #9be8ff;
+  border-color: rgba(79, 216, 255, 0.4);
+  background: rgba(79, 216, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.garage-card.active {
+  color: #4fd8ff;
+  border-color: #4fd8ff;
+  background: color-mix(in srgb, #4fd8ff 14%, transparent);
+  box-shadow:
+    0 0 18px rgba(79, 216, 255, 0.28),
+    0 0 0 1px rgba(79, 216, 255, 0.2) inset;
+}
+
+.garage-thumb {
+  width: 100%;
+  height: auto;
+  min-height: 30px;
+}
+
+.garage-card-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.garage-card-random {
+  grid-column: 5;
+  grid-row: span 2;
+}
+
+.garage-random-mark {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.9;
+}
+
 .lb-tabs {
   display: flex;
   gap: 6px;

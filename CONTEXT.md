@@ -17,7 +17,7 @@ The pre-Room screen where a driver sets their identity (name, and their chosen c
 _Avoid_: using Lobby to mean Room, menu, title screen
 
 **Variant**:
-One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Today a Variant is assigned by hashing the player id; letting drivers choose one in the Lobby is in progress.
+One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid, or keep the default Random state, which re-rolls to a concrete Variant on each connection — the wire only ever carries concrete Variants. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
 _Avoid_: car type, skin, model (ambiguous with 3D asset files)
 
 **Difficulty**:
