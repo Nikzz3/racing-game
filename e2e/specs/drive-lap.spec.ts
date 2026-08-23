@@ -23,13 +23,11 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   ]);
 
   const accepted = await db.query<{ name: string; variant: string | null }>(
-    "SELECT * FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
+    "SELECT name, variant FROM best_laps WHERE name = $1 AND track = $2 AND difficulty = $3",
     [playerName, "sunset-ridge", "medium"],
   );
-  expect(accepted.rows).toHaveLength(1);
-  expect(accepted.rows[0].name).toBe(playerName);
   // The hello carried the taxi Variant; the persisted lap snapshots it.
-  expect(accepted.rows[0].variant).toBe("taxi");
+  expect(accepted.rows).toEqual([{ name: playerName, variant: "taxi" }]);
 });
 
 test("real keyboard input crosses the first Checkpoint", async ({ game, page }) => {

@@ -30,14 +30,11 @@ export class RemotePlayers {
     // player's Variant — helloes are accepted mid-Room), remove ones that left.
     for (const [id, p] of others) {
       const variant = resolveVariant(id, p.variant);
-      const existing = this.meshes.get(id);
-      if (existing && this.variants.get(id) !== variant) {
-        disposeCarMesh(existing);
-        this.scene.remove(existing);
-        this.meshes.delete(id);
+      if (this.meshes.has(id) && this.variants.get(id) !== variant) {
+        this.removeMesh(id);
       }
       if (!this.meshes.has(id)) {
-        const mesh = createCarMesh(id, p.name, p.variant);
+        const mesh = createCarMesh(id, p.name, variant);
         mesh.position.set(p.x, 0, p.z);
         mesh.rotation.y = p.rot;
         this.meshes.set(id, mesh);
@@ -45,14 +42,18 @@ export class RemotePlayers {
         this.scene.add(mesh);
       }
     }
-    for (const [id, mesh] of this.meshes) {
-      if (!others.has(id)) {
-        disposeCarMesh(mesh);
-        this.scene.remove(mesh);
-        this.meshes.delete(id);
-        this.variants.delete(id);
-      }
+    for (const id of this.meshes.keys()) {
+      if (!others.has(id)) this.removeMesh(id);
     }
+  }
+
+  private removeMesh(id: string): void {
+    const mesh = this.meshes.get(id);
+    if (!mesh) return;
+    disposeCarMesh(mesh);
+    this.scene.remove(mesh);
+    this.meshes.delete(id);
+    this.variants.delete(id);
   }
 
   update(dt: number): void {
@@ -103,12 +104,7 @@ export class RemotePlayers {
   }
 
   dispose(): void {
-    for (const mesh of this.meshes.values()) {
-      disposeCarMesh(mesh);
-      this.scene.remove(mesh);
-    }
-    this.meshes.clear();
-    this.variants.clear();
+    for (const id of this.meshes.keys()) this.removeMesh(id);
     this.snapshots = [];
   }
 }
