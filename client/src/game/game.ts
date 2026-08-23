@@ -11,13 +11,14 @@ import {
   type ReplayFrame,
   type ServerMessage,
   type Track,
+  type Variant,
 } from "@racing/shared";
 import { checkpointMissed } from "./checkpoint-miss";
 import type { Net } from "../net";
 import type { ArmedPacer } from "../ui/lobby";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
-import { animateCar, createCarMesh } from "./car";
+import { animateCar, createCarMesh, resolveVariant } from "./car";
 import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
@@ -101,7 +102,8 @@ export class Game {
     onLeave: () => void,
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
     trackSlug: string = DEFAULT_TRACK_SLUG,
-    armedPacer?: ArmedPacer | null
+    armedPacer?: ArmedPacer | null,
+    private readonly variant?: Variant
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpointSampleIndices = this.track.checkpoints.map(
@@ -118,9 +120,9 @@ export class Game {
     this.remote = new RemotePlayers(this.bundle.scene, myId);
     this.installE2eSeam();
     this.car.spawnAtSample(SPAWN_SAMPLE, this.spawnOffset());
-    this.carMesh = createCarMesh(myId);
+    this.carMesh = createCarMesh(myId, undefined, this.variant);
     this.bundle.scene.add(this.carMesh);
-    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
+    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     if (this.pacer) {
       this.hud.showPacerChip(() => this.dismissPacer(), armedPacer?.name ?? "");
@@ -170,6 +172,11 @@ export class Game {
         }),
         remotePlayerIds: () => this.remote.playerIds(),
         sendState: () => this.sendState(),
+        playerVariants: () => ({
+          [this.myId]: resolveVariant(this.myId, this.variant),
+          ...this.remote.resolvedVariants(),
+        }),
+        pacerVariant: () => this.pacer?.resolvedVariant() ?? null,
         pacerState: () => this.pacer?.state() ?? null,
       },
       SEND_INTERVAL_MS,
@@ -181,9 +188,9 @@ export class Game {
     return this.seam ? 0 : (Math.random() - 0.5) * 7;
   }
 
-  receiveReplayFrames(frames: ReplayFrame[]): void {
+  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant): void {
     if (!this.pacer) return;
-    this.pacer.setFrames(frames);
+    this.pacer.setFrames(frames, variant);
     this.pacerCrossingTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
   }
 

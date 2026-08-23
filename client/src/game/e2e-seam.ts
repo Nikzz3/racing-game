@@ -1,3 +1,4 @@
+import type { Variant } from "@racing/shared";
 import type { CarInput } from "./input";
 
 export const E2E_DT = 1 / 60;
@@ -32,12 +33,18 @@ export interface E2eGameBindings {
   remotePlayerIds(): string[];
   /** Pushes local state to the server; the seam paces these off simulated time. */
   sendState(): void;
+  /** Resolved (rendered) Variant per player id, local player included. */
+  playerVariants(): Record<string, Variant>;
+  /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
+  pacerVariant(): Variant | null;
   /** Current Pacer overlay state, or null when no Pacer is armed (or it was dismissed). */
   pacerState(): E2ePacerState | null;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
+  variants: Record<string, Variant>;
+  pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
   injectionFinished: boolean;
   lapSubmitted: boolean;
@@ -142,6 +149,8 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
+      variants: this.game.playerVariants(),
+      pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,

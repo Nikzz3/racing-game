@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { Variant } from "@racing/shared";
 import { hashString } from "../util";
 import { CAR_VARIANTS, getModel } from "./models";
 
@@ -22,13 +23,20 @@ export function colorForPlayer(id: string): number {
 }
 
 /**
- * Car mesh for a player. Uses a Kenney Car Kit GLB (variant picked from the player id),
- * falling back to a simple procedural car if the model failed to load.
- * Local forward is +z, so mesh.rotation.y = heading works directly.
+ * Resolves the Variant to render: an explicit choice wins; absent falls back to
+ * the stable hash-of-player-id assignment.
  */
-export function createCarMesh(playerId: string, name?: string): THREE.Group {
-  const variant = CAR_VARIANTS[hashString(playerId) % CAR_VARIANTS.length];
-  const model = getModel(`car:${variant}`);
+export function resolveVariant(playerId: string, variant?: Variant): Variant {
+  return variant ?? CAR_VARIANTS[hashString(playerId) % CAR_VARIANTS.length];
+}
+
+/**
+ * Car mesh for a player. Uses a Kenney Car Kit GLB (explicit variant, or picked
+ * from the player id), falling back to a simple procedural car if the model
+ * failed to load. Local forward is +z, so mesh.rotation.y = heading works directly.
+ */
+export function createCarMesh(playerId: string, name?: string, variant?: Variant): THREE.Group {
+  const model = getModel(`car:${resolveVariant(playerId, variant)}`);
   const group = new THREE.Group();
 
   if (model) {

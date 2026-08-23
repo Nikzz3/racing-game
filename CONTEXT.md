@@ -10,7 +10,15 @@ _Avoid_: Map, level, course
 
 **Room**:
 A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime.
-_Avoid_: Lobby, session, game
+_Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
+
+**Lobby**:
+The pre-Room screen where a driver sets their identity (name, and their chosen car Variant) and creates or joins a Room. The Lobby is not a Room and holds no race state; its choices persist locally on the driver's device.
+_Avoid_: using Lobby to mean Room, menu, title screen
+
+**Variant**:
+One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid, or keep the default Random state, which re-rolls to a concrete Variant on each connection — the wire only ever carries concrete Variants. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
+_Avoid_: car type, skin, model (ambiguous with 3D asset files)
 
 **Difficulty**:
 A named set of physics rules (Easy, Medium, Hard) that governs how a car accelerates, how fast it can go, and how harshly going off-road is penalised. Fixed for the lifetime of a Room.
@@ -41,5 +49,5 @@ The single canonical fastest lap the trained RL policy drives against the real p
 _Avoid_: Record (collides with Track Record), Replay (which is a persisted human lap), ghost
 
 **Pacer**:
-An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a *Replay*, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human *Replays* and the AI *Reference Lap* may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium.
+An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a *Replay*, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human *Replays* and the AI *Reference Lap* may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium. A human Pacer renders the Variant recorded with its lap (absent → hash of the recorded driver's name); the AI always drives police, its canonical car.
 _Avoid_: ghost, shadow, phantom, rival/opponent (informal)

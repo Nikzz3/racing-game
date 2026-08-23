@@ -4,7 +4,7 @@ import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
 import { areModelsLoaded, preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
-import type { ReplayFrame, TrackSlug } from "@racing/shared";
+import type { ReplayFrame, TrackSlug, Variant } from "@racing/shared";
 
 const app = document.getElementById("app")!;
 const net = new Net();
@@ -25,7 +25,8 @@ function openReplay(
   name: string,
   track: TrackSlug,
   timeMs: number,
-  frames: ReplayFrame[]
+  frames: ReplayFrame[],
+  variant?: Variant
 ): void {
   if (game) return;
   replay?.dispose();
@@ -41,7 +42,7 @@ function openReplay(
   const build = () => {
     if (gen !== replayGen || game) return;
     lobby.hide();
-    replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
+    replay = new ReplayViewer(app, name, track, timeMs, frames, variant, () => {
       replay = null;
       lobby.show();
     });
@@ -53,20 +54,28 @@ function openReplay(
   }
 }
 
+/** The driver's identity (name + Variant), sent before entering a Room and on every Garage change. */
+function sendHello(): void {
+  net.send({ type: "hello", name: lobby.playerName, variant: lobby.selectedVariant });
+}
+
 const lobby = new Lobby(app, {
   onCreate: (roomName, track, difficulty) => {
-    net.send({ type: "hello", name: lobby.playerName });
+    sendHello();
     net.send({ type: "createRoom", roomName, difficulty, track });
   },
   onJoin: (roomId) => {
-    net.send({ type: "hello", name: lobby.playerName });
+    sendHello();
     net.send({ type: "joinRoom", roomId });
   },
   onReplay: (name, track, difficulty) => net.send({ type: "getReplay", name, track, difficulty }),
+  // The server accepts hello at any time and folds the Variant into the next
+  // snapshot, so a Garage change is live without leaving the Lobby.
+  onVariantChange: sendHello,
   onReferenceLap: () => {
     if (game) return;
     const lap = lobby.getReferenceLap();
-    if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames);
+    if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
   },
 });
 
@@ -112,7 +121,8 @@ net.onMessage((msg) => {
             () => net.send({ type: "leaveRoom" }),
             msg.difficulty,
             msg.track,
-            matchingPacer
+            matchingPacer,
+            lobby.selectedVariant
           );
         } catch (err) {
           // e.g. WebGL context creation failure; leaveRoom makes the server
@@ -126,7 +136,7 @@ net.onMessage((msg) => {
             // The AI Pacer's frames are already baked and memoized in the
             // lobby; hand them straight to the Game — no getReplay round trip,
             // no server involvement (ADR-0006).
-            game.receiveReplayFrames(matchingPacer.frames);
+            game.receiveReplayFrames(matchingPacer.frames, matchingPacer.variant);
           } else {
             net.send({
               type: "getReplay",
@@ -147,9 +157,9 @@ net.onMessage((msg) => {
       break;
     case "replay":
       if (game) {
-        game.receiveReplayFrames(msg.frames);
+        game.receiveReplayFrames(msg.frames, msg.variant);
       } else {
-        openReplay(msg.name, msg.track, msg.timeMs, msg.frames);
+        openReplay(msg.name, msg.track, msg.timeMs, msg.frames, msg.variant);
       }
       break;
     case "error":
@@ -162,6 +172,7 @@ net.onMessage((msg) => {
 
 // Load models and connect in parallel; both must finish before a game can start.
 const modelsReady = preloadModels();
+void modelsReady.then(() => lobby.paintGarageThumbnails());
 
 try {
   const wsUrl = import.meta.env.DEV

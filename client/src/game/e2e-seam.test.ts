@@ -22,6 +22,8 @@ function createBindings(): E2eGameBindings {
     }),
     remotePlayerIds: () => ["remote-b", "remote-a"],
     sendState: vi.fn(),
+    playerVariants: () => ({ me: "race", "remote-a": "taxi", "remote-b": "van" }),
+    pacerVariant: () => "taxi",
     pacerState: () => null,
   };
 }
@@ -120,6 +122,8 @@ describe("E2eSeam", () => {
       checkpoint: 1,
       lap: { laps: 0, active: true },
       remotePlayerIds: ["remote-a", "remote-b"],
+      variants: { me: "race", "remote-a": "taxi", "remote-b": "van" },
+      pacerVariant: "taxi",
       injectionFinished: true,
       lapSubmitted: true,
       serverLaps: 1,

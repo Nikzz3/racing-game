@@ -1,5 +1,7 @@
 import type { LeaderboardEntry, ReplayFrame, RoomInfo, Track, TrackSlug } from "@racing/shared";
 import {
+  asVariant,
+  CAR_VARIANTS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
@@ -8,7 +10,9 @@ import {
   resolveTrack,
   trackPath,
   type Difficulty,
+  type Variant,
 } from "@racing/shared";
+import { renderVariantThumbnails } from "./garage-thumbs";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import policy from "../../../rl/policy.json";
 import { escapeHtml, formatMs } from "../util";
@@ -18,6 +22,8 @@ export interface LobbyCallbacks {
   onJoin: (roomId: string) => void;
   onReplay: (name: string, track: TrackSlug, difficulty: Difficulty) => void;
   onReferenceLap: () => void;
+  /** The Garage choice changed; the driver's hello should be re-sent with selectedVariant. */
+  onVariantChange: () => void;
 }
 
 /**
@@ -28,7 +34,14 @@ export interface LobbyCallbacks {
  */
 export type ArmedPacer =
   | { kind: "replay"; name: string; track: TrackSlug; difficulty: Difficulty; entry: LeaderboardEntry }
-  | { kind: "ai"; name: "AI Record"; track: TrackSlug; difficulty: "medium"; frames: ReplayFrame[] };
+  | {
+      kind: "ai";
+      name: "AI Record";
+      track: TrackSlug;
+      difficulty: "medium";
+      variant: "police";
+      frames: ReplayFrame[];
+    };
 
 /** Track slugs that have a trained AI policy (Reference Lap available). */
 const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
@@ -38,6 +51,27 @@ function replayPacer(entry: LeaderboardEntry): ArmedPacer {
 }
 
 const NAME_KEY = "racer-name";
+const VARIANT_KEY = "racer-variant";
+
+/**
+ * The Garage's Random tile: a first-class picker state, stored like any
+ * concrete choice but never a ninth Variant — the wire only ever carries
+ * concrete Variants, so Random is resolved client-side (#119).
+ */
+const RANDOM = "random";
+type GarageChoice = Variant | typeof RANDOM;
+
+/** Display names for the Variant cards (settled with the #118 prototype). */
+const VARIANT_LABELS: Record<Variant, string> = {
+  race: "Race",
+  "race-future": "Hyper",
+  "sedan-sports": "Sedan S",
+  "hatchback-sports": "Hatch S",
+  suv: "SUV",
+  taxi: "Taxi",
+  police: "Police",
+  van: "Van",
+};
 
 function trackViewBox(track: Track): string {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -64,6 +98,20 @@ function trackCardHtml(track: Track, active: boolean): string {
 
 function trackThumbHtml(track: Track): string {
   return trackOutlineSvg(track, "room-track-thumb");
+}
+
+/**
+ * One Garage card. The Random tile leads the DOM (it is the first-visit
+ * default and anchors the grid's last column); Variant cards get their GLB
+ * thumbnail painted later by paintGarageThumbnails().
+ */
+function garageCardHtml(choice: GarageChoice, active: boolean): string {
+  const face =
+    choice === RANDOM
+      ? `<span class="garage-random-mark" aria-hidden="true">?</span>`
+      : `<img class="garage-thumb" alt="" />`;
+  const label = choice === RANDOM ? "Random" : VARIANT_LABELS[choice];
+  return `<button type="button" class="garage-card${choice === RANDOM ? " garage-card-random" : ""}${active ? " active" : ""}" data-variant="${choice}">${face}<span class="garage-card-name">${label}</span></button>`;
 }
 
 /** Leaderboard row action button carrying the (name, track, difficulty) key. */
@@ -95,13 +143,29 @@ export class Lobby {
   private eligible: LeaderboardEntry[] = [];
   /** Memoized AI Reference Lap bake; undefined = not yet baked, null = policy failed to lap. */
   private referenceLap: ReferenceLap | null | undefined = undefined;
+  /** The Garage selection: a concrete Variant, or the first-class Random state. */
+  private garageChoice: GarageChoice;
+  /** Random's concrete resolution, rolled once per connection (page load). */
+  private readonly randomRoll: Variant =
+    CAR_VARIANTS[Math.floor(Math.random() * CAR_VARIANTS.length)];
 
   constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
     this.onReferenceLap = callbacks.onReferenceLap;
     this.root = document.createElement("div");
     this.root.className = "lobby-backdrop";
 
+    const storedChoice = localStorage.getItem(VARIANT_KEY);
+    this.garageChoice = storedChoice === RANDOM ? RANDOM : asVariant(storedChoice) ?? RANDOM;
+    if (storedChoice !== null && storedChoice !== this.garageChoice) {
+      // A stored value that is neither a Variant nor Random falls back to Random
+      // and is overwritten, so picker and rendered car can never disagree.
+      localStorage.setItem(VARIANT_KEY, this.garageChoice);
+    }
+
     const trackCards = TRACKS.map((t) => trackCardHtml(t, t.id === DEFAULT_TRACK_SLUG)).join("");
+    const garageCards = ([RANDOM, ...CAR_VARIANTS] as const)
+      .map((c) => garageCardHtml(c, c === this.garageChoice))
+      .join("");
     const difficultyOptions = DIFFICULTIES.map(
       (d) =>
         `<button type="button" class="diff-opt diff-${d}${d === this.selectedDifficulty ? " active" : ""}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
@@ -129,6 +193,7 @@ export class Lobby {
         </div>
         <div class="track-selector" role="radiogroup" aria-label="Track">${trackCards}</div>
         <div class="diff-picker" role="radiogroup" aria-label="Difficulty">${difficultyOptions}</div>
+        <div class="garage" role="radiogroup" aria-label="Car">${garageCards}</div>
         <div class="lobby-columns">
           <section class="panel-rooms">
             <h2><i class="dot"></i>Starting Grid</h2>
@@ -170,6 +235,7 @@ export class Lobby {
               name: "AI Record",
               track: this.selectedTrack,
               difficulty: "medium",
+              variant: lap.variant,
               frames: lap.frames,
             }
           : null;
@@ -209,6 +275,20 @@ export class Lobby {
       this.renderBoard();
     });
 
+    const garage = this.root.querySelector<HTMLElement>(".garage")!;
+    garage.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-variant]");
+      if (!btn) return;
+      const choice = btn.dataset.variant as GarageChoice;
+      if (choice === this.garageChoice) return;
+      this.garageChoice = choice;
+      localStorage.setItem(VARIANT_KEY, choice);
+      garage
+        .querySelectorAll<HTMLButtonElement>("button")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+      callbacks.onVariantChange();
+    });
+
     const diffPicker = this.root.querySelector<HTMLElement>(".diff-picker")!;
     diffPicker.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-diff]");
@@ -242,6 +322,29 @@ export class Lobby {
 
   get playerName(): string {
     return this.nameInput.value.trim().slice(0, 16) || "Racer";
+  }
+
+  /**
+   * The driver's Variant for the next hello — always concrete: a Random Garage
+   * choice resolves to this connection's roll, so the wire never carries
+   * "random" or an unvalidated string.
+   */
+  get selectedVariant(): Variant {
+    return this.garageChoice === RANDOM ? this.randomRoll : this.garageChoice;
+  }
+
+  /**
+   * Paints each Variant card's 3/4-angle GLB snapshot. Called once
+   * preloadModels() settles; until then (and for any model that failed to
+   * load, or without WebGL) the cards render name-only.
+   */
+  paintGarageThumbnails(): void {
+    for (const [variant, url] of renderVariantThumbnails(CAR_VARIANTS)) {
+      const img = this.root.querySelector<HTMLImageElement>(
+        `.garage-card[data-variant="${variant}"] img`
+      );
+      if (img) img.src = url;
+    }
   }
 
   setRooms(rooms: RoomInfo[]): void {

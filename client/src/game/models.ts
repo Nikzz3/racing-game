@@ -1,17 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { CAR_VARIANTS } from "@racing/shared";
 
-/** Kenney Car Kit variants (CC0, kenney.nl) — one is assigned to each player. */
-export const CAR_VARIANTS = [
-  "race",
-  "race-future",
-  "sedan-sports",
-  "hatchback-sports",
-  "suv",
-  "taxi",
-  "police",
-  "van",
-] as const;
+// The Variant list lives in @racing/shared (it travels on the wire); re-export
+// it so existing client importers are untouched.
+export { CAR_VARIANTS };
 
 const NATURE_MODELS = [
   "tree_detailed",

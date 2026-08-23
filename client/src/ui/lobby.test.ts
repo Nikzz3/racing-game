@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { LobbyCallbacks } from './lobby';
 import { Lobby } from './lobby';
-import type { LeaderboardEntry, RoomInfo, ReplayFrame } from '@racing/shared';
+import { CAR_VARIANTS, type LeaderboardEntry, type RoomInfo, type ReplayFrame } from '@racing/shared';
 import type { ReferenceLap } from '../game/reference-lap';
 import { formatMs } from '../util';
 
@@ -19,7 +19,7 @@ const AI_FRAMES: ReplayFrame[] = [
 ];
 
 function makeReferenceLap(timeMs = 23800): ReferenceLap {
-  return { name: 'AI Record', track: 'sunset-ridge', timeMs, frames: AI_FRAMES };
+  return { name: 'AI Record', variant: 'police', track: 'sunset-ridge', timeMs, frames: AI_FRAMES };
 }
 
 beforeEach(() => {
@@ -33,6 +33,7 @@ function makeCallbacks(): LobbyCallbacks {
     onJoin: vi.fn(),
     onReplay: vi.fn(),
     onReferenceLap: vi.fn(),
+    onVariantChange: vi.fn(),
   };
 }
 
@@ -394,6 +395,7 @@ describe('Lobby AI Record Pacer option', () => {
       name: 'AI Record',
       track: 'sunset-ridge',
       difficulty: 'medium',
+      variant: 'police',
       frames: AI_FRAMES,
     });
     // Same array, not a copy: the armed frames are the bake the time came from.
@@ -501,5 +503,124 @@ describe('Lobby AI Record control', () => {
   it('onReferenceLap is not triggered by clicks on other leaderboard elements', () => {
     parent.querySelector<HTMLElement>('.lb-list')!.click();
     expect(cbs.onReferenceLap).not.toHaveBeenCalled();
+  });
+});
+
+describe('Lobby Garage picker', () => {
+  let parent: HTMLElement;
+  let lobby: Lobby;
+  let cbs: LobbyCallbacks;
+
+  beforeEach(() => {
+    localStorage.clear();
+    parent = makeParent();
+  });
+  afterEach(() => {
+    parent.remove();
+    localStorage.clear();
+  });
+
+  function makeLobby(): Lobby {
+    cbs = makeCallbacks();
+    lobby = new Lobby(parent, cbs);
+    return lobby;
+  }
+
+  function card(variant: string): HTMLButtonElement {
+    return parent.querySelector<HTMLButtonElement>(`.garage-card[data-variant="${variant}"]`)!;
+  }
+
+  it('renders a card for each of the 8 Variants plus a Random tile', () => {
+    makeLobby();
+    expect(parent.querySelectorAll('.garage-card').length).toBe(CAR_VARIANTS.length + 1);
+    for (const v of CAR_VARIANTS) {
+      expect(card(v)).not.toBeNull();
+    }
+    expect(card('random')).not.toBeNull();
+  });
+
+  it('the grid sits between the difficulty picker and the Lobby columns', () => {
+    makeLobby();
+    const garage = parent.querySelector('.garage')!;
+    expect(garage.previousElementSibling!.classList.contains('diff-picker')).toBe(true);
+    expect(garage.nextElementSibling!.classList.contains('lobby-columns')).toBe(true);
+  });
+
+  it('cards carry the Variant display name, with no separate selected-state line', () => {
+    makeLobby();
+    expect(card('suv').textContent).toContain('SUV');
+    expect(card('random').textContent).toContain('Random');
+    expect(parent.querySelector('.garage-selected')).toBeNull();
+  });
+
+  it('pre-selects Random on first visit', () => {
+    makeLobby();
+    expect(card('random').classList.contains('active')).toBe(true);
+    expect(parent.querySelectorAll('.garage-card.active').length).toBe(1);
+  });
+
+  it('picking a card stores the choice and moves the highlight', () => {
+    makeLobby();
+    card('suv').click();
+    expect(localStorage.getItem('racer-variant')).toBe('suv');
+    expect(card('suv').classList.contains('active')).toBe(true);
+    expect(card('random').classList.contains('active')).toBe(false);
+    expect(lobby.selectedVariant).toBe('suv');
+  });
+
+  it('a stored concrete Variant renders as the selected card', () => {
+    localStorage.setItem('racer-variant', 'taxi');
+    makeLobby();
+    expect(card('taxi').classList.contains('active')).toBe(true);
+    expect(lobby.selectedVariant).toBe('taxi');
+  });
+
+  it('a stored Random choice stays Random', () => {
+    localStorage.setItem('racer-variant', 'random');
+    makeLobby();
+    expect(card('random').classList.contains('active')).toBe(true);
+    expect(localStorage.getItem('racer-variant')).toBe('random');
+  });
+
+  it('an invalid stored value falls back to Random and overwrites the stored value', () => {
+    localStorage.setItem('racer-variant', 'batmobile');
+    makeLobby();
+    expect(card('random').classList.contains('active')).toBe(true);
+    expect(localStorage.getItem('racer-variant')).toBe('random');
+  });
+
+  it('Random resolves to a concrete member of CAR_VARIANTS, never the wire string "random"', () => {
+    makeLobby();
+    expect(CAR_VARIANTS).toContain(lobby.selectedVariant);
+  });
+
+  it('Random keeps a single roll for the connection', () => {
+    makeLobby();
+    const first = lobby.selectedVariant;
+    card('suv').click();
+    card('random').click();
+    expect(lobby.selectedVariant).toBe(first);
+  });
+
+  it('a choice change triggers a hello re-send', () => {
+    makeLobby();
+    card('suv').click();
+    expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
+    card('random').click();
+    expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('clicking the already-selected card does not re-send hello', () => {
+    makeLobby();
+    card('random').click();
+    expect(cbs.onVariantChange).not.toHaveBeenCalled();
+  });
+
+  it('painting thumbnails without WebGL leaves the cards name-only', () => {
+    makeLobby();
+    expect(() => lobby.paintGarageThumbnails()).not.toThrow();
+    for (const img of parent.querySelectorAll<HTMLImageElement>('.garage-card img')) {
+      expect(img.getAttribute('src')).toBeNull();
+    }
   });
 });
