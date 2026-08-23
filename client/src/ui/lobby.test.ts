@@ -19,7 +19,7 @@ const AI_FRAMES: ReplayFrame[] = [
 ];
 
 function makeReferenceLap(timeMs = 23800): ReferenceLap {
-  return { name: 'AI Record', track: 'sunset-ridge', timeMs, frames: AI_FRAMES };
+  return { name: 'AI Record', variant: 'police', track: 'sunset-ridge', timeMs, frames: AI_FRAMES };
 }
 
 beforeEach(() => {
@@ -395,6 +395,7 @@ describe('Lobby AI Record Pacer option', () => {
       name: 'AI Record',
       track: 'sunset-ridge',
       difficulty: 'medium',
+      variant: 'police',
       frames: AI_FRAMES,
     });
     // Same array, not a copy: the armed frames are the bake the time came from.

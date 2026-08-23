@@ -17,11 +17,14 @@ export interface E2eGameBindings {
   remotePlayerIds(): string[];
   /** Resolved (rendered) Variant per player id, local player included. */
   playerVariants(): Record<string, Variant>;
+  /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
+  pacerVariant(): Variant | null;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
   variants: Record<string, Variant>;
+  pacerVariant: Variant | null;
   frame: number;
   inputCount: number;
   injectionFinished: boolean;
@@ -114,6 +117,7 @@ export class E2eSeam {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
       variants: this.game.playerVariants(),
+      pacerVariant: this.game.pacerVariant(),
       frame: this.nextInputIndex,
       inputCount: this.inputs.length,
       injectionFinished: !this.driving,

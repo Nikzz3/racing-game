@@ -75,7 +75,7 @@ const lobby = new Lobby(app, {
   onReferenceLap: () => {
     if (game) return;
     const lap = lobby.getReferenceLap();
-    if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames);
+    if (lap) openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
   },
 });
 
@@ -136,7 +136,7 @@ net.onMessage((msg) => {
             // The AI Pacer's frames are already baked and memoized in the
             // lobby; hand them straight to the Game — no getReplay round trip,
             // no server involvement (ADR-0006).
-            game.receiveReplayFrames(matchingPacer.frames);
+            game.receiveReplayFrames(matchingPacer.frames, matchingPacer.variant);
           } else {
             net.send({
               type: "getReplay",
@@ -157,7 +157,7 @@ net.onMessage((msg) => {
       break;
     case "replay":
       if (game) {
-        game.receiveReplayFrames(msg.frames);
+        game.receiveReplayFrames(msg.frames, msg.variant);
       } else {
         openReplay(msg.name, msg.track, msg.timeMs, msg.frames, msg.variant);
       }

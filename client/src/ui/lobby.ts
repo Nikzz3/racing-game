@@ -34,7 +34,14 @@ export interface LobbyCallbacks {
  */
 export type ArmedPacer =
   | { kind: "replay"; name: string; track: TrackSlug; difficulty: Difficulty; entry: LeaderboardEntry }
-  | { kind: "ai"; name: "AI Record"; track: TrackSlug; difficulty: "medium"; frames: ReplayFrame[] };
+  | {
+      kind: "ai";
+      name: "AI Record";
+      track: TrackSlug;
+      difficulty: "medium";
+      variant: "police";
+      frames: ReplayFrame[];
+    };
 
 /** Track slugs that have a trained AI policy (Reference Lap available). */
 const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
@@ -228,6 +235,7 @@ export class Lobby {
               name: "AI Record",
               track: this.selectedTrack,
               difficulty: "medium",
+              variant: lap.variant,
               frames: lap.frames,
             }
           : null;

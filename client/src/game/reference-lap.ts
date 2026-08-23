@@ -11,6 +11,8 @@ function round(n: number, d: number): number {
 
 export interface ReferenceLap {
   name: 'AI Record';
+  /** The AI's canonical car (#121): always police, never a recorded value. */
+  variant: 'police';
   track: TrackSlug;
   timeMs: number;
   frames: ReplayFrame[];
@@ -42,5 +44,5 @@ export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
     round(s.speed, 2),
   ]);
 
-  return { name: 'AI Record', track: SUNSET_RIDGE.id, timeMs: result.lapTimeMs, frames };
+  return { name: 'AI Record', variant: 'police', track: SUNSET_RIDGE.id, timeMs: result.lapTimeMs, frames };
 }

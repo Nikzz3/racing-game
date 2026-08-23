@@ -6,10 +6,6 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   game,
   page,
 }) => {
-  // Red bookend for Pacer Variants (#127): remove once the Pacer renders the
-  // recorded Variant and the AI Record renders police.
-  test.fail();
-
   const playerName = "lap-driver";
   // The session declares the taxi Variant in hello; the Garage picker (#125)
   // writes this same localStorage key.

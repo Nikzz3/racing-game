@@ -126,7 +126,7 @@ export class Game {
     this.car.spawnAtSample(SPAWN_SAMPLE, this.spawnOffset());
     this.carMesh = createCarMesh(myId, undefined, this.variant);
     this.bundle.scene.add(this.carMesh);
-    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene);
+    if (armedPacer) this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
     this.hud = new Hud(parent, roomName, onLeave, this.track.checkpoints.length);
     if (this.pacer) {
       this.hud.showPacerChip(() => this.dismissPacer(), armedPacer?.name ?? "");
@@ -178,6 +178,7 @@ export class Game {
         [this.myId]: resolveVariant(this.myId, this.variant),
         ...this.remote.resolvedVariants(),
       }),
+      pacerVariant: () => this.pacer?.resolvedVariant() ?? null,
     });
     this.seam.install();
   }
@@ -186,9 +187,9 @@ export class Game {
     return this.seam ? 0 : (Math.random() - 0.5) * 7;
   }
 
-  receiveReplayFrames(frames: ReplayFrame[]): void {
+  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant): void {
     if (!this.pacer) return;
-    this.pacer.setFrames(frames);
+    this.pacer.setFrames(frames, variant);
     this.pacerCrossingTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
   }
 
