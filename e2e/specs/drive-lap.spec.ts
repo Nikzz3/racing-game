@@ -6,6 +6,10 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   game,
   page,
 }) => {
+  // Red bookend for Pacer Variants (#127): remove once the Pacer renders the
+  // recorded Variant and the AI Record renders police.
+  test.fail();
+
   const playerName = "lap-driver";
   // The session declares the taxi Variant in hello; the Garage picker (#125)
   // writes this same localStorage key.
@@ -28,6 +32,34 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   );
   // The hello carried the taxi Variant; the persisted lap snapshots it.
   expect(accepted.rows).toEqual([{ name: playerName, variant: "taxi" }]);
+
+  // #127: a Pacer armed from this recorded lap drives the recorded Variant.
+  // Leave the Room, arm the freshly persisted lap from the Pacer picker, and
+  // race again — the PacerOverlay seam must report the recorded taxi.
+  const pacerVariant = () =>
+    game
+      .state()
+      .then((s) => (s as { pacerVariant?: string | null }).pacerVariant);
+
+  await page.getByRole("button", { name: "Leave race" }).click();
+  await expect(page.getByLabel("Driver", { exact: true })).toBeVisible();
+  const pacerSelect = page.locator(".pacer-select");
+  // Value "0" is the single replay-bearing human entry: lap-driver's lap above.
+  await pacerSelect.selectOption("0");
+  await page.getByPlaceholder("New room name").fill("pacer-vs-taxi");
+  await page.getByRole("button", { name: "Create & Race" }).click();
+  await page.waitForFunction(() => window.__game !== undefined);
+  await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("taxi");
+
+  // #127: the AI Record pacer always drives police — its canonical car, not a
+  // recorded value.
+  await page.getByRole("button", { name: "Leave race" }).click();
+  await expect(page.getByLabel("Driver", { exact: true })).toBeVisible();
+  await pacerSelect.selectOption("ai");
+  await page.getByPlaceholder("New room name").fill("pacer-vs-ai");
+  await page.getByRole("button", { name: "Create & Race" }).click();
+  await page.waitForFunction(() => window.__game !== undefined);
+  await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("police");
 });
 
 test("real keyboard input crosses the first Checkpoint", async ({ game, page }) => {
