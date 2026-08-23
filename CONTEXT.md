@@ -10,7 +10,15 @@ _Avoid_: Map, level, course
 
 **Room**:
 A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime.
-_Avoid_: Lobby, session, game
+_Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
+
+**Lobby**:
+The pre-Room screen where a driver sets their identity (name, and their chosen car Variant) and creates or joins a Room. The Lobby is not a Room and holds no race state; its choices persist locally on the driver's device.
+_Avoid_: using Lobby to mean Room, menu, title screen
+
+**Variant**:
+One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Today a Variant is assigned by hashing the player id; letting drivers choose one in the Lobby is in progress.
+_Avoid_: car type, skin, model (ambiguous with 3D asset files)
 
 **Difficulty**:
 A named set of physics rules (Easy, Medium, Hard) that governs how a car accelerates, how fast it can go, and how harshly going off-road is penalised. Fixed for the lifetime of a Room.
