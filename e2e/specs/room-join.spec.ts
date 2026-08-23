@@ -3,6 +3,7 @@ import { expect, test } from "../fixtures/players";
 
 const PLAYER_A = "Player Alpha";
 const PLAYER_B = "Player Bravo";
+const PLAYER_A_VARIANT = "suv";
 const PLAYER_B_VARIANT = "taxi";
 const ROOM_NAME = "Two Player Room";
 
@@ -33,6 +34,8 @@ async function resolvedVariant(page: Page, playerId: string): Promise<string | u
 }
 
 test("two players create and join a Room and see each other", async ({ playerA, playerB }) => {
+  // Red bookend for the Garage (#125): the .garage-card grid does not exist yet.
+  test.fail();
   const playerAIdPromise = playerIdFromWelcome(playerA);
   const playerBIdPromise = playerIdFromWelcome(playerB);
 
@@ -44,6 +47,11 @@ test("two players create and join a Room and see each other", async ({ playerA, 
   const [playerAId, playerBId] = await Promise.all([playerAIdPromise, playerBIdPromise]);
 
   await playerA.getByLabel("Driver").fill(PLAYER_A);
+  // Player A picks their Variant in the Garage (#125); the card click writes the
+  // same racer-variant key player B seeds directly above.
+  const suvCard = playerA.locator(`.garage-card[data-variant="${PLAYER_A_VARIANT}"]`);
+  await expect(suvCard).toBeVisible();
+  await suvCard.click();
   await playerA.getByPlaceholder("New room name").fill(ROOM_NAME);
   await playerA.getByRole("button", { name: "Create & Race" }).click();
 
@@ -65,4 +73,13 @@ test("two players create and join a Room and see each other", async ({ playerA, 
   await expect
     .poll(() => resolvedVariant(playerA, playerBId), { timeout: 15_000 })
     .toBe(PLAYER_B_VARIANT);
+
+  // A's Garage pick drove their own car: the local resolved Variant is suv.
+  await expect
+    .poll(() => resolvedVariant(playerA, playerAId), { timeout: 15_000 })
+    .toBe(PLAYER_A_VARIANT);
+
+  // localStorage round-trip: after a reload the suv card renders as selected.
+  await playerA.reload();
+  await expect(suvCard).toHaveClass(/active/);
 });
