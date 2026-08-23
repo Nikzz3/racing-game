@@ -4,7 +4,7 @@ import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
 import { areModelsLoaded, preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
-import type { ReplayFrame, TrackSlug } from "@racing/shared";
+import type { ReplayFrame, TrackSlug, Variant } from "@racing/shared";
 
 const app = document.getElementById("app")!;
 const net = new Net();
@@ -25,7 +25,8 @@ function openReplay(
   name: string,
   track: TrackSlug,
   timeMs: number,
-  frames: ReplayFrame[]
+  frames: ReplayFrame[],
+  variant?: Variant
 ): void {
   if (game) return;
   replay?.dispose();
@@ -41,7 +42,7 @@ function openReplay(
   const build = () => {
     if (gen !== replayGen || game) return;
     lobby.hide();
-    replay = new ReplayViewer(app, name, track, timeMs, frames, () => {
+    replay = new ReplayViewer(app, name, track, timeMs, frames, variant, () => {
       replay = null;
       lobby.show();
     });
@@ -149,7 +150,7 @@ net.onMessage((msg) => {
       if (game) {
         game.receiveReplayFrames(msg.frames);
       } else {
-        openReplay(msg.name, msg.track, msg.timeMs, msg.frames);
+        openReplay(msg.name, msg.track, msg.timeMs, msg.frames, msg.variant);
       }
       break;
     case "error":

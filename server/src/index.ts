@@ -123,7 +123,7 @@ async function handleState(
   } else {
     // Track records are per (track, difficulty), so compare against this room's board only.
     const prevRecord = (await bestTime(room.track.id, room.difficulty)) ?? Infinity;
-    if (await submitLap(player.name, room.track.id, room.difficulty, lap.lapTimeMs, frames)) {
+    if (await submitLap(player.name, room.track.id, room.difficulty, lap.lapTimeMs, frames, player.variant)) {
       isTrackRecord = lap.lapTimeMs < prevRecord;
       broadcastAll({ type: "leaderboard", entries: await topEntries(10) });
     }
@@ -163,6 +163,8 @@ async function handleGetReplay(
     track: asTrackSlug(track),
     timeMs: replay.timeMs,
     frames: replay.frames,
+    // Already re-whitelisted by getReplay; absent is dropped by JSON.stringify.
+    variant: replay.variant,
   });
 }
 

@@ -6,9 +6,6 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   game,
   page,
 }) => {
-  // Red bookend for #126: the persisted lap must snapshot the Variant driven.
-  test.fail();
-
   const playerName = "lap-driver";
   // The session declares the taxi Variant in hello; the Garage picker (#125)
   // writes this same localStorage key.

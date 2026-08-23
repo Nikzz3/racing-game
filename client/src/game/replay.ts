@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { ReplayFrame, TrackSlug } from "@racing/shared";
+import type { ReplayFrame, TrackSlug, Variant } from "@racing/shared";
 import { formatMs, escapeHtml } from "../util";
 import { animateCar, createCarMesh } from "./car";
 import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
@@ -35,6 +35,7 @@ export class ReplayViewer {
     trackSlug: TrackSlug,
     private timeMs: number,
     private frames: ReplayFrame[],
+    variant: Variant | undefined,
     private onClose: () => void
   ) {
     this.container = document.createElement("div");
@@ -45,7 +46,9 @@ export class ReplayViewer {
     this.bundle = createScene(this.container, track.samples);
     buildTrack(this.bundle.scene, track.samples);
 
-    this.carMesh = createCarMesh(name, name);
+    // The Variant snapshotted when the lap persisted; absent (legacy rows)
+    // keeps the historical hash-of-name fallback, so old replays don't churn.
+    this.carMesh = createCarMesh(name, name, variant);
     this.bundle.scene.add(this.carMesh);
 
     this.overlay = document.createElement("div");
