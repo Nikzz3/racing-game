@@ -640,7 +640,10 @@ input:focus {
 
 .garage-card-random {
   grid-column: 5;
-  grid-row: span 2;
+  /* A definite start row keeps this tile out of auto-placement: with a bare
+     "span 2" the flow cursor wraps past it and pushes every Variant card down
+     a row, leaving an empty row 1 and a short tile. */
+  grid-row: 1 / 3;
 }
 
 .garage-random-mark {
