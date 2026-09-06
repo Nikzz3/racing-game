@@ -1,5 +1,9 @@
 import * as THREE from "three";
-import { nearestCenterline, ROAD_HALF_WIDTH, type TrackSample } from "@racing/shared";
+import {
+  nearestCenterline,
+  ROAD_HALF_WIDTH,
+  type TrackSample,
+} from "@racing/shared";
 import { getModel, instancedFromModel } from "./models";
 
 export interface SceneBundle {
@@ -8,282 +12,255 @@ export interface SceneBundle {
   renderer: THREE.WebGLRenderer;
   sun: THREE.DirectionalLight;
 }
+// A low sun casts tree silhouettes across the verge and lights the starting straight.
+const SUN = new THREE.Vector3(150, 30, -65);
+const HORIZON = 0xe4ad80;
+const FOLLOW_DISTANCE = 10;
+const EYE_HEIGHT = 4.6;
+const look = new THREE.Vector3();
+const eye = new THREE.Vector3();
 
-/**
- * Sun offset from the followed car. Low elevation (~17 deg) for long sunset
- * shadows; the visible sun disc in the sky dome uses this same direction.
- */
-const SUN_OFFSET = new THREE.Vector3(-130, 45, -65);
-
-const HORIZON_COLOR = 0xf2a86e;
-
-export function createScene(container: HTMLElement, samples: TrackSample[]): SceneBundle {
+export function createScene(
+  container: HTMLElement,
+  samples: TrackSample[],
+): SceneBundle {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(HORIZON_COLOR);
-  scene.fog = new THREE.Fog(HORIZON_COLOR, 250, 700);
-
+  scene.background = new THREE.Color(HORIZON);
+  scene.fog = new THREE.Fog(HORIZON, 190, 820);
+  scene.add(createSunsetSky());
   const camera = new THREE.PerspectiveCamera(
-    70,
-    container.clientWidth / container.clientHeight,
+    64,
+    container.clientWidth / Math.max(1, container.clientHeight),
     0.1,
-    1200
+    1500,
   );
-  camera.position.set(0, 60, -220);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: "high-performance",
+  });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  container.appendChild(renderer.domElement);
-
-  // Warm sunset light: low orange sun plus a dusky sky bounce.
-  const hemi = new THREE.HemisphereLight(0xe8b8a0, 0x3a4b46, 0.85);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffa45e, 1.5);
-  sun.position.copy(SUN_OFFSET);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  container.append(renderer.domElement);
+  scene.add(new THREE.HemisphereLight(0xbcc8e2, 0x745038, 1.25));
+  const sun = new THREE.DirectionalLight(0xffb45f, 3.8);
+  sun.position.copy(SUN);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  // Slightly wider box than before: the low sun stretches shadows further.
-  sun.shadow.camera.left = -140;
-  sun.shadow.camera.right = 140;
-  sun.shadow.camera.top = 140;
-  sun.shadow.camera.bottom = -140;
-  sun.shadow.camera.near = 20;
-  sun.shadow.camera.far = 500;
-  sun.shadow.bias = -0.0005;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, {
+    left: -65,
+    right: 65,
+    top: 65,
+    bottom: -65,
+    near: 1,
+    far: 400,
+  });
+  sun.shadow.bias = -0.0007;
+  sun.shadow.normalBias = 0.16;
   scene.add(sun, sun.target);
-
-  scene.add(createSkyDome());
-
-  // Ground
   const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(900, 48),
-    new THREE.MeshLambertMaterial({ color: 0x4d8a4a })
+    new THREE.CircleGeometry(1100, 64),
+    new THREE.MeshStandardMaterial({ color: 0x8b8252, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.015;
   ground.receiveShadow = true;
+  ground.userData.owned = true;
   scene.add(ground);
-
-  addEnvironment(scene, samples);
-
+  scatterEnvironment(scene, samples);
   return { scene, camera, renderer, sun };
 }
 
-/**
- * Properly tears down a WebGLRenderer: forceContextLoss() actively relinquishes
- * the WebGL context so the browser can reclaim it immediately, then dispose()
- * cleans up Three.js's internal caches. Without forceContextLoss(), the context
- * stays alive until GC, exhausting the browser's ~16-context limit on repeated
- * room joins/replays.
- */
+function createSunsetSky(): THREE.Mesh {
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 32, 16),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        sunDirection: { value: SUN.clone().normalize() },
+        zenith: { value: new THREE.Color(0x536b89) },
+        horizon: { value: new THREE.Color(HORIZON) },
+        dusk: { value: new THREE.Color(0x9a6c65) },
+        glow: { value: new THREE.Color(0xffad54) },
+      },
+      vertexShader: `
+        varying vec3 skyDirection;
+        void main() {
+          skyDirection = position;
+          // Only camera rotation affects the sky: driving cannot move the sun.
+          vec4 clip = projectionMatrix * vec4(mat3(viewMatrix) * position, 1.0);
+          gl_Position = clip.xyww;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 sunDirection;
+        uniform vec3 zenith;
+        uniform vec3 horizon;
+        uniform vec3 dusk;
+        uniform vec3 glow;
+        varying vec3 skyDirection;
+        void main() {
+          vec3 direction = normalize(skyDirection);
+          float height = max(direction.y, 0.0);
+          vec3 color = mix(horizon, zenith, pow(height, 0.48));
+          color = mix(color, dusk, smoothstep(0.0, 0.35, -direction.y));
+          float alignment = max(dot(direction, sunDirection), 0.0);
+          // Broad atmospheric warmth and a small halo, in the same draw as the sky.
+          color += glow * (pow(alignment, 18.0) * 0.24 + pow(alignment, 190.0) * 0.48);
+          float disk = smoothstep(0.99954, 0.99966, alignment);
+          color = mix(color, vec3(5.0, 1.9, 0.35), disk);
+          gl_FragColor = vec4(color, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  );
+  sky.name = "sunset-sky";
+  sky.frustumCulled = false;
+  sky.renderOrder = -1000;
+  sky.userData.owned = true;
+  return sky;
+}
+
 export function disposeRenderer(renderer: THREE.WebGLRenderer): void {
   renderer.forceContextLoss();
   renderer.dispose();
 }
-
-/** Keeps the shadow camera centered on the action so shadows stay crisp everywhere on the map. */
-export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): void {
-  sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z);
+export function disposeWorld({ scene, renderer, sun }: SceneBundle): void {
+  scene.traverse((part) => {
+    if (part instanceof THREE.InstancedMesh) part.dispose();
+    if (part instanceof THREE.Mesh && part.userData.owned) {
+      part.geometry.dispose();
+      const materials = Array.isArray(part.material)
+        ? part.material
+        : [part.material];
+      materials.forEach((material) => material.dispose());
+    }
+  });
+  sun.shadow.dispose();
+  disposeRenderer(renderer);
+  scene.clear();
+}
+export function updateSun(
+  sun: THREE.DirectionalLight,
+  x: number,
+  z: number,
+): void {
+  sun.position.set(x + SUN.x, SUN.y, z + SUN.z);
   sun.target.position.set(x, 0, z);
 }
-
-const CAM_BACK_DIST = 10;
-const CAM_EYE_HEIGHT = 4.6;
-const CAM_LOOK_AHEAD = 4;
-const CAM_LOOK_AT_HEIGHT = 1.4;
-const CAM_FOLLOW_RATE = 6;
-
-/** Instantly places the camera behind and above the car, facing the look-ahead point. */
+function cameraTargets(x: number, z: number, heading: number): void {
+  const dx = Math.sin(heading),
+    dz = Math.cos(heading);
+  eye.set(x - dx * FOLLOW_DISTANCE, EYE_HEIGHT, z - dz * FOLLOW_DISTANCE);
+  look.set(x + dx * 4, 1.4, z + dz * 4);
+}
 export function snapBehindCar(
   camera: THREE.PerspectiveCamera,
   x: number,
   z: number,
-  heading: number
+  heading: number,
 ): void {
-  const fx = Math.sin(heading);
-  const fz = Math.cos(heading);
-  camera.position.set(x - fx * CAM_BACK_DIST, CAM_EYE_HEIGHT, z - fz * CAM_BACK_DIST);
-  camera.lookAt(x + fx * CAM_LOOK_AHEAD, CAM_LOOK_AT_HEIGHT, z + fz * CAM_LOOK_AHEAD);
+  cameraTargets(x, z, heading);
+  camera.position.copy(eye);
+  camera.lookAt(look);
 }
-
-/** Smoothly follows the car each frame using exponential-decay lerp. */
 export function followCar(
   camera: THREE.PerspectiveCamera,
   x: number,
   z: number,
   heading: number,
-  dt: number
+  dt: number,
 ): void {
-  const fx = Math.sin(heading);
-  const fz = Math.cos(heading);
-  const target = new THREE.Vector3(x - fx * CAM_BACK_DIST, CAM_EYE_HEIGHT, z - fz * CAM_BACK_DIST);
-  const k = 1 - Math.exp(-CAM_FOLLOW_RATE * dt);
-  camera.position.lerp(target, k);
-  camera.lookAt(x + fx * CAM_LOOK_AHEAD, CAM_LOOK_AT_HEIGHT, z + fz * CAM_LOOK_AHEAD);
+  cameraTargets(x, z, heading);
+  camera.position.lerp(eye, 1 - Math.exp(-6 * Math.max(0, dt)));
+  camera.lookAt(look);
 }
 
-/**
- * Gradient sunset sky with a sun disc drawn exactly along SUN_OFFSET, so the
- * visible sun sits where the shadows say it should be. The dome follows the
- * camera each frame, making it behave like an infinitely distant sky.
- */
-function createSkyDome(): THREE.Mesh {
-  const uniforms = {
-    sunDirection: { value: SUN_OFFSET.clone().normalize() },
-    topColor: { value: new THREE.Color(0x3b2e63) },
-    midColor: { value: new THREE.Color(0xc96a6a) },
-    horizonColor: { value: new THREE.Color(HORIZON_COLOR) },
-    sunCoreColor: { value: new THREE.Color(0xfff3d0) },
-    sunGlowColor: { value: new THREE.Color(0xffb36b) },
+function scatterEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
+  let seed = 7193;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
   };
-
-  const material = new THREE.ShaderMaterial({
-    uniforms,
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    vertexShader: /* glsl */ `
-      varying vec3 vWorldPosition;
-      void main() {
-        vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform vec3 sunDirection;
-      uniform vec3 topColor;
-      uniform vec3 midColor;
-      uniform vec3 horizonColor;
-      uniform vec3 sunCoreColor;
-      uniform vec3 sunGlowColor;
-      varying vec3 vWorldPosition;
-
-      void main() {
-        vec3 dir = normalize(vWorldPosition - cameraPosition);
-        float h = max(dir.y, 0.0);
-
-        // Horizon -> dusty pink -> dusk purple gradient.
-        vec3 sky = mix(horizonColor, midColor, smoothstep(0.0, 0.18, h));
-        sky = mix(sky, topColor, smoothstep(0.12, 0.55, h));
-
-        float cosAngle = clamp(dot(dir, sunDirection), 0.0, 1.0);
-        // Broad warm haze around the sun, tighter glow, then the disc itself.
-        sky += sunGlowColor * 0.25 * pow(cosAngle, 12.0);
-        sky += sunGlowColor * 0.5 * pow(cosAngle, 180.0);
-        sky = mix(sky, sunCoreColor, smoothstep(0.9994, 0.9998, cosAngle));
-
-        gl_FragColor = vec4(sky, 1.0);
-
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }
-    `,
-  });
-
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), material);
-  sky.frustumCulled = false;
-  sky.onBeforeRender = (_renderer, _scene, camera) => {
-    sky.position.setFromMatrixPosition(camera.matrixWorld);
-    sky.updateMatrixWorld();
-  };
-  return sky;
-}
-
-interface ScatterSpec {
-  /** Nature model names; each placement picks one at random. */
-  models: string[];
-  count: number;
-  minClearance: number;
-  scaleMin: number;
-  scaleMax: number;
-  shadows?: boolean;
-}
-
-const SCATTER: ScatterSpec[] = [
-  {
-    models: ["tree_detailed", "tree_default", "tree_oak", "tree_pineDefaultA", "tree_pineDefaultB"],
-    count: 150,
-    minClearance: 18,
-    scaleMin: 9,
-    scaleMax: 16,
-  },
-  { models: ["rock_largeA", "rock_largeC", "rock_largeE"], count: 36, minClearance: 16, scaleMin: 4, scaleMax: 9 },
-  { models: ["grass_large"], count: 110, minClearance: 8, scaleMin: 3.5, scaleMax: 6, shadows: false },
-  {
-    models: ["flower_redA", "flower_yellowA"],
-    count: 70,
-    minClearance: 8,
-    scaleMin: 3,
-    scaleMax: 5,
-    shadows: false,
-  },
-];
-
-function addEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
-  if (!getModel("nature:tree_detailed")) {
-    addFallbackTrees(scene, samples);
-    return;
-  }
-
-  for (const spec of SCATTER) {
-    // Bucket transforms per model variant so each variant becomes one set of instanced meshes.
-    const buckets = new Map<string, THREE.Matrix4[]>(spec.models.map((m) => [m, []]));
-    let attempts = 0;
-    let placed = 0;
-    const pos = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const scl = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-
-    while (placed < spec.count && attempts < spec.count * 20) {
-      attempts++;
-      const x = (Math.random() - 0.5) * 780;
-      const z = (Math.random() - 0.5) * 780;
-      if (nearestCenterline(x, z, samples).dist < ROAD_HALF_WIDTH + spec.minClearance) continue;
-      const s = spec.scaleMin + Math.random() * (spec.scaleMax - spec.scaleMin);
-      pos.set(x, 0, z);
-      quat.setFromAxisAngle(up, Math.random() * Math.PI * 2);
-      scl.setScalar(s);
-      const variant = spec.models[Math.floor(Math.random() * spec.models.length)];
-      buckets.get(variant)!.push(new THREE.Matrix4().compose(pos, quat, scl));
+  const categories = [
+    {
+      names: [
+        "tree_detailed",
+        "tree_default",
+        "tree_oak",
+        "tree_pineDefaultA",
+        "tree_pineDefaultB",
+      ],
+      count: 220,
+      clearance: 19,
+      min: 8,
+      range: 8,
+      shadow: true,
+    },
+    {
+      names: ["rock_largeA", "rock_largeC", "rock_largeE"],
+      count: 65,
+      clearance: 15,
+      min: 3,
+      range: 7,
+      shadow: true,
+    },
+    {
+      names: ["grass_large", "flower_redA", "flower_yellowA"],
+      count: 210,
+      clearance: 9,
+      min: 2,
+      range: 3,
+      shadow: false,
+    },
+  ];
+  const position = new THREE.Vector3(),
+    rotation = new THREE.Quaternion(),
+    scale = new THREE.Vector3();
+  for (const spec of categories) {
+    const placements = new Map(
+      spec.names.map((name) => [name, [] as THREE.Matrix4[]]),
+    );
+    for (
+      let placed = 0, attempt = 0;
+      placed < spec.count && attempt < spec.count * 25;
+      attempt++
+    ) {
+      const x = (random() - 0.5) * 820,
+        z = (random() - 0.5) * 820;
+      if (
+        nearestCenterline(x, z, samples).dist <
+        ROAD_HALF_WIDTH + spec.clearance
+      )
+        continue;
+      const start = samples[0],
+        dx = x - start.x,
+        dz = z - start.z;
+      const alongStart = dx * start.dirX + dz * start.dirZ;
+      const besideStart = -dx * start.dirZ + dz * start.dirX;
+      if (Math.abs(alongStart) < 65 && besideStart > 10 && besideStart < 48)
+        continue;
+      position.set(x, 0, z);
+      rotation.setFromAxisAngle(
+        THREE.Object3D.DEFAULT_UP,
+        random() * Math.PI * 2,
+      );
+      scale.setScalar(spec.min + random() * spec.range);
+      placements
+        .get(spec.names[Math.floor(random() * spec.names.length)])!
+        .push(new THREE.Matrix4().compose(position, rotation, scale));
       placed++;
     }
-
-    for (const [variant, transforms] of buckets) {
-      if (transforms.length === 0) continue;
-      const model = getModel(`nature:${variant}`);
-      if (!model) continue;
-      scene.add(instancedFromModel(model, transforms, spec.shadows ?? true));
+    for (const [name, matrices] of placements) {
+      const model = getModel(`nature:${name}`);
+      if (model) scene.add(instancedFromModel(model, matrices, spec.shadow));
     }
   }
-}
-
-/** Procedural cone trees, used only if the GLB models failed to load. */
-function addFallbackTrees(scene: THREE.Scene, samples: TrackSample[]): void {
-  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4, 6);
-  const leavesGeo = new THREE.ConeGeometry(3.2, 8, 7);
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5e4630 });
-  const leavesMat = new THREE.MeshLambertMaterial({ color: 0x2f6b35 });
-
-  const positions: { x: number; z: number; s: number }[] = [];
-  let attempts = 0;
-  while (positions.length < 140 && attempts < 2000) {
-    attempts++;
-    const x = (Math.random() - 0.5) * 760;
-    const z = (Math.random() - 0.5) * 760;
-    if (nearestCenterline(x, z, samples).dist < ROAD_HALF_WIDTH + 18) continue;
-    positions.push({ x, z, s: 0.7 + Math.random() * 0.8 });
-  }
-
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, positions.length);
-  const leaves = new THREE.InstancedMesh(leavesGeo, leavesMat, positions.length);
-  const m = new THREE.Matrix4();
-  positions.forEach((p, i) => {
-    m.makeScale(p.s, p.s, p.s).setPosition(p.x, 2 * p.s, p.z);
-    trunks.setMatrixAt(i, m);
-    m.makeScale(p.s, p.s, p.s).setPosition(p.x, 7.5 * p.s, p.z);
-    leaves.setMatrixAt(i, m);
-  });
-  scene.add(trunks, leaves);
 }

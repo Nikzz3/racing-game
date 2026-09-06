@@ -8,7 +8,12 @@ export interface E2eLocalState {
   heading: number;
   speed: number;
   checkpoint: number;
-  lap: { laps: number; active: boolean; lastLapMs?: number | null; bestLapMs?: number | null };
+  lap: {
+    laps: number;
+    active: boolean;
+    lastLapMs?: number | null;
+    bestLapMs?: number | null;
+  };
 }
 
 /**
@@ -126,19 +131,31 @@ export class E2eSeam {
    * what was simulated rather than by wall clock. State sends are paced off that
    * same simulated time, keeping the server's sample spacing (and so its checkpoint
    * proximity checks) independent of how fast the client renders.
+   * A caller can bound catch-up to avoid delivering a frame's entire backlog in
+   * one network burst. Unspent time stays in the accumulator for later calls.
    */
-  advance(elapsedSeconds: number): number {
+  advance(elapsedSeconds: number, maxSteps = Infinity): number {
     this.stepAccumS += elapsedSeconds;
-    const steps = this.stepFrame(Math.floor(this.stepAccumS / E2E_DT));
-    this.stepAccumS -= steps * E2E_DT;
-
-    const dt = steps * E2E_DT;
-    this.sendAccumMs += dt * 1000;
-    while (this.sendAccumMs >= this.sendIntervalMs) {
-      this.sendAccumMs -= this.sendIntervalMs;
-      this.game.sendState();
+    const budget = Math.min(Math.floor(this.stepAccumS / E2E_DT), maxSteps);
+    let steps = 0;
+    while (steps < budget && this.driving) {
+      this.stepFrame(1);
+      steps++;
+      this.sendAccumMs += E2E_DT * 1000;
+      // Send while the car still occupies this sample. Sending after the full
+      // render-frame budget repeats only its final pose and skips checkpoints.
+      while (this.sendAccumMs >= this.sendIntervalMs) {
+        this.sendAccumMs -= this.sendIntervalMs;
+        this.game.sendState();
+      }
     }
-    return dt;
+    this.stepAccumS -= steps * E2E_DT;
+    if (steps > 0 && !this.driving && this.sendAccumMs > 0) {
+      // The input recording ends at the finish line, possibly between sends.
+      this.game.sendState();
+      this.sendAccumMs = 0;
+    }
+    return steps * E2E_DT;
   }
 
   recordLapSubmission(laps: number): void {

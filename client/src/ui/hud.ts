@@ -1,136 +1,112 @@
-import type { PlayerSnapshot } from "@racing/shared";
+import { trackPath, type PlayerSnapshot, type Track } from "@racing/shared";
 import { escapeHtml, formatMs } from "../util";
 
-export class Hud {
-  private root: HTMLElement;
-  private speedEl: HTMLElement;
-  private curLapEl: HTMLElement;
-  private lastLapEl: HTMLElement;
-  private bestLapEl: HTMLElement;
-  private lapCountEl: HTMLElement;
-  private cpEl: HTMLElement;
-  private standingsEl: HTMLElement;
-  private offtrackEl: HTMLElement;
-  private cpMissWarnEl: HTMLElement;
-  private toastsEl: HTMLElement;
-  private pacerChipEl: HTMLElement;
-  private pacerDismissEl: HTMLButtonElement;
+// Cosmetic gauge calibration; physics and network speeds remain in world units.
+const DISPLAY_SPEED_SCALE = 0.5;
+const DIAL_MAX_KMH = 200;
 
+export class Hud {
+  private readonly root = document.createElement("div");
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>();
+  private readonly fields = new Map<string, HTMLElement>();
   constructor(
     parent: HTMLElement,
     roomName: string,
     onLeave: () => void,
-    private checkpointCount: number
+    private readonly checkpointCount: number,
+    onRespawn?: () => void,
+    track?: Track,
   ) {
-    this.root = document.createElement("div");
     this.root.className = "hud";
-    this.root.innerHTML = `
-      <div class="hud-panel hud-top-left">
-        <div class="hud-room">${escapeHtml(roomName)}</div>
-        <div class="hud-lap">LAP 0</div>
-        <div class="hud-cp">CP 0/${checkpointCount}</div>
-        <div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer">✕</button></div>
-        <button class="hud-leave">Leave race</button>
-      </div>
-      <div class="hud-panel hud-timer">
-        <div class="hud-cur-lap">--:--.---</div>
-        <div class="hud-lap-small">
-          <span>LAST <b class="hud-last">--:--.---</b></span>
-          <span>BEST <b class="hud-best">--:--.---</b></span>
-        </div>
-      </div>
-      <div class="hud-panel hud-standings">
-        <h3>Standings — Best Lap</h3>
-        <table><tbody></tbody></table>
-      </div>
-      <div class="hud-panel hud-speed">
-        <span class="speed-value">0</span>
-        <span class="speed-unit">KM/H</span>
-      </div>
-      <div class="offtrack-warn">OFF TRACK</div>
-      <div class="cp-miss-warn">CHECKPOINT MISSED — LAP WON'T COUNT<br><span>Respawn or drive back through the gate</span></div>
-      <div class="toasts"></div>
-    `;
-    parent.appendChild(this.root);
-
-    this.speedEl = this.root.querySelector(".speed-value")!;
-    this.curLapEl = this.root.querySelector(".hud-cur-lap")!;
-    this.lastLapEl = this.root.querySelector(".hud-last")!;
-    this.bestLapEl = this.root.querySelector(".hud-best")!;
-    this.lapCountEl = this.root.querySelector(".hud-lap")!;
-    this.cpEl = this.root.querySelector(".hud-cp")!;
-    this.standingsEl = this.root.querySelector(".hud-standings tbody")!;
-    this.offtrackEl = this.root.querySelector(".offtrack-warn")!;
-    this.cpMissWarnEl = this.root.querySelector(".cp-miss-warn")!;
-    this.pacerChipEl = this.root.querySelector(".pacer-chip")!;
-    this.pacerDismissEl = this.root.querySelector(".pacer-chip-dismiss")!;
-    this.toastsEl = this.root.querySelector(".toasts")!;
-
-    this.root.querySelector(".hud-leave")!.addEventListener("click", onLeave);
+    this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
+    <div class="hud-panel hud-timer"><div class="hud-timer-label">LAP TIME</div><div class="hud-cur-lap">--:--.---</div><div class="hud-lap-small"><span>LAST <b class="hud-last">--:--.---</b></span><span>BEST <b class="hud-best">--:--.---</b></span></div></div>
+    <div class="hud-panel hud-standings"><h3>BEST LAPS</h3><table><tbody></tbody></table></div>
+    <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
+    ${track ? `<div class="hud-map"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path d="${trackPath(track)}"/><circle class="hud-map-driver" r="10" cx="${track.samples[0].x}" cy="${track.samples[0].z}"/></svg><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
+    <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}</div>
+    <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div><div class="toasts" role="status" aria-live="polite"></div>`;
+    parent.append(this.root);
+    this.el(".hud-leave").onclick = onLeave;
+    if (onRespawn) this.el(".hud-respawn").onclick = onRespawn;
   }
-
-  setSpeed(metersPerSecond: number): void {
-    this.speedEl.textContent = String(Math.round(Math.abs(metersPerSecond) * 3.6));
+  private el(selector: string): HTMLElement {
+    let element = this.fields.get(selector);
+    if (!element) {
+      element = this.root.querySelector<HTMLElement>(selector)!;
+      this.fields.set(selector, element);
+    }
+    return element;
   }
-
-  setCurrentLap(ms: number | null): void {
-    this.curLapEl.textContent = formatMs(ms);
+  private text(selector: string, value: string): void {
+    const element = this.el(selector);
+    if (element.textContent !== value) element.textContent = value;
   }
-
+  setSpeed(speed: number): void {
+    const kmh = Math.round(Math.abs(speed) * 3.6 * DISPLAY_SPEED_SCALE);
+    this.text(".speed-value", String(kmh));
+    this.el(".speed-dial-fill").style.strokeDasharray =
+      `${Math.min(100, (kmh / DIAL_MAX_KMH) * 100)} 100`;
+  }
+  setPosition(x: number, z: number): void {
+    const dot = this.el(".hud-map-driver");
+    if (dot) {
+      dot.setAttribute("cx", x.toFixed(1));
+      dot.setAttribute("cy", z.toFixed(1));
+    }
+  }
+  setCurrentLap(time: number | null): void {
+    this.text(".hud-cur-lap", formatMs(time));
+  }
   setOffTrack(off: boolean): void {
-    this.offtrackEl.classList.toggle("visible", off);
+    this.el(".offtrack-warn").classList.toggle("visible", off);
   }
-
   setCheckpointMissed(missed: boolean): void {
-    this.cpMissWarnEl.classList.toggle("visible", missed);
+    this.el(".cp-miss-warn").classList.toggle("visible", missed);
   }
-
-  setMyProgress(p: PlayerSnapshot): void {
-    this.lapCountEl.textContent = `LAP ${p.laps}`;
-    this.cpEl.textContent = `CP ${p.nextCheckpoint}/${this.checkpointCount}`;
-    this.lastLapEl.textContent = formatMs(p.lastLapMs);
-    this.bestLapEl.textContent = formatMs(p.bestLapMs);
+  setMyProgress(player: PlayerSnapshot): void {
+    this.text(".hud-lap", `LAP ${player.laps}`);
+    this.text(".hud-cp", `CP ${player.nextCheckpoint}/${this.checkpointCount}`);
+    this.el(".hud-checkpoint-bar i").style.width =
+      `${Math.min(100, (player.nextCheckpoint / this.checkpointCount) * 100)}%`;
+    this.text(".hud-last", formatMs(player.lastLapMs));
+    this.text(".hud-best", formatMs(player.bestLapMs));
   }
-
-  setStandings(players: PlayerSnapshot[], myId: string): void {
-    const sorted = [...players].sort((a, b) => {
-      if (a.bestLapMs === null && b.bestLapMs === null) return a.name.localeCompare(b.name);
-      if (a.bestLapMs === null) return 1;
-      if (b.bestLapMs === null) return -1;
-      return a.bestLapMs - b.bestLapMs;
-    });
-    this.standingsEl.innerHTML = sorted
+  setStandings(players: PlayerSnapshot[], id: string): void {
+    const sorted = [...players].sort(
+      (a, b) =>
+        (a.bestLapMs ?? Infinity) - (b.bestLapMs ?? Infinity) ||
+        a.name.localeCompare(b.name),
+    );
+    const table = this.el(".hud-standings tbody");
+    const markup = sorted
       .map(
-        (p, i) => `
-        <tr class="${p.id === myId ? "me" : ""}">
-          <td>${i + 1}</td>
-          <td>${escapeHtml(p.name)}</td>
-          <td class="st-time">${formatMs(p.bestLapMs)}</td>
-          <td class="st-time">L${p.laps}</td>
-        </tr>`
+        (p, i) =>
+          `<tr class="${p.id === id ? "me" : ""}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td class="st-time">${formatMs(p.bestLapMs)}</td><td class="st-time">L${p.laps}</td></tr>`,
       )
       .join("");
+    if (table.innerHTML !== markup) table.innerHTML = markup;
   }
-
   showPacerChip(onDismiss: () => void, name = ""): void {
-    this.pacerDismissEl.onclick = onDismiss;
-    this.pacerChipEl.querySelector<HTMLElement>(".pacer-chip-name")!.textContent = name;
-    this.pacerChipEl.classList.add("visible");
+    this.el(".pacer-chip-dismiss").onclick = onDismiss;
+    this.text(".pacer-chip-name", name);
+    this.el(".pacer-chip").classList.add("visible");
   }
-
   hidePacerChip(): void {
-    this.pacerChipEl.classList.remove("visible");
+    this.el(".pacer-chip").classList.remove("visible");
   }
-
-  toast(text: string, record = false): void {
-    const el = document.createElement("div");
-    el.className = record ? "toast record" : "toast";
-    el.textContent = text;
-    this.toastsEl.appendChild(el);
-    setTimeout(() => el.remove(), 3800);
+  toast(message: string, record = false): void {
+    const item = document.createElement("div");
+    item.className = record ? "toast record" : "toast";
+    item.textContent = message;
+    this.el(".toasts").append(item);
+    const timer = setTimeout(() => {
+      item.remove();
+      this.timers.delete(timer);
+    }, 3800);
+    this.timers.add(timer);
   }
-
   dispose(): void {
+    for (const timer of this.timers) clearTimeout(timer);
     this.root.remove();
   }
 }

@@ -12,8 +12,18 @@ import { RemotePlayers } from "./remote";
 
 function makeSnapshot(id: string, name = "Player", variant?: Variant) {
   return {
-    id, name, x: 0, y: 0, z: 0, rot: 0, speed: 0,
-    laps: 0, lastLapMs: null, bestLapMs: null, lapStartT: null, nextCheckpoint: 0,
+    id,
+    name,
+    x: 0,
+    y: 0,
+    z: 0,
+    rot: 0,
+    speed: 0,
+    laps: 0,
+    lastLapMs: null,
+    bestLapMs: null,
+    lapStartT: null,
+    nextCheckpoint: 0,
     variant,
   };
 }
@@ -50,7 +60,9 @@ describe("disposeCarMesh", () => {
 
   it("does nothing on a group with no sprites", () => {
     const mesh = new THREE.Group();
-    mesh.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
+    mesh.add(
+      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()),
+    );
     // should not throw
     expect(() => disposeCarMesh(mesh)).not.toThrow();
   });
@@ -97,7 +109,9 @@ describe("RemotePlayers name-tag disposal", () => {
   it("disposes all meshes' textures and materials on dispose()", () => {
     const a = makeMeshWithSprite();
     const b = makeMeshWithSprite();
-    vi.mocked(createCarMesh).mockReturnValueOnce(a.mesh).mockReturnValueOnce(b.mesh);
+    vi.mocked(createCarMesh)
+      .mockReturnValueOnce(a.mesh)
+      .mockReturnValueOnce(b.mesh);
 
     rp.onSnapshot([makeSnapshot("p1"), makeSnapshot("p2")]);
     rp.dispose();
@@ -114,7 +128,7 @@ describe("RemotePlayers name-tag disposal", () => {
 
     rp.onSnapshot([makeSnapshot("p1")]);
     rp.onSnapshot([]); // p1 leaves → disposed once
-    rp.dispose();      // nothing left to dispose
+    rp.dispose(); // nothing left to dispose
 
     expect(disposeMaterial).toHaveBeenCalledOnce();
     expect(disposeTexture).toHaveBeenCalledOnce();
@@ -158,6 +172,16 @@ describe("RemotePlayers variants", () => {
     rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
     rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
     expect(createCarMesh).toHaveBeenCalledOnce();
+  });
+
+  it("rebuilds a changed name and releases the old name tag", () => {
+    const first = makeMeshWithSprite();
+    vi.mocked(createCarMesh).mockReturnValueOnce(first.mesh);
+    rp.onSnapshot([makeSnapshot("p1", "Before", "taxi")]);
+    rp.onSnapshot([makeSnapshot("p1", "After", "taxi")]);
+    expect(createCarMesh).toHaveBeenLastCalledWith("p1", "After", "taxi");
+    expect(first.disposeTexture).toHaveBeenCalledOnce();
+    expect(first.disposeMaterial).toHaveBeenCalledOnce();
   });
 
   it("resolves an absent variant to the stable hash fallback, without churn", () => {

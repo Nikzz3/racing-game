@@ -1,5 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const clientPort = process.env.E2E_CLIENT_PORT ?? "5174";
+const serverPort = process.env.E2E_SERVER_PORT ?? "8081";
+const clientUrl = `http://127.0.0.1:${clientPort}`;
+
 export default defineConfig({
   testDir: "./specs",
   workers: 1,
@@ -11,7 +15,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["html", { outputFolder: "playwright-report" }]],
   use: {
-    baseURL: "http://127.0.0.1:5174",
+    baseURL: clientUrl,
     trace: "on-first-retry",
   },
   webServer: [
@@ -19,26 +23,27 @@ export default defineConfig({
       command: "npm run start -w @racing/server",
       env: {
         DATABASE_URL: process.env.DATABASE_URL ?? "",
-        PORT: "8081",
+        PORT: serverPort,
       },
       // Not "/": the server falls back to client/dist/index.html and 404s until the
       // client is built, which Playwright never accepts as ready. Nothing in this suite
       // needs that build — Vite serves the client — so probe liveness directly.
-      url: "http://127.0.0.1:8081/healthz",
+      url: `http://127.0.0.1:${serverPort}/healthz`,
       // Surfaced in CI logs; a silent webServer timeout is undiagnosable otherwise.
       stdout: "pipe",
       stderr: "pipe",
-      reuseExistingServer: !process.env.CI,
+      // An existing process may use the developer's database, not this run's disposable one.
+      reuseExistingServer: false,
     },
     {
-      command: "npm run dev:e2e -w @racing/client -- --port 5174 --host 127.0.0.1",
+      command: `npm run dev:e2e -w @racing/client -- --port ${clientPort} --strictPort --host 127.0.0.1`,
       env: {
-        VITE_SERVER_PORT: "8081",
+        VITE_SERVER_PORT: serverPort,
       },
-      url: "http://127.0.0.1:5174",
+      url: clientUrl,
       stdout: "pipe",
       stderr: "pipe",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
     },
   ],
   projects: [

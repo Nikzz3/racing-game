@@ -1,6 +1,7 @@
 import { SUNSET_RIDGE } from "@racing/shared";
 import type { E2eLocalState } from "../../client/src/game/e2e-seam";
 import { expect, test } from "../fixtures/game-seam";
+import { openRaceSettings } from "../fixtures/lobby";
 import lapInputs from "../lap-inputs.json" with { type: "json" };
 
 /**
@@ -51,6 +52,7 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
       .then((s) => (s as { pacerVariant?: string | null }).pacerVariant);
 
   await page.getByRole("button", { name: "Leave race" }).click();
+  await openRaceSettings(page);
   await expect(page.getByLabel("Driver", { exact: true })).toBeVisible();
   const pacerSelect = page.locator(".pacer-select");
   // Value "0" is the single replay-bearing human entry: lap-driver's lap above.
@@ -63,6 +65,7 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   // #127: the AI Record pacer always drives police — its canonical car, not a
   // recorded value.
   await page.getByRole("button", { name: "Leave race" }).click();
+  await openRaceSettings(page);
   await expect(page.getByLabel("Driver", { exact: true })).toBeVisible();
   await pacerSelect.selectOption("ai");
   await page.getByPlaceholder("New room name").fill("pacer-vs-ai");
@@ -84,10 +87,15 @@ test("replays the same inputs to an exactly equal trajectory in the browser", as
   expect(motion(second)).toEqual(motion(first));
 });
 
-test("real keyboard input crosses the first Checkpoint", async ({ game, page }) => {
+test("real keyboard input crosses the first Checkpoint", async ({ game, page }, testInfo) => {
   await game.createRace({ playerName: "key-driver", roomName: "keyboard-smoke" });
 
   await page.keyboard.down("KeyW");
-  await expect.poll(() => game.state().then((state) => state.checkpoint)).toBe(1);
+  // Software WebGL needs about six wall-clock seconds to simulate the launch.
+  await expect.poll(() => game.state().then((state) => state.checkpoint), { timeout: 15_000 }).toBe(1);
   await page.keyboard.up("KeyW");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator(".hud-map")).toBeInViewport();
+  await expect(page.locator(".hud-speed")).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("race-hud-desktop.png") });
 });

@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_DIFFICULTY, SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
-import { CarPhysics, PHYSICS_STEP, MAX_STEPS_PER_FRAME, MAX_ACCUMULATED_TIME } from "./physics";
+import {
+  DEFAULT_DIFFICULTY,
+  SUNSET_RIDGE,
+  TRACK_DIVISIONS,
+} from "@racing/shared";
+import {
+  CarPhysics,
+  PHYSICS_STEP,
+  MAX_STEPS_PER_FRAME,
+  MAX_ACCUMULATED_TIME,
+} from "./physics";
 import type { CarInput } from "./input";
 
 const FULL_THROTTLE: CarInput = { throttle: 1, brake: 0, steer: 0 };
@@ -21,7 +30,7 @@ function advanceCar(
   car: CarPhysics,
   fps: number,
   durationS: number,
-  input: CarInput
+  input: CarInput,
 ): void {
   const frameDt = 1 / fps;
   const frames = Math.round(durationS * fps);
@@ -51,6 +60,28 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
     expect(car.x).toBe(before.x);
     expect(car.z).toBe(before.z);
     expect(car.speed).toBe(before.speed);
+  });
+
+  it("ignores invalid frame deltas without poisoning later simulation", () => {
+    const car = spawned();
+    const expected = spawned();
+    for (const elapsed of [NaN, Infinity, -1])
+      car.advance(elapsed, FULL_THROTTLE);
+    car.advance(PHYSICS_STEP, FULL_THROTTLE);
+    expected.advance(PHYSICS_STEP, FULL_THROTTLE);
+    expect(car.x).toBe(expected.x);
+    expect(car.z).toBe(expected.z);
+    expect(car.speed).toBe(expected.speed);
+  });
+
+  it("resets surface state and accumulated time when respawning", () => {
+    const car = spawned();
+    car.onTrack = false;
+    car.advance(0.4, FULL_THROTTLE);
+    car.spawnAtSample(TRACK_DIVISIONS - 14, 0);
+    car.advance(0, FULL_THROTTLE);
+    expect(car.onTrack).toBe(true);
+    expect(car.speed).toBe(0);
   });
 
   it("produces frame-rate-independent speed on track: 30fps vs 144fps", () => {

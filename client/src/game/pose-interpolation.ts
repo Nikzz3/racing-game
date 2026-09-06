@@ -7,37 +7,41 @@ export interface Pose {
   speed: number;
 }
 
-/**
- * Returns the interpolated pose from `frames` at lap-relative time `t`.
- * Clamps to the first/last frame when `t` is out of range.
- * No Three.js dependency — safe to share between ReplayViewer and the Pacer overlay.
- */
+/** Follow the shortest arc, including headings that cross the ±π boundary. */
+export function interpolateHeading(
+  from: number,
+  to: number,
+  amount: number,
+): number {
+  const turn = Math.PI * 2;
+  let delta = (to - from) % turn;
+  if (delta > Math.PI) delta -= turn;
+  if (delta < -Math.PI) delta += turn;
+  return from + delta * amount;
+}
+
+/** Sample a sorted recording in logarithmic time, clamped to its endpoints. */
 export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
-  // Guard against empty frames: destructuring frames[i] below would otherwise
-  // throw. pacerPoseAt() screens this out, but ReplayViewer.applyFrameAt() can
-  // reach here directly with malformed/empty replay data from the server.
-  if (frames.length === 0) {
+  if (frames.length === 0)
     throw new Error("interpolatePose: frames must not be empty");
+
+  let lower = 0;
+  let upper = Math.max(0, frames.length - 2);
+  while (lower < upper) {
+    const middle = Math.ceil((lower + upper) / 2);
+    if (frames[middle][0] <= t) lower = middle;
+    else upper = middle - 1;
   }
-  let i = 0;
-  while (i < frames.length - 2 && frames[i + 1][0] <= t) {
-    i++;
-  }
-  const [t0, x0, z0, rot0, speed0] = frames[i];
-  const [t1, x1, z1, rot1, speed1] = frames[Math.min(i + 1, frames.length - 1)];
 
-  const span = t1 - t0;
-  const a = span > 0 ? Math.max(0, Math.min(1, (t - t0) / span)) : 0;
-
-  const x = x0 + (x1 - x0) * a;
-  const z = z0 + (z1 - z0) * a;
-  const speed = speed0 + (speed1 - speed0) * a;
-
-  // Shortest-arc heading: wrap delta into (-π, π].
-  let d = (rot1 - rot0) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  const heading = rot0 + d * a;
-
-  return { x, z, heading, speed };
+  const [start, x0, z0, heading0, speed0] = frames[lower];
+  const [end, x1, z1, heading1, speed1] =
+    frames[Math.min(lower + 1, frames.length - 1)];
+  const amount =
+    end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
+  return {
+    x: x0 + (x1 - x0) * amount,
+    z: z0 + (z1 - z0) * amount,
+    heading: interpolateHeading(heading0, heading1, amount),
+    speed: speed0 + (speed1 - speed0) * amount,
+  };
 }
