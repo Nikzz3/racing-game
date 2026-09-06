@@ -1,117 +1,127 @@
 import * as THREE from "three";
 import type { PlayerSnapshot, Variant } from "@racing/shared";
-import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
+import {
+  animateCar,
+  createCarMesh,
+  disposeCarMesh,
+  resolveVariant,
+} from "./car";
+import { interpolateHeading } from "./pose-interpolation";
 
 interface BufferedSnapshot {
-  t: number; // local receive time (performance.now)
+  receivedAt: number;
   players: Map<string, PlayerSnapshot>;
 }
-
-/** Renders other players' cars, interpolated ~130ms behind the newest snapshot. */
+interface RemoteCar {
+  mesh: THREE.Group;
+  variant: Variant;
+  name: string;
+}
 const RENDER_DELAY_MS = 130;
+const SNAPSHOT_LIMIT = 30;
 
+/** Buffer network updates so remote cars move continuously between snapshots. */
 export class RemotePlayers {
   private snapshots: BufferedSnapshot[] = [];
-  private meshes = new Map<string, THREE.Group>();
-  /** Resolved Variant each mesh was built with, to detect when a snapshot changes it. */
-  private variants = new Map<string, Variant>();
+  private readonly cars = new Map<string, RemoteCar>();
 
   constructor(
-    private scene: THREE.Scene,
-    private myId: string
+    private readonly scene: THREE.Scene,
+    private readonly myId: string,
   ) {}
 
   onSnapshot(players: PlayerSnapshot[]): void {
-    const others = new Map(players.filter((p) => p.id !== this.myId).map((p) => [p.id, p]));
-    this.snapshots.push({ t: performance.now(), players: others });
-    if (this.snapshots.length > 30) this.snapshots.shift();
+    const others = new Map(
+      players
+        .filter((player) => player.id !== this.myId)
+        .map((player) => [player.id, player]),
+    );
+    this.snapshots.push({ receivedAt: performance.now(), players: others });
+    if (this.snapshots.length > SNAPSHOT_LIMIT) this.snapshots.shift();
 
-    // Create meshes for new players (rebuilding when a snapshot changes a
-    // player's Variant — helloes are accepted mid-Room), remove ones that left.
-    for (const [id, p] of others) {
-      const variant = resolveVariant(id, p.variant);
-      if (this.meshes.has(id) && this.variants.get(id) !== variant) {
-        this.removeMesh(id);
-      }
-      if (!this.meshes.has(id)) {
-        const mesh = createCarMesh(id, p.name, variant);
-        mesh.position.set(p.x, 0, p.z);
-        mesh.rotation.y = p.rot;
-        this.meshes.set(id, mesh);
-        this.variants.set(id, variant);
-        this.scene.add(mesh);
-      }
+    for (const [id, player] of others) {
+      const variant = resolveVariant(id, player.variant);
+      const existing = this.cars.get(id);
+      if (
+        existing &&
+        (existing.variant !== variant || existing.name !== player.name)
+      )
+        this.removeCar(id);
+      if (this.cars.has(id)) continue;
+      const mesh = createCarMesh(id, player.name, variant);
+      mesh.position.set(player.x, 0, player.z);
+      mesh.rotation.y = player.rot;
+      this.cars.set(id, { mesh, variant, name: player.name });
+      this.scene.add(mesh);
     }
-    for (const id of this.meshes.keys()) {
-      if (!others.has(id)) this.removeMesh(id);
+    for (const id of this.cars.keys()) {
+      if (!others.has(id)) this.removeCar(id);
     }
-  }
-
-  private removeMesh(id: string): void {
-    const mesh = this.meshes.get(id);
-    if (!mesh) return;
-    disposeCarMesh(mesh);
-    this.scene.remove(mesh);
-    this.meshes.delete(id);
-    this.variants.delete(id);
   }
 
   update(dt: number): void {
     if (this.snapshots.length === 0) return;
-    const renderT = performance.now() - RENDER_DELAY_MS;
-
+    const renderTime = performance.now() - RENDER_DELAY_MS;
     let older = this.snapshots[0];
     let newer = this.snapshots[this.snapshots.length - 1];
-    for (let i = this.snapshots.length - 1; i > 0; i--) {
-      if (this.snapshots[i - 1].t <= renderT) {
-        older = this.snapshots[i - 1];
-        newer = this.snapshots[i];
+    for (let index = this.snapshots.length - 1; index > 0; index--) {
+      if (this.snapshots[index - 1].receivedAt <= renderTime) {
+        older = this.snapshots[index - 1];
+        newer = this.snapshots[index];
         break;
       }
     }
-    const span = newer.t - older.t;
-    const alpha = span > 0 ? Math.min(Math.max((renderT - older.t) / span, 0), 1.25) : 1;
-
-    for (const [id, mesh] of this.meshes) {
-      const a = older.players.get(id);
-      const b = newer.players.get(id);
-      if (!a || !b) {
-        const p = b ?? a;
-        if (p) {
-          mesh.position.set(p.x, 0, p.z);
-          mesh.rotation.y = p.rot;
-          animateCar(mesh, p.speed, 0, dt);
-        }
-        continue;
+    const span = newer.receivedAt - older.receivedAt;
+    const amount =
+      span > 0
+        ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25)
+        : 1;
+    for (const [id, { mesh }] of this.cars) {
+      const before = older.players.get(id);
+      const after = newer.players.get(id);
+      if (before && after) {
+        mesh.position.set(
+          before.x + (after.x - before.x) * amount,
+          0,
+          before.z + (after.z - before.z) * amount,
+        );
+        mesh.rotation.y = interpolateHeading(before.rot, after.rot, amount);
+        animateCar(
+          mesh,
+          before.speed + (after.speed - before.speed) * amount,
+          0,
+          dt,
+        );
+      } else {
+        const pose = after ?? before;
+        if (!pose) continue;
+        mesh.position.set(pose.x, 0, pose.z);
+        mesh.rotation.y = pose.rot;
+        animateCar(mesh, pose.speed, 0, dt);
       }
-      mesh.position.set(
-        a.x + (b.x - a.x) * alpha,
-        0,
-        a.z + (b.z - a.z) * alpha
-      );
-      mesh.rotation.y = lerpAngle(a.rot, b.rot, alpha);
-      animateCar(mesh, a.speed + (b.speed - a.speed) * alpha, 0, dt);
     }
   }
 
   playerIds(): string[] {
-    return [...this.meshes.keys()];
+    return [...this.cars.keys()];
   }
 
-  /** Resolved Variant per remote player id, as currently rendered. */
   resolvedVariants(): Record<string, Variant> {
-    return Object.fromEntries(this.variants);
+    return Object.fromEntries(
+      [...this.cars].map(([id, car]) => [id, car.variant]),
+    );
   }
 
   dispose(): void {
-    for (const id of this.meshes.keys()) this.removeMesh(id);
+    for (const id of this.cars.keys()) this.removeCar(id);
     this.snapshots = [];
   }
-}
 
-function lerpAngle(a: number, b: number, t: number): number {
-  let d = (b - a) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
-  return a + d * t;
+  private removeCar(id: string): void {
+    const car = this.cars.get(id);
+    if (!car) return;
+    disposeCarMesh(car.mesh);
+    this.scene.remove(car.mesh);
+    this.cars.delete(id);
+  }
 }

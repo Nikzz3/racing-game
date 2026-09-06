@@ -1,34 +1,78 @@
 import type { ClientMessage, ServerMessage } from "@racing/shared";
+export type ConnectionState = "connected" | "connecting" | "offline";
 
 export class Net {
-  private ws: WebSocket | null = null;
-  private listeners: ((msg: ServerMessage) => void)[] = [];
-
+  private socket: WebSocket | null = null;
+  private cancelConnection: (() => void) | null = null;
+  private readonly messages = new Set<(message: ServerMessage) => void>();
+  private readonly statuses = new Set<(state: ConnectionState) => void>();
+  private status(state: ConnectionState): void {
+    this.statuses.forEach((callback) => callback(state));
+  }
   connect(url: string): Promise<void> {
+    this.cancelConnection?.();
+    const previous = this.socket;
+    this.socket = null;
+    previous?.close();
+    this.status("connecting");
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
-      this.ws = ws;
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("Could not connect to game server"));
-      ws.onmessage = (e) => {
-        let msg: ServerMessage;
+      const socket = new WebSocket(url);
+      this.socket = socket;
+      let settled = false;
+      const settle = (error?: Error): void => {
+        if (settled) return;
+        settled = true;
+        if (this.cancelConnection === cancel) this.cancelConnection = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const cancel = (): void =>
+        settle(new DOMException("Connection superseded", "AbortError"));
+      this.cancelConnection = cancel;
+      socket.addEventListener("open", () => {
+        if (this.socket !== socket) return;
+        settle();
+        this.status("connected");
+      });
+      socket.addEventListener("error", () => {
+        if (this.socket !== socket) return;
+        settle(new Error("The racing server is unavailable."));
+      });
+      socket.addEventListener("close", () => {
+        if (this.socket !== socket) return;
+        settle(new Error("The connection closed."));
+        this.status("offline");
+      });
+      socket.addEventListener("message", (event) => {
+        if (this.socket !== socket) return;
+        if (typeof event.data !== "string") return;
+        let data: unknown;
         try {
-          msg = JSON.parse(e.data);
+          data = JSON.parse(event.data);
         } catch {
           return;
         }
-        for (const l of this.listeners) l(msg);
-      };
+        if (
+          !data ||
+          typeof data !== "object" ||
+          !("type" in data) ||
+          typeof data.type !== "string"
+        )
+          return;
+        for (const callback of this.messages) callback(data as ServerMessage);
+      });
     });
   }
-
-  send(msg: ClientMessage): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
-    }
+  send(message: ClientMessage): void {
+    if (this.socket?.readyState === WebSocket.OPEN)
+      this.socket.send(JSON.stringify(message));
   }
-
-  onMessage(cb: (msg: ServerMessage) => void): void {
-    this.listeners.push(cb);
+  onMessage(callback: (message: ServerMessage) => void): () => void {
+    this.messages.add(callback);
+    return () => this.messages.delete(callback);
+  }
+  onStatus(callback: (state: ConnectionState) => void): () => void {
+    this.statuses.add(callback);
+    return () => this.statuses.delete(callback);
   }
 }

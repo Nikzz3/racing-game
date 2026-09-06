@@ -6,57 +6,82 @@ export interface CarInput {
   steer: number;
 }
 
+const DRIVING_KEYS = new Set([
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+  "ArrowUp",
+  "ArrowLeft",
+  "ArrowDown",
+  "ArrowRight",
+  "KeyR",
+]);
+const STEER_CHANGE_PER_SECOND = 3;
+
+/** Combines held keyboard keys with the analog touch joystick. */
 export class Input {
-  private keys = new Set<string>();
+  private readonly keys = new Set<string>();
   private smoothSteer = 0;
-  /** Optional one-shot trigger fired on KeyR keydown (not the held-keys set, so holds don't repeat-fire). */
   onRespawn: (() => void) | null = null;
 
-  constructor(private touch: TouchControls | null = null) {}
+  constructor(private readonly touch: TouchControls | null = null) {}
 
-  private onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement) return;
-    if (e.code === "KeyR" && !e.repeat) {
-      this.onRespawn?.();
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("input, textarea, select, [contenteditable]")
+    )
       return;
+    if (!DRIVING_KEYS.has(event.code)) return;
+    event.preventDefault();
+    if (event.code === "KeyR") {
+      if (!event.repeat) this.onRespawn?.();
+    } else {
+      this.keys.add(event.code);
     }
-    this.keys.add(e.code);
   };
-  private onKeyUp = (e: KeyboardEvent) => {
-    this.keys.delete(e.code);
+
+  private onKeyUp = (event: KeyboardEvent): void => {
+    this.keys.delete(event.code);
+  };
+
+  private reset = (): void => {
+    this.keys.clear();
+    this.smoothSteer = 0;
   };
 
   attach(): void {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("blur", this.reset);
   }
 
   detach(): void {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
-    this.keys.clear();
+    window.removeEventListener("blur", this.reset);
+    this.reset();
   }
 
   read(dt: number): CarInput {
-    const targetSteer =
-      (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? 1 : 0) -
-      (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0);
-    const diff = targetSteer - this.smoothSteer;
-    const step = 3.0 * dt;
+    const target =
+      this.held("KeyA", "ArrowLeft") - this.held("KeyD", "ArrowRight");
+    const difference = target - this.smoothSteer;
+    const step = STEER_CHANGE_PER_SECOND * Math.max(0, dt);
     this.smoothSteer =
-      Math.abs(diff) <= step ? targetSteer : this.smoothSteer + Math.sign(diff) * step;
-    const kb: CarInput = {
-      throttle: this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0,
-      brake: this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0,
-      steer: this.smoothSteer,
-    };
-    const t = this.touch?.read();
-    if (!t) return kb;
-    // Joystick steer is already analog, so it skips the keyboard smoothing.
+      Math.abs(difference) <= step
+        ? target
+        : this.smoothSteer + Math.sign(difference) * step;
+    const touch = this.touch?.read();
     return {
-      throttle: Math.max(kb.throttle, t.throttle),
-      brake: Math.max(kb.brake, t.brake),
-      steer: Math.max(-1, Math.min(1, kb.steer + t.steer)),
+      throttle: Math.max(this.held("KeyW", "ArrowUp"), touch?.throttle ?? 0),
+      brake: Math.max(this.held("KeyS", "ArrowDown"), touch?.brake ?? 0),
+      steer: Math.max(-1, Math.min(1, this.smoothSteer + (touch?.steer ?? 0))),
     };
+  }
+
+  private held(letter: string, arrow: string): number {
+    return this.keys.has(letter) || this.keys.has(arrow) ? 1 : 0;
   }
 }

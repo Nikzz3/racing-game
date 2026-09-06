@@ -22,7 +22,11 @@ function createBindings(): E2eGameBindings {
     }),
     remotePlayerIds: () => ["remote-b", "remote-a"],
     sendState: vi.fn(),
-    playerVariants: () => ({ me: "race", "remote-a": "taxi", "remote-b": "van" }),
+    playerVariants: () => ({
+      me: "race",
+      "remote-a": "taxi",
+      "remote-b": "van",
+    }),
     pacerVariant: () => "taxi",
     pacerState: () => null,
   };
@@ -84,6 +88,53 @@ describe("E2eSeam", () => {
     expect(game.sendState).toHaveBeenCalledTimes(2);
   });
 
+  it("sends intermediate positions during a slow render frame", () => {
+    const game = createBindings();
+    let position = 0;
+    const sent: number[] = [];
+    game.step = () => {
+      position++;
+    };
+    game.sendState = () => {
+      sent.push(position);
+    };
+    const seam = new E2eSeam(game, SEND_INTERVAL_MS);
+    seam.inject(Array.from({ length: 30 }, () => INPUTS[0]));
+
+    seam.advance(E2E_DT * 12);
+
+    // Each checkpoint along the path must be observable even at five FPS.
+    expect(sent).toEqual([3, 6, 9, 12]);
+  });
+
+  it("sends the final injected pose when it falls between send intervals", () => {
+    const game = createBindings();
+    let position = 0;
+    const sent: number[] = [];
+    game.step = () => {
+      position++;
+    };
+    game.sendState = () => {
+      sent.push(position);
+    };
+    const seam = new E2eSeam(game, SEND_INTERVAL_MS);
+    seam.inject(Array.from({ length: 4 }, () => INPUTS[0]));
+    seam.advance(E2E_DT * 4);
+    expect(sent).toEqual([3, 4]);
+  });
+
+  it("bounds browser catch-up and carries unconsumed steps into later frames", () => {
+    const game = createBindings();
+    const seam = new E2eSeam(game, SEND_INTERVAL_MS);
+    seam.inject(Array.from({ length: 30 }, () => INPUTS[0]));
+    expect(seam.advance(E2E_DT * 12, 3)).toBe(E2E_DT * 3);
+    expect(game.step).toHaveBeenCalledTimes(3);
+    expect(game.sendState).toHaveBeenCalledTimes(1);
+    expect(seam.advance(0, 3)).toBe(E2E_DT * 3);
+    expect(game.step).toHaveBeenCalledTimes(6);
+    expect(game.sendState).toHaveBeenCalledTimes(2);
+  });
+
   it("restarts cleanly and produces exactly equal trajectories for equal inputs", () => {
     let x = 0;
     const game = createBindings();
@@ -135,7 +186,12 @@ describe("E2eSeam", () => {
     const seam = new E2eSeam(game, SEND_INTERVAL_MS);
     expect(seam.state().pacer).toBeNull();
 
-    game.pacerState = () => ({ frameCount: 1429, playing: true, visible: true, opacity: 0.5 });
+    game.pacerState = () => ({
+      frameCount: 1429,
+      playing: true,
+      visible: true,
+      opacity: 0.5,
+    });
     expect(seam.state().pacer).toEqual({
       frameCount: 1429,
       playing: true,

@@ -1,6 +1,7 @@
 import type { Page, WebSocket } from "@playwright/test";
 import type { ServerMessage } from "@racing/shared";
 import { expect, test } from "../fixtures/players";
+import { openRaceSettings, selectCar } from "../fixtures/lobby";
 
 const PLAYER_A = "Player Alpha";
 const PLAYER_B = "Player Bravo";
@@ -40,16 +41,19 @@ test("two players create and join a Room and see each other", async ({ playerA, 
   await Promise.all([playerA.goto("/"), playerB.goto("/")]);
   const [playerAId, playerBId] = await Promise.all([playerAIdPromise, playerBIdPromise]);
 
-  await playerA.getByLabel("Driver").fill(PLAYER_A);
-  // Player A picks their Variant in the Garage (#125); the card click writes the
+  // Player A picks their Variant with the Garage arrows; the selection writes the
   // same racer-variant key player B seeds directly above.
   const suvCard = playerA.locator(`.garage-card[data-variant="${PLAYER_A_VARIANT}"]`);
   await expect(suvCard).toBeVisible();
-  await suvCard.click();
+  await selectCar(playerA, PLAYER_A_VARIANT);
+  await openRaceSettings(playerA);
+  await playerA.getByLabel("Driver").fill(PLAYER_A);
   await playerA.getByPlaceholder("New room name").fill(ROOM_NAME);
   await playerA.getByRole("button", { name: "Create & Race" }).click();
 
+  await openRaceSettings(playerB);
   await playerB.getByLabel("Driver").fill(PLAYER_B);
+  await playerB.locator('[data-setup-tab="rooms"]').click();
   const room = playerB.locator(".room-row").filter({ hasText: ROOM_NAME });
   await expect(room).toContainText("1 racing");
   await room.getByRole("button", { name: "Join" }).click();
