@@ -4,6 +4,7 @@ import { CAR_VARIANTS } from "@racing/shared";
 export { CAR_VARIANTS };
 
 const library = new Map<string, THREE.Group>();
+const materials = new Map<string, THREE.MeshStandardMaterial>();
 let ready = false;
 let pending: Promise<void> | undefined;
 export const ASSET_LIBRARY_URL = "/models/rework/sunset-ridge.glb";
@@ -20,6 +21,20 @@ export function registerLibrary(root: THREE.Group): void {
       if (!(part instanceof THREE.Mesh)) return;
       part.castShadow = true;
       part.receiveShadow = true;
+      const meshMaterials = Array.isArray(part.material)
+        ? part.material
+        : [part.material];
+      for (const material of meshMaterials) {
+        if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+        materials.set(material.name, material);
+        for (const texture of [
+          material.map,
+          material.normalMap,
+          material.roughnessMap,
+        ]) {
+          if (texture) texture.anisotropy = 8;
+        }
+      }
     });
     // The source lays cars out on a workshop floor. Remove that display offset.
     if (name.startsWith("car:")) {
@@ -78,6 +93,11 @@ export function areModelsLoaded(): boolean {
 }
 export function getModel(key: string): THREE.Group | null {
   return library.get(key) ?? null;
+}
+
+/** Reuse Blender-authored surfaces on terrain created by the game. */
+export function getMaterial(name: string): THREE.MeshStandardMaterial | null {
+  return materials.get(name) ?? null;
 }
 
 /** Share geometry and materials across all placements; each mesh is one draw call. */

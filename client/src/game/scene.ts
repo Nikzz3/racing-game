@@ -4,7 +4,7 @@ import {
   ROAD_HALF_WIDTH,
   type TrackSample,
 } from "@racing/shared";
-import { getModel, instancedFromModel } from "./models";
+import { getMaterial, getModel, instancedFromModel } from "./models";
 
 export interface SceneBundle {
   scene: THREE.Scene;
@@ -61,10 +61,17 @@ export function createScene(
   sun.shadow.bias = -0.0007;
   sun.shadow.normalBias = 0.16;
   scene.add(sun, sun.target);
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(1100, 64),
-    new THREE.MeshStandardMaterial({ color: 0x8b8252, roughness: 1 }),
-  );
+  const groundGeometry = new THREE.CircleGeometry(1100, 64);
+  const positions = groundGeometry.getAttribute("position");
+  const uv = groundGeometry.getAttribute("uv");
+  // Four metres per texture tile, independent of the terrain's overall radius.
+  for (let index = 0; index < positions.count; index++) {
+    uv.setXY(index, positions.getX(index) / 4, positions.getY(index) / 4);
+  }
+  const groundMaterial =
+    getMaterial("leafy_grass")?.clone() ??
+    new THREE.MeshStandardMaterial({ color: 0x73834d, roughness: 1 });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.015;
   ground.receiveShadow = true;

@@ -23,6 +23,24 @@ surfaces, tree canopies have raised leaf clusters, trunks and branches have bark
 relief, and curb edges have small bevels. Preview trees are separate from the
 gameplay tree collections.
 
+Both circuit previews now use `leafy_grass`, and the gameplay and preview shoulders
+use `gravel_concrete`. These materials contain 1K color, roughness, and normal maps,
+packed into the Blender source and embedded in the GLB. The grass has a green
+multiply tint; normal strength is 0.35 on both surfaces. Shoulder UVs repeat across
+the circuit instead of stretching one image over its full length. The game's ground
+reuses the exported grass material with a four-metre texture repeat.
+
+The CC0 textures are from Poly Haven:
+
+- [Leafy Grass](https://polyhaven.com/a/leafy_grass), by Charlotte Baglioni.
+- [Gravel Concrete](https://polyhaven.com/a/gravel_concrete), photographed by
+  Charlotte Baglioni and processed by Dario Barresi.
+
+Material assignment, shader edits, UV projection, packing, saving, and GLB exports
+were performed through Blender's visible interface. Export with UVs, normals,
+materials, applied modifiers, and full collection hierarchy enabled. Tangents can
+remain disabled; Three.js derives them for the normal maps.
+
 Collection names are the runtime keys, such as `car:race`, `nature:tree_oak`, and
 `track:stormhaven`. Preserve those names and the four `wheel_front_left`,
 `wheel_front_right`, `wheel_rear_left`, and `wheel_rear_right` object names. glTF uses

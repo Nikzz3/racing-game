@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { CAR_VARIANTS, ROAD_HALF_WIDTH, TRACKS } from "@racing/shared";
 import { createCarMesh } from "./car";
-import { getModel, registerLibrary } from "./models";
+import { getMaterial, getModel, registerLibrary } from "./models";
 
 beforeAll(async () => {
   const bytes = await readFile(
@@ -14,11 +14,58 @@ beforeAll(async () => {
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
   );
-  const { scene } = await new GLTFLoader().parseAsync(buffer, "");
+  // Node cannot decode browser images. Validate their embedded bytes, then leave
+  // pixel decoding to the browser check while these tests exercise real meshes.
+  const loader = new GLTFLoader().register((parser) => ({
+    name: "test-embedded-textures",
+    async loadTexture(index) {
+      const definition = parser.json.textures[index];
+      const image = parser.json.images[definition.source];
+      expect(image.bufferView).toBeTypeOf("number");
+      expect(["image/png", "image/jpeg"]).toContain(image.mimeType);
+      const bytes = await parser.getDependency("bufferView", image.bufferView);
+      expect(bytes.byteLength).toBeGreaterThan(1024);
+      return new THREE.Texture();
+    },
+  }));
+  const { scene } = await loader.parseAsync(buffer, "");
   registerLibrary(scene);
 });
 
 describe("Blender asset integration", () => {
+  it.each(["leafy_grass", "gravel_concrete"])(
+    "exports %s with color, roughness, and normal textures",
+    (name) => {
+      const material = getMaterial(name);
+      expect(material, `Missing exported surface ${name}`).not.toBeNull();
+      expect(material!.map).toBeInstanceOf(THREE.Texture);
+      expect(material!.roughnessMap).toBeInstanceOf(THREE.Texture);
+      expect(material!.normalMap).toBeInstanceOf(THREE.Texture);
+    },
+  );
+
+  it.each(TRACKS)("textures $name gameplay shoulders", (track) => {
+    const model = getModel(`track:${track.id}`)!;
+    const shoulders: THREE.Mesh[] = [];
+    model.traverse((part) => {
+      if (part instanceof THREE.Mesh && part.name.includes("Gravel"))
+        shoulders.push(part);
+    });
+    expect(shoulders.length).toBeGreaterThan(0);
+    for (const shoulder of shoulders) {
+      expect(shoulder.material).toBe(getMaterial("gravel_concrete"));
+      const uv = shoulder.geometry.getAttribute("uv");
+      expect(uv).toBeDefined();
+      let min = Infinity,
+        max = -Infinity;
+      for (let index = 0; index < uv.count; index++) {
+        min = Math.min(min, uv.getX(index));
+        max = Math.max(max, uv.getX(index));
+      }
+      expect(max - min, "Gravel must repeat across the circuit").toBeGreaterThan(100);
+    }
+  });
+
   it.each(TRACKS)(
     "shows the complete $name in its Blender preview",
     (track) => {
