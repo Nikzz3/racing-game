@@ -86,6 +86,10 @@ export class Lobby {
   private choice: Choice;
   private track = DEFAULT_TRACK_SLUG;
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
+  // Records-panel browse filters. They follow the race selection whenever it
+  // changes, but changing them never touches the race selection.
+  private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
+  private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
   private eligible: LeaderboardEntry[] = [];
   private pacer: ArmedPacer | null = null;
@@ -140,7 +144,7 @@ export class Lobby {
             <div class="setup-workspace">
               <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.difficulty}" class="diff-opt diff-${d}${d === this.difficulty ? " active" : ""}" tabindex="${d === this.difficulty ? 0 : -1}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><label class="setup-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action">Create &amp; Race <span>→</span></button></form></section>
               <section class="setup-panel online-rooms" role="tabpanel" id="setup-rooms-panel" aria-labelledby="setup-rooms-tab" data-setup-panel="rooms" hidden><div class="panel-heading"><h2>ONLINE ROOMS</h2><span class="room-total">OPEN ROOMS</span></div><div class="room-list"></div></section>
-              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading"><h2>RECORDS</h2><span class="board-context">MEDIUM</span></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span>No laps yet.</div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
+              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.boardDifficulty}" class="board-diff-opt diff-${d}${d === this.boardDifficulty ? " active" : ""}" tabindex="${d === this.boardDifficulty ? 0 : -1}" data-board-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="${t.id === this.boardTrack}" data-board-track="${html(t.id)}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
             </div></div></div>
           </section>
         </div>
@@ -168,6 +172,13 @@ export class Lobby {
     );
     this.root.addEventListener("click", (event) => this.click(event));
     this.picker.addEventListener("change", () => this.choosePacer());
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        event.target instanceof Node &&
+        !this.find(".board-track-menu").contains(event.target)
+      )
+        this.toggleBoardTrackMenu(false);
+    });
     this.root.addEventListener("keydown", (event) => this.keydown(event));
     for (const selector of [".track-stage"]) {
       const stage = this.find(selector);
@@ -265,6 +276,24 @@ export class Lobby {
       this.callbacks.onJoin(data.room);
       return;
     }
+    if (data.boardDiff) {
+      this.chooseBoardDifficulty(data.boardDiff as Difficulty);
+      return;
+    }
+    if (data.boardTrackToggle) {
+      this.toggleBoardTrackMenu();
+      return;
+    }
+    if (data.boardTrack) {
+      this.chooseBoardTrack(data.boardTrack);
+      this.toggleBoardTrackMenu(false);
+      this.find(".board-track-select").focus();
+      return;
+    }
+    if (data.boardUseSettings) {
+      this.useBoardSettings();
+      return;
+    }
     if (data.aiRecord) {
       this.callbacks.onReferenceLap();
       return;
@@ -275,6 +304,7 @@ export class Lobby {
   }
   private chooseDifficulty(difficulty: Difficulty): void {
     this.difficulty = difficulty;
+    this.boardDifficulty = difficulty;
     this.mark(".diff-opt", this.find(`.diff-opt[data-diff="${difficulty}"]`));
     this.root.querySelectorAll<HTMLElement>(".diff-opt").forEach((button) => {
       button.tabIndex = button.dataset.diff === difficulty ? 0 : -1;
@@ -306,6 +336,7 @@ export class Lobby {
   private chooseTrack(track: TrackSlug, direction = 1): void {
     if (track === this.track) return;
     this.track = track;
+    this.boardTrack = track;
     this.mark(".track-card", this.find(`.track-card[data-track="${track}"]`));
     this.root.querySelectorAll<HTMLElement>(".track-card").forEach((card) => {
       card.tabIndex = card.dataset.track === track ? 0 : -1;
@@ -319,6 +350,73 @@ export class Lobby {
       TRACKS[(index + direction + TRACKS.length) % TRACKS.length].id,
       direction,
     );
+  }
+  private chooseBoardDifficulty(difficulty: Difficulty): void {
+    this.boardDifficulty = difficulty;
+    this.paintBoard();
+  }
+  private chooseBoardTrack(track: TrackSlug): void {
+    this.boardTrack = track;
+    this.paintBoard();
+  }
+  private boardTrackMenuOpen(): boolean {
+    return !this.find(".board-track-list").hidden;
+  }
+  private toggleBoardTrackMenu(open = !this.boardTrackMenuOpen()): void {
+    this.find(".board-track-list").hidden = !open;
+    this.find(".board-track-select").setAttribute(
+      "aria-expanded",
+      String(open),
+    );
+    if (open)
+      this.find<HTMLButtonElement>(
+        `.board-track-opt[data-board-track="${this.boardTrack}"]`,
+      ).focus();
+  }
+  /** Copy the Records browse filters into the race selection. */
+  private useBoardSettings(): void {
+    const { boardTrack, boardDifficulty } = this;
+    this.chooseTrack(boardTrack);
+    this.chooseDifficulty(boardDifficulty);
+    // Syncing hides the note that holds the "Use these settings" button, so
+    // hand keyboard focus to the checked difficulty radio instead of <body>.
+    this.root
+      .querySelector<HTMLButtonElement>('.board-diff-opt[aria-checked="true"]')
+      ?.focus();
+  }
+  /** Keyboard support for the Records track listbox. True when consumed. */
+  private boardTrackMenu(event: KeyboardEvent): boolean {
+    const open = this.boardTrackMenuOpen();
+    if (event.key === "Escape" && open) {
+      this.toggleBoardTrackMenu(false);
+      this.find(".board-track-select").focus();
+      return true;
+    }
+    const inTrigger =
+      event.target instanceof Element &&
+      event.target.closest(".board-track-select") !== null;
+    if (inTrigger && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      this.toggleBoardTrackMenu(true);
+      return true;
+    }
+    if (!open) return false;
+    const options = [
+      ...this.root.querySelectorAll<HTMLButtonElement>(".board-track-opt"),
+    ];
+    const index = options.findIndex((o) => o === document.activeElement);
+    const next =
+      event.key === "ArrowDown"
+        ? Math.min(index + 1, options.length - 1)
+        : event.key === "ArrowUp"
+          ? Math.max(index - 1, 0)
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? options.length - 1
+              : -1;
+    if (next === -1) return event.key === "Enter" || event.key === " ";
+    options[next].focus();
+    return true;
   }
   private paintTrack(direction = 1): void {
     const track = resolveTrack(this.track);
@@ -338,6 +436,12 @@ export class Lobby {
     this.trackStage?.setTrack(this.track, direction);
   }
   private keydown(event: KeyboardEvent): void {
+    if (
+      event.target instanceof Element &&
+      event.target.closest(".board-track-menu")
+    ) {
+      if (this.boardTrackMenu(event)) return;
+    }
     if (event.key === "Escape" && this.screen !== "garage") {
       event.preventDefault();
       this.setScreen(this.screen === "settings" ? "track" : "garage");
@@ -349,6 +453,30 @@ export class Lobby {
     )
       return;
     if (this.screen === "settings") {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".board-diff-picker")
+      ) {
+        const index = DIFFICULTIES.indexOf(this.boardDifficulty);
+        const next =
+          event.key === "ArrowRight" || event.key === "ArrowDown"
+            ? (index + 1) % DIFFICULTIES.length
+            : event.key === "ArrowLeft" || event.key === "ArrowUp"
+              ? (index - 1 + DIFFICULTIES.length) % DIFFICULTIES.length
+              : event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? DIFFICULTIES.length - 1
+                  : -1;
+        if (next !== -1) {
+          event.preventDefault();
+          this.chooseBoardDifficulty(DIFFICULTIES[next]);
+          this.find(
+            `.board-diff-opt[data-board-diff="${this.boardDifficulty}"]`,
+          ).focus();
+        }
+        return;
+      }
       if (
         event.target instanceof Element &&
         event.target.closest(".diff-picker")
@@ -568,14 +696,26 @@ export class Lobby {
       this.reference = buildReferenceLap(policy);
     return this.reference;
   }
+  /** The AI reference lap exists only for Sunset Ridge at Medium. */
   private aiEligible(): boolean {
     return this.track === "sunset-ridge" && this.difficulty === "medium";
   }
   private renderBoard(): void {
-    const entries = this.entries.filter(
-      (e) => e.track === this.track && e.difficulty === this.difficulty,
+    this.reconcilePacer();
+    this.paintBoard();
+  }
+  /**
+   * Pacer eligibility is about the RACE the player is setting up, so it keys
+   * off this.track / this.difficulty regardless of what the Records panel is
+   * browsing.
+   */
+  private reconcilePacer(): void {
+    this.eligible = this.entries.filter(
+      (e) =>
+        e.hasReplay &&
+        e.track === this.track &&
+        e.difficulty === this.difficulty,
     );
-    this.eligible = entries.filter((e) => e.hasReplay);
     if (this.pacer?.kind === "ai") {
       if (!this.aiEligible()) this.pacer = null;
     } else if (this.pacer) {
@@ -588,16 +728,6 @@ export class Lobby {
       );
       this.pacer = entry ? replayPacer(entry) : null;
     }
-    this.find(".board-context").textContent =
-      DIFFICULTY_LABELS[this.difficulty].toUpperCase();
-    this.find(".lb-empty").hidden = entries.length > 0;
-    this.find(".lb-list").innerHTML = entries
-      .map(
-        (e) =>
-          `<li><span class="lb-name">${html(e.name)}</span><span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${html(e.track)}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
-      )
-      .join("");
-    this.find(".lb-ai-record").hidden = !this.aiEligible();
     const ai = this.aiEligible() ? this.getReferenceLap() : null;
     const choices = this.eligible.map((e, i) => ({
       time: e.timeMs,
@@ -621,6 +751,48 @@ export class Lobby {
         : this.pacer
           ? String(this.eligible.findIndex((e) => e.name === this.pacer?.name))
           : "-1";
+  }
+  /** The visible Records list follows the board filters, not the race setup. */
+  private paintBoard(): void {
+    const { boardTrack, boardDifficulty } = this;
+    const entries = this.entries.filter(
+      (e) => e.track === boardTrack && e.difficulty === boardDifficulty,
+    );
+    this.root
+      .querySelectorAll<HTMLElement>(".board-diff-opt")
+      .forEach((button) => {
+        const active = button.dataset.boardDiff === boardDifficulty;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-checked", String(active));
+        button.tabIndex = active ? 0 : -1;
+      });
+    this.find(".board-track-label").textContent = resolveTrack(boardTrack).name;
+    this.root
+      .querySelectorAll<HTMLElement>(".board-track-opt")
+      .forEach((option) => {
+        const active = option.dataset.boardTrack === boardTrack;
+        option.classList.toggle("active", active);
+        option.setAttribute("aria-selected", String(active));
+      });
+    const boardLabel = `${resolveTrack(boardTrack).name}, ${DIFFICULTY_LABELS[boardDifficulty]}`;
+    const browsing =
+      boardTrack !== this.track || boardDifficulty !== this.difficulty;
+    this.find(".board-note-text").textContent =
+      `Browsing only. Your race is still ${resolveTrack(this.track).name}, ${DIFFICULTY_LABELS[this.difficulty]}.`;
+    this.find(".board-note").hidden = !browsing;
+    this.find(".lb-empty-copy").textContent = `No laps yet on ${boardLabel}.`;
+    this.find(".lb-empty").hidden = entries.length > 0;
+    this.find(".lb-list").innerHTML = entries
+      .map(
+        (e) =>
+          `<li><span class="lb-name">${html(e.name)}</span><span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${html(e.track)}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
+      )
+      .join("");
+    // The AI Record button plays the Sunset Ridge / Medium reference lap, so
+    // it belongs to whatever the board is browsing, not to the race setup.
+    this.find(".lb-ai-record").hidden = !(
+      boardTrack === "sunset-ridge" && boardDifficulty === "medium"
+    );
   }
   private choosePacer(): void {
     if (this.picker.value === "ai") {
