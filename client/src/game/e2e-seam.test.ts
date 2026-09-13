@@ -123,16 +123,21 @@ describe("E2eSeam", () => {
     expect(sent).toEqual([3, 4]);
   });
 
-  it("bounds browser catch-up and carries unconsumed steps into later frames", () => {
+  it("bounds browser catch-up and drops the backlog it cannot spend", () => {
     const game = createBindings();
     const seam = new E2eSeam(game, SEND_INTERVAL_MS);
     seam.inject(Array.from({ length: 30 }, () => INPUTS[0]));
     expect(seam.advance(E2E_DT * 12, 3)).toBe(E2E_DT * 3);
     expect(game.step).toHaveBeenCalledTimes(3);
     expect(game.sendState).toHaveBeenCalledTimes(1);
-    expect(seam.advance(0, 3)).toBe(E2E_DT * 3);
-    expect(game.step).toHaveBeenCalledTimes(6);
-    expect(game.sendState).toHaveBeenCalledTimes(2);
+    // A frame that took no real time buys no steps: carrying the slow frame's
+    // backlog here would simulate ahead of the wall clock and the server would
+    // reject the lap as implausible.
+    expect(seam.advance(0, 3)).toBe(0);
+    expect(game.step).toHaveBeenCalledTimes(3);
+    // Fractional leftovers under one step still carry.
+    expect(seam.advance(E2E_DT * 2.5, 3)).toBe(E2E_DT * 2);
+    expect(seam.advance(E2E_DT * 0.6, 3)).toBe(E2E_DT);
   });
 
   it("restarts cleanly and produces exactly equal trajectories for equal inputs", () => {

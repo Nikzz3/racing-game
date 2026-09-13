@@ -132,10 +132,13 @@ export class E2eSeam {
    * same simulated time, keeping the server's sample spacing (and so its checkpoint
    * proximity checks) independent of how fast the client renders.
    * A caller can bound catch-up to avoid delivering a frame's entire backlog in
-   * one network burst. Unspent time stays in the accumulator for later calls.
+   * one network burst. Backlog beyond that bound is dropped rather than carried:
+   * spending it in later, faster frames would run the simulation ahead of the
+   * wall clock, and the server's speed window (which stamps samples on arrival)
+   * would flag the lap implausible. Dropping it only makes the lap slower.
    */
   advance(elapsedSeconds: number, maxSteps = Infinity): number {
-    this.stepAccumS += elapsedSeconds;
+    this.stepAccumS = Math.min(this.stepAccumS + elapsedSeconds, maxSteps * E2E_DT);
     const budget = Math.min(Math.floor(this.stepAccumS / E2E_DT), maxSteps);
     let steps = 0;
     while (steps < budget && this.driving) {

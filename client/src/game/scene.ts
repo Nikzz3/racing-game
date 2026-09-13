@@ -15,6 +15,10 @@ export interface SceneBundle {
 // A low sun casts tree silhouettes across the verge and lights the starting straight.
 const SUN = new THREE.Vector3(150, 30, -65);
 const HORIZON = 0xe4ad80;
+// The e2e suite renders under software WebGL, where the shadow pass and MSAA
+// dominate frame time and the seam's per-frame step cap turns slow frames into
+// slow laps (docs/agents/e2e-testing.md). Nothing in the suite asserts on either.
+const CHEAP_RENDER = Boolean(import.meta.env.VITE_E2E);
 const FOLLOW_DISTANCE = 10;
 const EYE_HEIGHT = 4.6;
 const look = new THREE.Vector3();
@@ -35,12 +39,12 @@ export function createScene(
     1500,
   );
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
+    antialias: !CHEAP_RENDER,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.75));
   renderer.setSize(container.clientWidth, container.clientHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !CHEAP_RENDER;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
@@ -48,7 +52,7 @@ export function createScene(
   scene.add(new THREE.HemisphereLight(0xbcc8e2, 0x745038, 1.25));
   const sun = new THREE.DirectionalLight(0xffb45f, 3.8);
   sun.position.copy(SUN);
-  sun.castShadow = true;
+  sun.castShadow = !CHEAP_RENDER;
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, {
     left: -65,
