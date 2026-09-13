@@ -59,16 +59,12 @@ describe("updateTiming — plausibility: window grace after lap start", () => {
     expect(t.lapImplausible).toBe(false);
   });
 
-  it("still catches a teleport that arrives inside the grace once the window is old enough", () => {
+  it("still catches a teleport that arrives inside the grace", () => {
     const t = createTiming();
     const { x: x0, z: z0 } = atCP(0);
     updateTiming(t, x0, z0, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
-    // 500 m in one tick, then standing still. Too young to judge at first…
+    // 500 m in one tick: judged against the 250 ms floor that is still 2000 m/s.
     updateTiming(t, x0 + 500, z0, 1, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
-    updateTiming(t, x0 + 500, z0, 100, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
-    expect(t.lapImplausible).toBe(false);
-    // …but the hop is still in the window when it becomes judgeable.
-    updateTiming(t, x0 + 500, z0, 300, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     expect(t.lapImplausible).toBe(true);
   });
 });
@@ -190,6 +186,28 @@ describe("updateTiming — LapResult fields", () => {
     // A cheated lap must not be advertised as a PB nor become the session best.
     expect(lap!.isPersonalBest).toBe(false);
     expect(t.bestLapMs).toBeNull();
+  });
+});
+
+describe("updateTiming — plausibility: burst after a quiet gap", () => {
+  it("flags a lap that idles past the time floor and then bursts every checkpoint inside the grace", () => {
+    const t = createTiming();
+    const { x: x0, z: z0 } = atCP(0);
+    updateTiming(t, x0, z0, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    // Sit at the line until the lap-time floor is satisfied, then report CP1.
+    // The long gap makes that hop's average speed low, and trimming afterwards
+    // collapses the window to this one sample.
+    let now = MIN_LAP_MS + 5000;
+    updateTiming(t, atCP(1).x, atCP(1).z, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    // Every remaining checkpoint plus the finish arrives within 250 ms.
+    for (let k = 2; k < CHECKPOINTS.length; k++) {
+      now += 1;
+      updateTiming(t, atCP(k).x, atCP(k).z, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    }
+    now += 1;
+    const lap = updateTiming(t, x0, z0, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(lap).not.toBeNull();
+    expect(lap!.isPlausible).toBe(false);
   });
 });
 
