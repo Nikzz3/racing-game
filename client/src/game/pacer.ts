@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { CHECKPOINT_RADIUS, type ReplayFrame } from "@racing/shared";
-import { animateCar, createCarMesh } from "./car";
+import { CHECKPOINT_RADIUS, type ReplayFrame, type Variant } from "@racing/shared";
+import { animateCar, createCarMesh, resolveVariant } from "./car";
 import type { E2ePacerState } from "./e2e-seam";
 import { interpolatePose, type Pose } from "./pose-interpolation";
 
@@ -109,18 +109,41 @@ export class PacerOverlay {
   private mesh: THREE.Group;
   private frames: ReplayFrame[] = [];
   private startMs: number | null = null;
+  /** The Variant the current mesh renders: recorded, or the driver-name hash. */
+  private variant: Variant;
 
-  constructor(private scene: THREE.Scene) {
-    this.mesh = createPacerMesh();
-    this.mesh.visible = false;
-    scene.add(this.mesh);
+  constructor(private scene: THREE.Scene, private driverName: string) {
+    this.variant = resolveVariant(driverName);
+    this.mesh = this.buildMesh();
   }
 
-  /** Load replay frames. Playback stays hidden until restart() is called. */
-  setFrames(frames: ReplayFrame[]): void {
+  private buildMesh(): THREE.Group {
+    const mesh = createPacerMesh(this.driverName, this.variant);
+    mesh.visible = false;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  /**
+   * Load replay frames. Playback stays hidden until restart() is called.
+   * The recorded Variant drives the mesh; absent (legacy laps) falls back to
+   * hashing the recorded driver's name, matching the ReplayViewer (#121).
+   */
+  setFrames(frames: ReplayFrame[], variant?: Variant): void {
     this.frames = frames;
     this.startMs = null;
+    const resolved = resolveVariant(this.driverName, variant);
+    if (resolved !== this.variant) {
+      this.removeMesh();
+      this.variant = resolved;
+      this.mesh = this.buildMesh();
+    }
     this.mesh.visible = false;
+  }
+
+  /** The Variant the Pacer currently renders (surfaced through the e2e seam). */
+  resolvedVariant(): Variant {
+    return this.variant;
   }
 
   /**
@@ -179,12 +202,12 @@ export class PacerOverlay {
     animateCar(this.mesh, pose.speed, 0, dt);
   }
 
-  dispose(): void {
+  // Release the per-instance GPU resources createPacerMesh() allocated: the
+  // cloned car materials and the replay badge's SpriteMaterial + CanvasTexture.
+  // Shared geometry is owned by createCarMesh() and left untouched, so repeated
+  // arm/dismiss (and Variant rebuild) cycles don't leak GPU memory.
+  private removeMesh(): void {
     this.scene.remove(this.mesh);
-    // Release the per-instance GPU resources createPacerMesh() allocated: the
-    // cloned car materials and the replay badge's SpriteMaterial + CanvasTexture.
-    // Shared geometry is owned by createCarMesh() and left untouched, so repeated
-    // arm/dismiss cycles don't leak GPU memory.
     this.mesh.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -194,6 +217,10 @@ export class PacerOverlay {
         obj.material.dispose();
       }
     });
+  }
+
+  dispose(): void {
+    this.removeMesh();
     this.frames = [];
     this.startMs = null;
   }
@@ -210,8 +237,8 @@ function cloneMaterialForPacer(m: THREE.Material): THREE.Material {
   return cloned;
 }
 
-function createPacerMesh(): THREE.Group {
-  const group = createCarMesh("__pacer__");
+function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
+  const group = createCarMesh(driverName, undefined, variant);
   group.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     if (Array.isArray(obj.material)) {

@@ -1,90 +1,105 @@
 import * as THREE from "three";
-import type { ReplayFrame, TrackSlug } from "@racing/shared";
-import { formatMs, escapeHtml } from "../util";
-import { animateCar, createCarMesh } from "./car";
-import { createScene, disposeRenderer, updateSun, followCar, snapBehindCar, type SceneBundle } from "./scene";
-import { resolveTrack } from "@racing/shared";
+import {
+  resolveTrack,
+  type ReplayFrame,
+  type TrackSlug,
+  type Variant,
+} from "@racing/shared";
+import { formatMs } from "../util";
+import { animateCar, createCarMesh, disposeCarMesh } from "./car";
+import {
+  createScene,
+  disposeWorld,
+  updateSun,
+  followCar,
+  snapBehindCar,
+  type SceneBundle,
+} from "./scene";
 import { buildTrack } from "./trackMesh";
 import { interpolatePose } from "./pose-interpolation";
 
 const FINISH_HOLD_MS = 1500;
 
-/** Plays back a recorded lap in its own 3D scene with a chase camera. */
+/** Owns a replay scene, its playback clock and all associated browser resources. */
 export class ReplayViewer {
-  private bundle: SceneBundle;
-  private carMesh: THREE.Group;
-  private container: HTMLElement;
-  private overlay: HTMLElement;
-  private timeEl: HTMLElement;
-  private finishedEl: HTMLElement;
+  private readonly bundle: SceneBundle;
+  private readonly carMesh: THREE.Group;
+  private readonly container = document.createElement("div");
+  private readonly overlay = document.createElement("div");
+  private readonly timeEl: HTMLElement;
+  private readonly finishedEl: HTMLElement;
+  private readonly exitButton: HTMLButtonElement;
+  private animationFrame = 0;
   private running = true;
-  private lastFrame = performance.now();
-  private playStart = performance.now();
+  private lastFrame: number;
+  private playStart: number;
   private finishedAt: number | null = null;
 
-  private onResize = () => {
+  constructor(
+    parent: HTMLElement,
+    name: string,
+    trackSlug: TrackSlug,
+    private readonly timeMs: number,
+    private readonly frames: ReplayFrame[],
+    variant: Variant | undefined,
+    private readonly onClose: () => void,
+  ) {
+    // Validate before allocating a renderer or attaching any DOM nodes.
+    if (frames.length === 0)
+      throw new Error("ReplayViewer: frames must not be empty");
+    this.lastFrame = this.playStart = performance.now();
+    this.container.style.cssText = "position:absolute;inset:0;";
+    parent.append(this.container);
+    const track = resolveTrack(trackSlug);
+    this.bundle = createScene(this.container, track.samples);
+    buildTrack(this.bundle.scene, track.samples);
+    this.carMesh = createCarMesh(name, name, variant);
+    this.bundle.scene.add(this.carMesh);
+
+    this.overlay.className = "replay-hud";
+    this.overlay.innerHTML = `
+      <div class="replay-panel">
+        <div class="replay-label">REPLAY</div>
+        <div class="replay-name"></div>
+        <div class="replay-time"></div>
+        <button class="replay-exit" type="button">Exit replay</button>
+      </div>
+      <div class="replay-finished" hidden>Lap complete</div>
+    `;
+    this.overlay.querySelector<HTMLElement>(".replay-name")!.textContent = name;
+    this.timeEl = this.overlay.querySelector<HTMLElement>(".replay-time")!;
+    this.timeEl.textContent = `--:--.--- / ${formatMs(timeMs)}`;
+    this.finishedEl =
+      this.overlay.querySelector<HTMLElement>(".replay-finished")!;
+    this.exitButton =
+      this.overlay.querySelector<HTMLButtonElement>(".replay-exit")!;
+    this.exitButton.addEventListener("click", this.close);
+    parent.append(this.overlay);
+    window.addEventListener("resize", this.onResize);
+    this.restart(this.playStart);
+    this.animationFrame = requestAnimationFrame(this.frame);
+  }
+
+  private close = (): void => {
+    this.dispose();
+    this.onClose();
+  };
+
+  private onResize = (): void => {
     const { camera, renderer } = this.bundle;
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
-  constructor(
-    parent: HTMLElement,
-    private name: string,
-    trackSlug: TrackSlug,
-    private timeMs: number,
-    private frames: ReplayFrame[],
-    private onClose: () => void
-  ) {
-    this.container = document.createElement("div");
-    this.container.style.cssText = "position:absolute;inset:0;";
-    parent.appendChild(this.container);
-
-    const track = resolveTrack(trackSlug);
-    this.bundle = createScene(this.container, track.samples);
-    buildTrack(this.bundle.scene, track.samples);
-
-    this.carMesh = createCarMesh(name, name);
-    this.bundle.scene.add(this.carMesh);
-
-    this.overlay = document.createElement("div");
-    this.overlay.className = "replay-hud";
-    this.overlay.innerHTML = `
-      <div class="replay-panel">
-        <div class="replay-label">REPLAY</div>
-        <div class="replay-name">${escapeHtml(name)}</div>
-        <div class="replay-time">--:--.--- / ${formatMs(timeMs)}</div>
-        <button class="replay-exit">Exit replay</button>
-      </div>
-      <div class="replay-finished" hidden>Lap complete</div>
-    `;
-    parent.appendChild(this.overlay);
-    this.timeEl = this.overlay.querySelector(".replay-time")!;
-    this.finishedEl = this.overlay.querySelector(".replay-finished")!;
-    this.overlay.querySelector(".replay-exit")!.addEventListener("click", () => {
-      this.dispose();
-      this.onClose();
-    });
-
-    window.addEventListener("resize", this.onResize);
-
-    this.applyFrameAt(0);
-    this.snapCameraBehindCar();
-    requestAnimationFrame(this.frame);
-  }
-
-  private frame = (now: number) => {
+  private frame = (now: number): void => {
     if (!this.running) return;
-    const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
+    const dt = Math.max(0, Math.min((now - this.lastFrame) / 1000, 0.05));
     this.lastFrame = now;
-
-    const lastT = this.frames[this.frames.length - 1][0];
-    const t = now - this.playStart;
-
-    if (t >= lastT) {
-      // Hold the final pose, then loop after a short pause.
-      this.applyFrameAt(lastT, dt);
+    const finalTime = this.frames[this.frames.length - 1][0];
+    const elapsed = now - this.playStart;
+    if (elapsed >= finalTime) {
+      this.applyFrameAt(finalTime, dt);
       this.timeEl.textContent = `${formatMs(this.timeMs)} / ${formatMs(this.timeMs)}`;
       if (this.finishedAt === null) {
         this.finishedAt = now;
@@ -93,14 +108,14 @@ export class ReplayViewer {
         this.restart(now);
       }
     } else {
-      this.applyFrameAt(t, dt);
-      this.timeEl.textContent = `${formatMs(t)} / ${formatMs(this.timeMs)}`;
+      this.applyFrameAt(elapsed, dt);
+      this.timeEl.textContent = `${formatMs(elapsed)} / ${formatMs(this.timeMs)}`;
     }
-
-    this.updateCamera(dt);
-    updateSun(this.bundle.sun, this.carMesh.position.x, this.carMesh.position.z);
+    const { x, z } = this.carMesh.position;
+    followCar(this.bundle.camera, x, z, this.carMesh.rotation.y, dt);
+    updateSun(this.bundle.sun, x, z);
     this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
-    requestAnimationFrame(this.frame);
+    this.animationFrame = requestAnimationFrame(this.frame);
   };
 
   private restart(now: number): void {
@@ -108,30 +123,25 @@ export class ReplayViewer {
     this.finishedAt = null;
     this.finishedEl.hidden = true;
     this.applyFrameAt(0);
-    this.snapCameraBehindCar();
-  }
-
-  private applyFrameAt(t: number, dt = 0): void {
-    const { x, z, heading, speed } = interpolatePose(this.frames, t);
-    this.carMesh.position.set(x, 0, z);
-    this.carMesh.rotation.y = heading;
-    animateCar(this.carMesh, speed, 0, dt);
-  }
-
-  private updateCamera(dt: number): void {
-    const { x, z } = this.carMesh.position;
-    followCar(this.bundle.camera, x, z, this.carMesh.rotation.y, dt);
-  }
-
-  private snapCameraBehindCar(): void {
     const { x, z } = this.carMesh.position;
     snapBehindCar(this.bundle.camera, x, z, this.carMesh.rotation.y);
   }
 
+  private applyFrameAt(time: number, dt = 0): void {
+    const pose = interpolatePose(this.frames, time);
+    this.carMesh.position.set(pose.x, 0, pose.z);
+    this.carMesh.rotation.y = pose.heading;
+    animateCar(this.carMesh, pose.speed, 0, dt);
+  }
+
   dispose(): void {
+    if (!this.running) return;
     this.running = false;
+    cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.onResize);
-    disposeRenderer(this.bundle.renderer);
+    this.exitButton.removeEventListener("click", this.close);
+    disposeCarMesh(this.carMesh);
+    disposeWorld(this.bundle);
     this.container.remove();
     this.overlay.remove();
   }

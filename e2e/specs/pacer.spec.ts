@@ -19,7 +19,8 @@ test("arms the AI Record and sees it pacing in a Room", async ({ game, page }) =
 
   // Drive across the start line with a real key press.
   await page.keyboard.down("KeyW");
-  await expect.poll(() => game.state().then((s) => s.checkpoint)).toBe(1);
+  // Software WebGL needs about six wall-clock seconds to simulate the launch.
+  await expect.poll(() => game.state().then((s) => s.checkpoint), { timeout: 15_000 }).toBe(1);
   await page.keyboard.up("KeyW");
 
   // After the first start-line crossing a translucent Pacer car is in the scene.

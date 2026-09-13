@@ -1,5 +1,6 @@
-import type { LeaderboardEntry, ReplayFrame, RoomInfo, Track, TrackSlug } from "@racing/shared";
 import {
+  asVariant,
+  CAR_VARIANTS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
@@ -8,361 +9,646 @@ import {
   resolveTrack,
   trackPath,
   type Difficulty,
+  type LeaderboardEntry,
+  type ReplayFrame,
+  type RoomInfo,
+  type Track,
+  type TrackSlug,
+  type Variant,
 } from "@racing/shared";
+import { renderVariantThumbnails } from "./garage-thumbs";
+import { GarageStage } from "./garage-stage";
+import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import policy from "../../../rl/policy.json";
-import { escapeHtml, formatMs } from "../util";
-
+import { escapeHtml as html, formatMs } from "../util";
 export interface LobbyCallbacks {
-  onCreate: (roomName: string, track: TrackSlug, difficulty: Difficulty) => void;
-  onJoin: (roomId: string) => void;
-  onReplay: (name: string, track: TrackSlug, difficulty: Difficulty) => void;
-  onReferenceLap: () => void;
+  onCreate(roomName: string, track: TrackSlug, difficulty: Difficulty): void;
+  onJoin(roomId: string): void;
+  onReplay(name: string, track: TrackSlug, difficulty: Difficulty): void;
+  onReferenceLap(): void;
+  onVariantChange(): void;
 }
-
-/**
- * The single Pacer armed from the Starting Grid picker. A human Replay carries
- * its leaderboard entry (frames are fetched via getReplay at race start); the
- * AI Reference Lap carries its baked frames directly — it is never a
- * LeaderboardEntry and nothing is fetched for it (ADR-0006).
- */
 export type ArmedPacer =
-  | { kind: "replay"; name: string; track: TrackSlug; difficulty: Difficulty; entry: LeaderboardEntry }
-  | { kind: "ai"; name: "AI Record"; track: TrackSlug; difficulty: "medium"; frames: ReplayFrame[] };
-
-/** Track slugs that have a trained AI policy (Reference Lap available). */
-const TRACKS_WITH_POLICY = new Set<TrackSlug>(["sunset-ridge"]);
-
+  | {
+      kind: "replay";
+      name: string;
+      track: TrackSlug;
+      difficulty: Difficulty;
+      entry: LeaderboardEntry;
+    }
+  | {
+      kind: "ai";
+      name: "AI Record";
+      track: TrackSlug;
+      difficulty: "medium";
+      variant: "police";
+      frames: ReplayFrame[];
+    };
+type Choice = Variant | "random";
+type Screen = "garage" | "track" | "settings";
+type SetupTab = "race" | "rooms" | "records";
+const CHOICES: readonly Choice[] = [...CAR_VARIANTS, "random"];
+const LABELS: Record<Variant, string> = {
+  race: "Race",
+  "race-future": "Hyper",
+  "sedan-sports": "Sedan S",
+  "hatchback-sports": "Hatch S",
+  suv: "SUV",
+  taxi: "Taxi",
+  police: "Police",
+  van: "Van",
+};
+function outline(track: Track, className: string): string {
+  const xs = track.samples.map((s) => s.x),
+    zs = track.samples.map((s) => s.z);
+  const box = [
+    Math.min(...xs) - 20,
+    Math.min(...zs) - 20,
+    Math.max(...xs) - Math.min(...xs) + 40,
+    Math.max(...zs) - Math.min(...zs) + 40,
+  ];
+  return `<svg class="${className}" viewBox="${box.join(" ")}" aria-hidden="true"><path d="${trackPath(track)}" fill="none" stroke="currentColor" stroke-width="9" stroke-linejoin="round"/></svg>`;
+}
 function replayPacer(entry: LeaderboardEntry): ArmedPacer {
-  return { kind: "replay", name: entry.name, track: entry.track, difficulty: entry.difficulty, entry };
+  return {
+    kind: "replay",
+    name: entry.name,
+    track: entry.track,
+    difficulty: entry.difficulty,
+    entry,
+  };
 }
-
-const NAME_KEY = "racer-name";
-
-function trackViewBox(track: Track): string {
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (const s of track.samples) {
-    if (s.x < minX) minX = s.x;
-    if (s.x > maxX) maxX = s.x;
-    if (s.z < minZ) minZ = s.z;
-    if (s.z > maxZ) maxZ = s.z;
-  }
-  const pad = 20;
-  return `${(minX - pad).toFixed(0)} ${(minZ - pad).toFixed(0)} ${(maxX - minX + 2 * pad).toFixed(0)} ${(maxZ - minZ + 2 * pad).toFixed(0)}`;
-}
-
-/** Top-down SVG outline of a track's centerline, sized to its bounding box. */
-function trackOutlineSvg(track: Track, className: string): string {
-  const vb = trackViewBox(track);
-  const path = trackPath(track);
-  return `<svg class="${className}" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="8"/></svg>`;
-}
-
-function trackCardHtml(track: Track, active: boolean): string {
-  return `<button type="button" class="track-card${active ? " active" : ""}" data-track="${escapeHtml(track.id)}">${trackOutlineSvg(track, "track-outline")}<span class="track-card-name">${escapeHtml(track.name)}</span></button>`;
-}
-
-function trackThumbHtml(track: Track): string {
-  return trackOutlineSvg(track, "room-track-thumb");
-}
-
-/** Leaderboard row action button carrying the (name, track, difficulty) key. */
-function entryButton(
-  e: LeaderboardEntry,
-  className: string,
-  action: string,
-  title: string,
-  label: string
-): string {
-  return `<button class="${className}" data-${action}="${escapeHtml(e.name)}" data-track="${escapeHtml(e.track)}" data-diff="${e.difficulty}" title="${title}">${label}</button>`;
-}
-
 export class Lobby {
-  private root: HTMLElement;
-  private nameInput: HTMLInputElement;
-  private roomList: HTMLElement;
-  private lbList: HTMLElement;
-  private onReferenceLap: () => void;
-
-  /** Currently selected track — drives both create-Room and leaderboard. */
-  private selectedTrack: TrackSlug = DEFAULT_TRACK_SLUG;
-  /** Currently selected difficulty — drives both create-Room and leaderboard. */
-  private selectedDifficulty: Difficulty = DEFAULT_DIFFICULTY;
+  private readonly root = document.createElement("div");
+  private readonly randomRoll =
+    CAR_VARIANTS[Math.floor(Math.random() * CAR_VARIANTS.length)];
+  private choice: Choice;
+  private track = DEFAULT_TRACK_SLUG;
+  private difficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
-  private _armedPacer: ArmedPacer | null = null;
-  private pacerSelect: HTMLSelectElement;
-  /** Entries selectable as Pacers for the current (track, difficulty); numeric option values index into this. */
   private eligible: LeaderboardEntry[] = [];
-  /** Memoized AI Reference Lap bake; undefined = not yet baked, null = policy failed to lap. */
-  private referenceLap: ReferenceLap | null | undefined = undefined;
-
-  constructor(parent: HTMLElement, callbacks: LobbyCallbacks) {
-    this.onReferenceLap = callbacks.onReferenceLap;
-    this.root = document.createElement("div");
+  private pacer: ArmedPacer | null = null;
+  private reference: ReferenceLap | null | undefined;
+  private images = new Map<Variant, string>();
+  private readonly nameInput: HTMLInputElement;
+  private readonly picker: HTMLSelectElement;
+  private screen: Screen = "garage";
+  private setupTab: SetupTab = "race";
+  private stage: GarageStage | null = null;
+  private trackStage: TrackStage | null = null;
+  private slideDirection = 1;
+  private pointerStart: { x: number; y: number } | null = null;
+  constructor(
+    parent: HTMLElement,
+    private readonly callbacks: LobbyCallbacks,
+  ) {
+    const saved = localStorage.getItem("racer-variant");
+    this.choice = asVariant(saved) ?? "random";
+    if (saved !== null && saved !== this.choice)
+      localStorage.setItem("racer-variant", this.choice);
     this.root.className = "lobby-backdrop";
-
-    const trackCards = TRACKS.map((t) => trackCardHtml(t, t.id === DEFAULT_TRACK_SLUG)).join("");
-    const difficultyOptions = DIFFICULTIES.map(
-      (d) =>
-        `<button type="button" class="diff-opt diff-${d}${d === this.selectedDifficulty ? " active" : ""}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`
-    ).join("");
-
     this.root.innerHTML = `
-      <div class="lobby-scene" aria-hidden="true">
-        <div class="scene-stars"></div>
-        <div class="scene-sun"></div>
-        <div class="scene-mountains"></div>
-        <div class="scene-grid-wrap"><div class="scene-grid"></div></div>
-        <div class="scene-haze"></div>
-      </div>
-      <div class="lobby">
-        <div class="lobby-flag-strip"></div>
-        <header class="lobby-header">
-          <p class="lobby-kicker">// IGNITION SEQUENCE</p>
-          <h1 class="lobby-title">SUNSET<span>RIDGE</span></h1>
-          <p class="subtitle">3D MULTIPLAYER RACING</p>
-        </header>
-        <div class="name-row">
-          <label for="driver-name">Driver</label>
-          <input id="driver-name" maxlength="16" placeholder="Your name" autocomplete="off" />
-          <span class="name-tag">P1</span>
-        </div>
-        <div class="track-selector" role="radiogroup" aria-label="Track">${trackCards}</div>
-        <div class="diff-picker" role="radiogroup" aria-label="Difficulty">${difficultyOptions}</div>
-        <div class="lobby-columns">
-          <section class="panel-rooms">
-            <h2><i class="dot"></i>Starting Grid</h2>
-            <div class="room-list"></div>
-            <label class="pacer-picker">
-              <span class="pacer-picker-lead">Pacer</span>
-              <select class="pacer-select"></select>
-            </label>
-            <form class="create-form">
-              <input maxlength="24" placeholder="New room name" />
-              <button type="submit">Create &amp; Race</button>
-            </form>
-          </section>
-          <section class="panel-laps">
-            <h2><i class="dot gold"></i>Best Laps — All Time</h2>
-            <ol class="lb-list"></ol>
-            <div class="lb-empty" hidden>No laps recorded yet. Set the first time!</div>
-            <div class="lb-ai-record" hidden>
-              <button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button>
+      <main class="lobby">
+        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><span class="brand-mark">SR</span><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><span class="connection-status" role="status">CONNECTING</span></header>
+        <div class="lobby-deck" data-screen="garage">
+          <section class="garage-screen menu-screen" aria-label="Choose your car">
+            <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
+            <div class="car-stage" role="region" aria-roledescription="carousel" aria-label="Cars" tabindex="0">
+              <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><span class="stage-watermark" aria-hidden="true"></span><div class="stage-platform"></div>
+              <div class="car-slides">${CHOICES.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${v === "random" ? "Random" : LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${v === "random" ? "Random car" : LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
+              <div class="live-car-stage"></div><div class="showroom-loading">Preparing your garage<span></span></div>
+              <button class="carousel-arrow carousel-previous" type="button" data-carousel="previous" aria-label="Previous car"><span>←</span></button>
+              <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
+            <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
+            <div class="garage-navigation"><div class="garage" role="list" aria-label="Car models">${CHOICES.map((v, i) => `<div role="listitem" aria-current="${v === this.choice}" class="garage-card${v === "random" ? " garage-card-random" : ""}${v === this.choice ? " active" : ""}" data-variant="${v}"><span class="garage-card-number">${v === "random" ? "↝" : String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${v === "random" ? "Random" : LABELS[v]}</span><span class="garage-card-line"></span></div>`).join("")}</div></div>
+          </section>
+          <section class="track-screen menu-screen" aria-label="Choose your track" aria-hidden="true" inert>
+            <div class="track-heading"><h1>CHOOSE YOUR <span>CIRCUIT.</span></h1><button class="menu-back" type="button" data-change-car aria-label="Change car">← Change car</button></div>
+            <div class="track-stage" role="region" aria-roledescription="carousel" aria-label="Tracks" tabindex="0">
+              <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><div class="track-slides">${TRACKS.map((t) => `<div class="track-slide" data-track-slide="${t.id}" role="group" aria-roledescription="slide" aria-label="${html(t.name)}" aria-hidden="true">${outline(t, "track-hero-outline")}</div>`).join("")}</div><div class="live-track-stage"></div>
+              <button class="carousel-arrow carousel-previous" type="button" data-track-carousel="previous" aria-label="Previous track">←</button><button class="carousel-arrow carousel-next" type="button" data-track-carousel="next" aria-label="Next track">→</button>
+            </div>
+            <div class="track-selection"><div class="selected-track-copy" aria-live="polite" aria-atomic="true"><span class="track-counter"></span><h2 class="hero-track-name"></h2></div><button class="select-track primary-action" type="button" data-select-track aria-label="Select track">Select track <span>→</span></button></div>
+            <div class="track-selector" role="radiogroup" aria-label="Track">${TRACKS.map((t, i) => `<button class="track-card${t.id === this.track ? " active" : ""}" type="button" role="radio" aria-checked="${t.id === this.track}" tabindex="${t.id === this.track ? 0 : -1}" data-track="${t.id}"><span class="track-number">0${i + 1}</span>${outline(t, "track-outline")}<span class="track-card-name">${html(t.name)}</span><span class="track-choice-line"></span></button>`).join("")}</div>
+          </section>
+          <section class="settings-screen menu-screen" aria-label="Race settings" aria-hidden="true" inert>
+            <div class="setup-scene" aria-hidden="true"><div class="setup-halo"></div><img class="setup-car-image" alt="" hidden><div class="setup-circuit-outline"></div></div>
+            <div class="settings-inner"><div class="settings-heading"><h1>RACE <span>SETUP.</span></h1><div class="setup-selections"><button class="change-selection change-car" type="button" data-change-car aria-label="Change car"><img class="selected-car-thumb" alt="" hidden><span class="selected-car-name"></span><span class="change-label">Change car</span></button><button class="change-selection change-track" type="button" data-change-track aria-label="Change track"><span class="selected-track-name"></span><span class="change-label">Change track</span></button></div></div>
+            <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist"><button type="button" role="tab" aria-selected="true" aria-controls="setup-race-panel" id="setup-race-tab" data-setup-tab="race" class="setup-menu-item active"><span>01</span>Race<span class="setup-menu-arrow">→</span></button><button type="button" role="tab" aria-selected="false" aria-controls="setup-rooms-panel" id="setup-rooms-tab" data-setup-tab="rooms" class="setup-menu-item" tabindex="-1"><span>02</span>Online rooms<span class="setup-menu-arrow">→</span></button><button type="button" role="tab" aria-selected="false" aria-controls="setup-records-panel" id="setup-records-tab" data-setup-tab="records" class="setup-menu-item" tabindex="-1"><span>03</span>Records<span class="setup-menu-arrow">→</span></button></nav>
+            <div class="setup-workspace">
+              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.difficulty}" class="diff-opt diff-${d}${d === this.difficulty ? " active" : ""}" tabindex="${d === this.difficulty ? 0 : -1}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><label class="setup-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action">Create &amp; Race <span>→</span></button></form></section>
+              <section class="setup-panel online-rooms" role="tabpanel" id="setup-rooms-panel" aria-labelledby="setup-rooms-tab" data-setup-panel="rooms" hidden><div class="panel-heading"><h2>ONLINE ROOMS</h2><span class="room-total">OPEN ROOMS</span></div><div class="room-list"></div></section>
+              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading"><h2>RECORDS</h2><span class="board-context">MEDIUM</span></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span>No laps yet.</div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
+            </div></div></div>
           </section>
         </div>
-        <p class="controls-hint"><span><b>W</b> throttle</span> <span><b>S</b> brake</span> <span><b>A</b><b>D</b> steer</span></p>
-      </div>
-    `;
-    parent.appendChild(this.root);
-
-    this.nameInput = this.root.querySelector<HTMLInputElement>("#driver-name")!;
-    this.roomList = this.root.querySelector<HTMLElement>(".room-list")!;
-    this.lbList = this.root.querySelector<HTMLElement>(".lb-list")!;
-    this.pacerSelect = this.root.querySelector<HTMLSelectElement>(".pacer-select")!;
-    this.pacerSelect.addEventListener("change", () => {
-      const value = this.pacerSelect.value;
-      if (value === "ai") {
-        const lap = this.getReferenceLap();
-        this._armedPacer = lap
-          ? {
-              kind: "ai",
-              name: "AI Record",
-              track: this.selectedTrack,
-              difficulty: "medium",
-              frames: lap.frames,
-            }
-          : null;
-      } else {
-        const entry = this.eligible[Number(value)];
-        this._armedPacer = entry ? replayPacer(entry) : null;
-      }
-    });
-
+      </main>`;
+    parent.append(this.root);
+    this.nameInput = this.find<HTMLInputElement>("#driver-name");
+    this.picker = this.find<HTMLSelectElement>(".pacer-select");
     this.nameInput.value =
-      localStorage.getItem(NAME_KEY) ?? `Racer${Math.floor(Math.random() * 900) + 100}`;
-    this.nameInput.addEventListener("change", () => {
-      localStorage.setItem(NAME_KEY, this.playerName);
-    });
-
-    const form = this.root.querySelector<HTMLFormElement>(".create-form")!;
-    const roomNameInput = form.querySelector<HTMLInputElement>("input")!;
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      localStorage.setItem(NAME_KEY, this.playerName);
-      callbacks.onCreate(
-        roomNameInput.value.trim() || `${this.playerName}'s race`,
-        this.selectedTrack,
-        this.selectedDifficulty
-      );
-      roomNameInput.value = "";
-    });
-
-    const trackSelector = this.root.querySelector<HTMLElement>(".track-selector")!;
-    trackSelector.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-track]");
-      if (!btn) return;
-      this.selectedTrack = btn.dataset.track as TrackSlug;
-      trackSelector
-        .querySelectorAll<HTMLButtonElement>("button")
-        .forEach((b) => b.classList.toggle("active", b === btn));
-      this.renderBoard();
-    });
-
-    const diffPicker = this.root.querySelector<HTMLElement>(".diff-picker")!;
-    diffPicker.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-diff]");
-      if (!btn) return;
-      this.selectedDifficulty = btn.dataset.diff as Difficulty;
-      diffPicker
-        .querySelectorAll<HTMLButtonElement>("button")
-        .forEach((b) => b.classList.toggle("active", b === btn));
-      this.renderBoard();
-    });
-
-    this.roomList.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-room]");
-      if (!btn) return;
-      localStorage.setItem(NAME_KEY, this.playerName);
-      callbacks.onJoin(btn.dataset.room!);
-    });
-
-    this.lbList.addEventListener("click", (e) => {
-      const replayBtn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-replay]");
-      if (replayBtn) callbacks.onReplay(replayBtn.dataset.replay!, replayBtn.dataset.track!, replayBtn.dataset.diff as Difficulty);
-    });
-
-    this.root.querySelector<HTMLElement>(".lb-ai-record")!.addEventListener("click", () => {
-      this.onReferenceLap();
-    });
-
+      localStorage.getItem("racer-name") ??
+      `Racer${100 + Math.floor(Math.random() * 900)}`;
+    this.nameInput.addEventListener("change", () => this.saveName());
+    this.find<HTMLFormElement>(".create-form").addEventListener(
+      "submit",
+      (event) => {
+        event.preventDefault();
+        this.saveName();
+        const input = this.find<HTMLInputElement>(".create-form input");
+        callbacks.onCreate(
+          input.value.trim() || `${this.playerName}'s race`,
+          this.track,
+          this.difficulty,
+        );
+        input.value = "";
+      },
+    );
+    this.root.addEventListener("click", (event) => this.click(event));
+    this.picker.addEventListener("change", () => this.choosePacer());
+    this.root.addEventListener("keydown", (event) => this.keydown(event));
+    for (const selector of [".track-stage"]) {
+      const stage = this.find(selector);
+      stage.addEventListener("pointerdown", (event) => {
+        if (event.target instanceof Element && event.target.closest("button"))
+          return;
+        this.pointerStart = { x: event.clientX, y: event.clientY };
+        stage.setPointerCapture?.(event.pointerId);
+      });
+      stage.addEventListener("pointerup", (event) => {
+        if (!this.pointerStart) return;
+        const dx = event.clientX - this.pointerStart.x,
+          dy = event.clientY - this.pointerStart.y;
+        this.pointerStart = null;
+        if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+          this.cycleTrack(dx < 0 ? 1 : -1);
+        }
+      });
+      stage.addEventListener("pointercancel", () => {
+        this.pointerStart = null;
+      });
+    }
+    this.paintHero();
+    this.paintTrack();
     this.setRooms([]);
-    this.setLeaderboard([]);
+    this.renderBoard();
   }
-
+  private find<T extends HTMLElement = HTMLElement>(selector: string): T {
+    return this.root.querySelector<T>(selector)!;
+  }
+  private saveName(): void {
+    localStorage.setItem("racer-name", this.playerName);
+  }
   get playerName(): string {
     return this.nameInput.value.trim().slice(0, 16) || "Racer";
   }
-
-  setRooms(rooms: RoomInfo[]): void {
-    if (rooms.length === 0) {
-      this.roomList.innerHTML = `<div class="rooms-empty">No rooms yet — create one below.</div>`;
+  get selectedVariant(): Variant {
+    return this.choice === "random" ? this.randomRoll : this.choice;
+  }
+  get armedPacer(): ArmedPacer | null {
+    return this.pacer;
+  }
+  private click(event: MouseEvent): void {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLButtonElement>("button");
+    if (!button) return;
+    const data = button.dataset;
+    if (data.progressScreen) {
+      const destination = data.progressScreen;
+      if (
+        (destination === "garage" && this.screen !== "garage") ||
+        (destination === "track" && this.screen === "settings")
+      )
+        this.setScreen(destination);
       return;
     }
-    this.roomList.innerHTML = rooms
-      .map((r) => {
-        const track = resolveTrack(r.track);
-        const thumb = trackThumbHtml(track);
-        return `<div class="room-row diff-edge-${r.difficulty}">${thumb}<span class="room-track-name">${escapeHtml(track.name)}</span><span class="room-name">${escapeHtml(r.name)}</span><span class="room-badge diff-${r.difficulty}">${DIFFICULTY_LABELS[r.difficulty]}</span><span class="room-count">${r.players} racing</span><button data-room="${escapeHtml(r.id)}">Join</button></div>`;
-      })
-      .join("");
+    if (data.carousel) {
+      this.cycle(data.carousel === "next" ? 1 : -1);
+      return;
+    }
+    if (data.selectCar !== undefined) {
+      this.setScreen("track");
+      return;
+    }
+    if (data.changeCar !== undefined) {
+      this.setScreen("garage");
+      return;
+    }
+    if (data.changeTrack !== undefined) {
+      this.setScreen("track");
+      return;
+    }
+    if (data.selectTrack !== undefined) {
+      this.setScreen("settings");
+      return;
+    }
+    if (data.trackCarousel) {
+      this.cycleTrack(data.trackCarousel === "next" ? 1 : -1);
+      return;
+    }
+    if (data.setupTab) {
+      this.setSetupTab(data.setupTab as SetupTab);
+      return;
+    }
+    if (data.replay !== undefined) {
+      this.callbacks.onReplay(
+        data.replay,
+        data.track!,
+        data.diff as Difficulty,
+      );
+      return;
+    }
+    if (data.room) {
+      this.saveName();
+      this.callbacks.onJoin(data.room);
+      return;
+    }
+    if (data.aiRecord) {
+      this.callbacks.onReferenceLap();
+      return;
+    } else if (data.track) this.chooseTrack(data.track);
+    else if (data.diff) {
+      this.chooseDifficulty(data.diff as Difficulty);
+    }
   }
-
+  private chooseDifficulty(difficulty: Difficulty): void {
+    this.difficulty = difficulty;
+    this.mark(".diff-opt", this.find(`.diff-opt[data-diff="${difficulty}"]`));
+    this.root.querySelectorAll<HTMLElement>(".diff-opt").forEach((button) => {
+      button.tabIndex = button.dataset.diff === difficulty ? 0 : -1;
+    });
+    this.renderBoard();
+  }
+  private chooseCar(choice: Choice): void {
+    if (choice === this.choice) return;
+    const previous = CHOICES.indexOf(this.choice),
+      next = CHOICES.indexOf(choice);
+    const distance = (next - previous + CHOICES.length) % CHOICES.length;
+    this.slideDirection = distance <= CHOICES.length / 2 ? 1 : -1;
+    this.choice = choice;
+    localStorage.setItem("racer-variant", choice);
+    this.root.querySelectorAll<HTMLElement>(".garage-card").forEach((card) => {
+      const selected = card.dataset.variant === choice;
+      card.classList.toggle("active", selected);
+      card.setAttribute("aria-current", String(selected));
+    });
+    this.paintHero();
+    this.callbacks.onVariantChange();
+  }
+  private cycle(direction: number): void {
+    const index = CHOICES.indexOf(this.choice);
+    this.chooseCar(
+      CHOICES[(index + direction + CHOICES.length) % CHOICES.length],
+    );
+  }
+  private chooseTrack(track: TrackSlug, direction = 1): void {
+    if (track === this.track) return;
+    this.track = track;
+    this.mark(".track-card", this.find(`.track-card[data-track="${track}"]`));
+    this.root.querySelectorAll<HTMLElement>(".track-card").forEach((card) => {
+      card.tabIndex = card.dataset.track === track ? 0 : -1;
+    });
+    this.paintTrack(direction);
+    this.renderBoard();
+  }
+  private cycleTrack(direction: number): void {
+    const index = TRACKS.findIndex((t) => t.id === this.track);
+    this.chooseTrack(
+      TRACKS[(index + direction + TRACKS.length) % TRACKS.length].id,
+      direction,
+    );
+  }
+  private paintTrack(direction = 1): void {
+    const track = resolveTrack(this.track);
+    this.find(".hero-track-name").textContent = track.name;
+    this.find(".selected-track-name").textContent = track.name;
+    this.find(".track-counter").textContent =
+      `${String(TRACKS.findIndex((t) => t.id === this.track) + 1).padStart(2, "0")} / ${String(TRACKS.length).padStart(2, "0")}`;
+    this.find(".setup-circuit-outline").innerHTML = outline(
+      track,
+      "setup-track-outline",
+    );
+    this.root.querySelectorAll<HTMLElement>(".track-slide").forEach((slide) => {
+      const active = slide.dataset.trackSlide === this.track;
+      slide.classList.toggle("active", active);
+      slide.setAttribute("aria-hidden", String(!active));
+    });
+    this.trackStage?.setTrack(this.track, direction);
+  }
+  private keydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && this.screen !== "garage") {
+      event.preventDefault();
+      this.setScreen(this.screen === "settings" ? "track" : "garage");
+      return;
+    }
+    if (
+      event.target instanceof Element &&
+      event.target.closest("input, select, textarea")
+    )
+      return;
+    if (this.screen === "settings") {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".diff-picker")
+      ) {
+        const delta =
+          event.key === "ArrowRight" || event.key === "ArrowDown"
+            ? 1
+            : event.key === "ArrowLeft" || event.key === "ArrowUp"
+              ? -1
+              : 0;
+        if (delta) {
+          event.preventDefault();
+          const index = DIFFICULTIES.indexOf(this.difficulty);
+          this.chooseDifficulty(
+            DIFFICULTIES[
+              (index + delta + DIFFICULTIES.length) % DIFFICULTIES.length
+            ],
+          );
+          this.find(`.diff-opt[data-diff="${this.difficulty}"]`).focus();
+        }
+        return;
+      }
+      if (
+        !(event.target instanceof Element) ||
+        !event.target.closest(".setup-menu")
+      )
+        return;
+      const tabs: SetupTab[] = ["race", "rooms", "records"];
+      const delta =
+        event.key === "ArrowDown" || event.key === "ArrowRight"
+          ? 1
+          : event.key === "ArrowUp" || event.key === "ArrowLeft"
+            ? -1
+            : 0;
+      if (delta) {
+        event.preventDefault();
+        this.setSetupTab(
+          tabs[
+            (tabs.indexOf(this.setupTab) + delta + tabs.length) % tabs.length
+          ],
+        );
+      }
+      return;
+    }
+    let handled = true;
+    if (this.screen === "track") {
+      if (event.key === "ArrowLeft") this.cycleTrack(-1);
+      else if (event.key === "ArrowRight") this.cycleTrack(1);
+      else if (event.key === "Home") this.chooseTrack(TRACKS[0].id);
+      else if (event.key === "End")
+        this.chooseTrack(TRACKS[TRACKS.length - 1].id);
+      else handled = false;
+      if (
+        handled &&
+        event.target instanceof Element &&
+        event.target.closest(".track-selector")
+      )
+        this.find(`.track-card[data-track="${this.track}"]`).focus();
+    } else {
+      if (event.key === "ArrowLeft") this.cycle(-1);
+      else if (event.key === "ArrowRight") this.cycle(1);
+      else handled = false;
+    }
+    if (handled) event.preventDefault();
+  }
+  private setScreen(screen: Screen): void {
+    this.screen = screen;
+    this.stage?.setActive(screen === "garage");
+    this.trackStage?.setActive(screen === "track");
+    this.find(".lobby-deck").dataset.screen = screen;
+    for (const page of ["garage", "track", "settings"] as const) {
+      const section = this.find(`.${page}-screen`);
+      section.toggleAttribute("inert", page !== screen);
+      section.setAttribute("aria-hidden", String(page !== screen));
+      const step = this.find<HTMLButtonElement>(
+        `[data-progress-screen="${page}"]`,
+      );
+      step.classList.toggle("active", page === screen);
+      step.disabled =
+        page === screen || page === "settings" || screen === "garage";
+      if (page === screen) step.setAttribute("aria-current", "step");
+      else step.removeAttribute("aria-current");
+    }
+    if (screen === "settings")
+      this.find(`[data-setup-tab="${this.setupTab}"]`).focus({
+        preventScroll: true,
+      });
+    else
+      this.find(
+        screen === "track" ? "[data-select-track]" : "[data-select-car]",
+      ).focus({ preventScroll: true });
+  }
+  private setSetupTab(tab: SetupTab): void {
+    this.setupTab = tab;
+    this.root
+      .querySelectorAll<HTMLElement>("[data-setup-tab]")
+      .forEach((button) => {
+        const active = button.dataset.setupTab === tab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+      });
+    this.root
+      .querySelectorAll<HTMLElement>("[data-setup-panel]")
+      .forEach((panel) => {
+        panel.hidden = panel.dataset.setupPanel !== tab;
+      });
+    this.find(`[data-setup-tab="${tab}"]`).focus({ preventScroll: true });
+  }
+  private mark(selector: string, chosen: HTMLElement): void {
+    this.root.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+      node.classList.toggle("active", node === chosen);
+      node.setAttribute("aria-checked", String(node === chosen));
+    });
+  }
+  setConnection(state: "connected" | "connecting" | "offline"): void {
+    const badge = this.find(".connection-status");
+    badge.textContent =
+      state === "connected" ? "LIVE MULTIPLAYER" : state.toUpperCase();
+    badge.dataset.state = state;
+  }
+  paintGarageThumbnails(): void {
+    this.images = renderVariantThumbnails(CAR_VARIANTS);
+    for (const choice of CHOICES) {
+      const variant = choice === "random" ? this.randomRoll : choice;
+      const url = this.images.get(variant);
+      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
+      if (url) {
+        img.src = url;
+        img.hidden = false;
+      }
+    }
+    this.find(".showroom-loading").hidden = this.images.size > 0;
+    if (!this.stage) {
+      try {
+        this.stage = new GarageStage(
+          this.find(".live-car-stage"),
+          this.find(".car-stage"),
+        );
+        this.stage.setActive(
+          this.screen === "garage" && this.root.style.display !== "none",
+        );
+      } catch {
+        // The still previews also work when a second WebGL context is unavailable.
+      }
+    }
+    if (!this.trackStage) {
+      try {
+        this.trackStage = new TrackStage(this.find(".live-track-stage"));
+        this.trackStage.setActive(
+          this.screen === "track" && this.root.style.display !== "none",
+        );
+      } catch {
+        // Exact circuit outlines remain available without WebGL.
+      }
+    }
+    this.paintTrack();
+    this.paintHero();
+  }
+  private paintHero(): void {
+    const index = CHOICES.indexOf(this.choice);
+    const name = this.choice === "random" ? "Random" : LABELS[this.choice];
+    this.find(".hero-car-name").textContent = name;
+    this.find(".selected-car-name").textContent =
+      this.choice === "random"
+        ? `Random · ${LABELS[this.selectedVariant]}`
+        : name;
+    this.find(".stage-watermark").textContent = name;
+    this.find(".showroom-number").textContent =
+      this.choice === "random"
+        ? "↝ / 08"
+        : `${String(index + 1).padStart(2, "0")} / 08`;
+    this.stage?.setVariant(this.selectedVariant, this.slideDirection);
+    this.root
+      .querySelectorAll<HTMLElement>(".car-slide")
+      .forEach((slide, i) => {
+        let offset = (i - index + CHOICES.length) % CHOICES.length;
+        if (offset > CHOICES.length / 2) offset -= CHOICES.length;
+        slide.dataset.position =
+          offset === 0
+            ? "current"
+            : offset === -1
+              ? "previous"
+              : offset === 1
+                ? "next"
+                : "offstage";
+        slide.setAttribute("aria-hidden", String(offset !== 0));
+      });
+    const url = this.images.get(this.selectedVariant);
+    const thumb = this.find<HTMLImageElement>(".selected-car-thumb");
+    if (url) {
+      thumb.src = url;
+      thumb.hidden = false;
+      const hero = this.find<HTMLImageElement>(".setup-car-image");
+      hero.src = url;
+      hero.hidden = false;
+    }
+  }
+  setRooms(rooms: RoomInfo[]): void {
+    this.find(".room-total").textContent =
+      `${rooms.length} OPEN ${rooms.length === 1 ? "ROOM" : "ROOMS"}`;
+    this.find(".room-list").innerHTML = rooms.length
+      ? rooms
+          .map(
+            (room) =>
+              `<div class="room-row diff-edge-${room.difficulty}">${outline(resolveTrack(room.track), "room-track-thumb")}<span class="room-name">${html(room.name)}<small class="room-track-name">${html(resolveTrack(room.track).name)}</small></span><span class="room-badge diff-${room.difficulty}">${DIFFICULTY_LABELS[room.difficulty]}</span><span class="room-count">${room.players} racing</span><button data-room="${html(room.id)}">Join ↗</button></div>`,
+          )
+          .join("")
+      : '<div class="rooms-empty"><span class="empty-icon">↗</span><div>No open rooms.</div></div>';
+  }
   setLeaderboard(entries: LeaderboardEntry[]): void {
     this.entries = entries;
     this.renderBoard();
   }
-
+  getReferenceLap(): ReferenceLap | null {
+    if (this.reference === undefined)
+      this.reference = buildReferenceLap(policy);
+    return this.reference;
+  }
+  private aiEligible(): boolean {
+    return this.track === "sunset-ridge" && this.difficulty === "medium";
+  }
   private renderBoard(): void {
-    const shown = this.entries.filter(
-      (e) => e.track === this.selectedTrack && e.difficulty === this.selectedDifficulty
+    const entries = this.entries.filter(
+      (e) => e.track === this.track && e.difficulty === this.difficulty,
     );
-    this.eligible = shown.filter((e) => e.hasReplay);
-    // Re-anchor the armed Pacer against the context now shown: the player may
-    // have switched (track, difficulty) away from it, or a leaderboard refresh
-    // may have replaced or dropped its entry. main.ts silently drops a
-    // mismatched pacer at race start, so reflect that here rather than
-    // advertise a stale one. Both the track and difficulty click handlers
-    // route through renderBoard(), so this covers both.
-    if (this._armedPacer) {
-      const p = this._armedPacer;
-      if (p.kind === "ai") {
-        this._armedPacer = this.aiPacerEligible() && p.track === this.selectedTrack ? p : null;
-      } else {
-        const entry = this.eligible.find(
-          (e) => e.name === p.name && e.track === p.track && e.difficulty === p.difficulty
-        );
-        this._armedPacer = entry ? replayPacer(entry) : null;
-      }
+    this.eligible = entries.filter((e) => e.hasReplay);
+    if (this.pacer?.kind === "ai") {
+      if (!this.aiEligible()) this.pacer = null;
+    } else if (this.pacer) {
+      const name = this.pacer.name;
+      const entry = this.eligible.find(
+        (e) =>
+          e.name === name &&
+          e.track === this.pacer?.track &&
+          e.difficulty === this.pacer?.difficulty,
+      );
+      this.pacer = entry ? replayPacer(entry) : null;
     }
-    const empty = this.root.querySelector<HTMLElement>(".lb-empty")!;
-    empty.hidden = shown.length > 0;
-    this.lbList.innerHTML = shown
+    this.find(".board-context").textContent =
+      DIFFICULTY_LABELS[this.difficulty].toUpperCase();
+    this.find(".lb-empty").hidden = entries.length > 0;
+    this.find(".lb-list").innerHTML = entries
       .map(
-        (e) => `
-        <li>
-          <span class="lb-name">${escapeHtml(e.name)}</span>
-          <span class="lb-time">${formatMs(e.timeMs)}</span>
-          ${e.hasReplay ? entryButton(e, "lb-replay", "replay", "Watch replay", "▶") : ""}
-        </li>`
+        (e) =>
+          `<li><span class="lb-name">${html(e.name)}</span><span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${html(e.track)}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
       )
       .join("");
-    // AI Record: only for tracks that have a trained policy (Sunset Ridge), medium difficulty only.
-    const aiRecordEl = this.root.querySelector<HTMLElement>(".lb-ai-record")!;
-    aiRecordEl.hidden =
-      !TRACKS_WITH_POLICY.has(this.selectedTrack) || this.selectedDifficulty !== "medium";
-    this.renderPacerPicker();
-  }
-
-  get armedPacer(): ArmedPacer | null {
-    return this._armedPacer;
-  }
-
-  /**
-   * The AI Reference Lap, baked lazily from the bundled policy weights on the
-   * first eligible render and memoized for the page (ADR-0006). This is the
-   * single source of the picker option's displayed time, the armed AI Pacer's
-   * frames, and the standalone viewer's lap, so they cannot diverge. Null when
-   * the policy fails to complete a lap.
-   */
-  getReferenceLap(): ReferenceLap | null {
-    if (this.referenceLap === undefined) this.referenceLap = buildReferenceLap(policy);
-    return this.referenceLap;
-  }
-
-  /** Whether the AI Record can be offered as a Pacer in the current context (and its bake succeeded). */
-  private aiPacerEligible(): boolean {
-    return (
-      TRACKS_WITH_POLICY.has(this.selectedTrack) &&
-      this.selectedDifficulty === "medium" &&
-      this.getReferenceLap() !== null
-    );
-  }
-
-  /** Rebuild the Pacer picker's options for the current (track, difficulty). */
-  private renderPacerPicker(): void {
-    const aiLap = this.aiPacerEligible() ? this.getReferenceLap() : null;
-    const options = this.eligible.map((e, i) => ({
-      timeMs: e.timeMs,
-      html: `<option value="${i}">⚑ ${escapeHtml(e.name)} — ${formatMs(e.timeMs)}</option>`,
+    this.find(".lb-ai-record").hidden = !this.aiEligible();
+    const ai = this.aiEligible() ? this.getReferenceLap() : null;
+    const choices = this.eligible.map((e, i) => ({
+      time: e.timeMs,
+      value: String(i),
+      name: e.name,
     }));
-    if (aiLap) {
-      // Insert at the time-sorted position without reordering the human options.
-      const ai = {
-        timeMs: aiLap.timeMs,
-        html: `<option value="ai" class="pacer-opt-ai">⚑ AI Record — ${formatMs(aiLap.timeMs)}</option>`,
-      };
-      const at = options.findIndex((o) => o.timeMs > aiLap.timeMs);
-      options.splice(at === -1 ? options.length : at, 0, ai);
-    }
-    this.pacerSelect.innerHTML =
-      `<option value="-1">No Pacer — race alone</option>` + options.map((o) => o.html).join("");
-    const armed = this._armedPacer;
-    if (!armed) {
-      this.pacerSelect.value = "-1";
-    } else if (armed.kind === "ai") {
-      this.pacerSelect.value = "ai";
+    if (ai) choices.push({ time: ai.timeMs, value: "ai", name: "AI Record" });
+    choices.sort((a, b) => a.time - b.time);
+    this.picker.innerHTML =
+      '<option value="-1">No Pacer — race alone</option>' +
+      choices
+        .map(
+          (c) =>
+            `<option value="${c.value}"${c.value === "ai" ? ' class="pacer-opt-ai"' : ""}>⚑ ${html(c.name)} — ${formatMs(c.time)}</option>`,
+        )
+        .join("");
+    this.picker.disabled = choices.length === 0;
+    this.picker.value =
+      this.pacer?.kind === "ai"
+        ? "ai"
+        : this.pacer
+          ? String(this.eligible.findIndex((e) => e.name === this.pacer?.name))
+          : "-1";
+  }
+  private choosePacer(): void {
+    if (this.picker.value === "ai") {
+      const lap = this.getReferenceLap();
+      this.pacer =
+        lap && this.aiEligible()
+          ? {
+              kind: "ai",
+              name: "AI Record",
+              track: this.track,
+              difficulty: "medium",
+              variant: "police",
+              frames: lap.frames,
+            }
+          : null;
     } else {
-      this.pacerSelect.value = String(this.eligible.indexOf(armed.entry));
+      const entry = this.eligible[Number(this.picker.value)];
+      this.pacer = entry ? replayPacer(entry) : null;
     }
-    this.pacerSelect.disabled = this.eligible.length === 0 && !aiLap;
   }
-
   show(): void {
-    this.root.style.display = "flex";
+    this.root.style.display = "";
+    this.stage?.setActive(this.screen === "garage");
+    this.trackStage?.setActive(this.screen === "track");
   }
-
   hide(): void {
     this.root.style.display = "none";
+    this.stage?.setActive(false);
+    this.trackStage?.setActive(false);
   }
 }

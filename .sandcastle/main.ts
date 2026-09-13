@@ -69,12 +69,44 @@ const SANDBOX = podman({
 // you've reviewed the accumulated work.
 const INTEGRATION_BRANCH = "integration/sandcastle";
 
-// Ensure the integration branch exists before the loop starts; new issue
-// branches fork from it so later rounds build on already-merged work.
+// Ensure the integration branch exists, then bring it up to date with master
+// before the loop starts; new issue branches fork from it, so without this
+// sync the run drifts behind master and the promotion PR ends in conflicts.
+// Conflicts between master and integration abort the run — resolve them by
+// hand rather than letting agents build on a half-merged base.
+execSync("git fetch origin master", { stdio: "inherit" });
 execSync(
-  `git rev-parse --verify --quiet ${INTEGRATION_BRANCH} || git branch ${INTEGRATION_BRANCH}`,
+  `git rev-parse --verify --quiet ${INTEGRATION_BRANCH} || git branch ${INTEGRATION_BRANCH} origin/master`,
   { stdio: "inherit" },
 );
+const currentBranch = execSync("git branch --show-current").toString().trim();
+if (currentBranch === INTEGRATION_BRANCH) {
+  // The integration branch is checked out here — merge in place.
+  execSync("git merge --no-edit origin/master", { stdio: "inherit" });
+} else {
+  try {
+    // Fast-forward the ref without touching this working tree.
+    execSync(`git fetch . origin/master:${INTEGRATION_BRANCH}`, {
+      stdio: "inherit",
+    });
+  } catch {
+    // Branches diverged — merge in a throwaway worktree.
+    const syncWorktree = ".sandcastle/worktrees/integration-sync";
+    execSync(`git worktree add ${syncWorktree} ${INTEGRATION_BRANCH}`, {
+      stdio: "inherit",
+    });
+    try {
+      execSync("git merge --no-edit origin/master", {
+        cwd: syncWorktree,
+        stdio: "inherit",
+      });
+    } finally {
+      execSync(`git worktree remove --force ${syncWorktree}`, {
+        stdio: "inherit",
+      });
+    }
+  }
+}
 
 // Hooks run inside the sandbox before the agent starts each iteration.
 // npm install ensures the sandbox always has fresh dependencies.

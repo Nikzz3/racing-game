@@ -28,6 +28,12 @@ describe('buildReferenceLap', () => {
     expect(lap?.name).toBe('AI Record');
   }, 60_000);
 
+  it.skipIf(!policyExists)('always drives police — the AI\'s canonical car, never a recorded value', () => {
+    const policy = loadPolicy();
+    const lap = buildReferenceLap(policy);
+    expect(lap?.variant).toBe('police');
+  }, 60_000);
+
   it.skipIf(!policyExists)('timeMs equals the runPolicyLap lap time', () => {
     const policy = loadPolicy();
     const lap = buildReferenceLap(policy);

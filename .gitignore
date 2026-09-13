@@ -7,6 +7,9 @@ server/data/
 playwright-report/
 test-results/
 
+# Blender's local save backups; keep the editable .blend source.
+*.blend[0-9]*
+
 # Python (rl/)
 __pycache__/
 *.py[cod]

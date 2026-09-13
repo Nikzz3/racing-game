@@ -1,5 +1,6 @@
 import { asDifficulty, type Difficulty } from "./difficulty";
 import { asTrackSlug, type TrackSlug } from "./track";
+import { asVariant, type Variant } from "./variant";
 
 export interface RoomInfo {
   id: string;
@@ -23,6 +24,8 @@ export interface PlayerSnapshot {
   /** Server timestamp when the current lap started, null if not yet crossed the line. */
   lapStartT: number | null;
   nextCheckpoint: number;
+  /** Cosmetic car choice; absent → clients fall back to hashing the player id. */
+  variant?: Variant;
 }
 
 export interface LeaderboardEntry {
@@ -38,7 +41,7 @@ export interface LeaderboardEntry {
 export type ReplayFrame = [number, number, number, number, number];
 
 export type ClientMessage =
-  | { type: "hello"; name: string }
+  | { type: "hello"; name: string; variant?: Variant }
   | { type: "createRoom"; roomName: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "joinRoom"; roomId: string }
   | { type: "leaveRoom" }
@@ -92,7 +95,8 @@ function isFiniteNumber(value: unknown): value is number {
  * union, returning a normalized message or null. The static ClientMessage type
  * is a compile-time contract only; a real client can send any shape over the
  * wire, so the server MUST run every inbound frame through this before use.
- * Difficulty and track are coerced to valid values; numeric state fields must be
+ * Difficulty and track are coerced to valid values; an unknown hello variant is
+ * normalized to absent (never a specific car); numeric state fields must be
  * finite (rejects NaN/Infinity that would otherwise poison timing/checkpoints).
  */
 export function parseClientMessage(value: unknown): ClientMessage | null {
@@ -103,7 +107,9 @@ export function parseClientMessage(value: unknown): ClientMessage | null {
   if (!isClientMessageType(type)) return null;
   switch (type) {
     case "hello":
-      return isString(value.name) ? { type: "hello", name: value.name } : null;
+      return isString(value.name)
+        ? { type: "hello", name: value.name, variant: asVariant(value.variant) }
+        : null;
     case "createRoom":
       return isString(value.roomName)
         ? {
@@ -170,5 +176,13 @@ export type ServerMessage =
       isTrackRecord: boolean;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
-  | { type: "replay"; name: string; track: TrackSlug; timeMs: number; frames: ReplayFrame[] }
+  | {
+      type: "replay";
+      name: string;
+      track: TrackSlug;
+      timeMs: number;
+      frames: ReplayFrame[];
+      /** Variant snapshotted when the lap persisted; absent → name-hash fallback. */
+      variant?: Variant;
+    }
   | { type: "error"; message: string };

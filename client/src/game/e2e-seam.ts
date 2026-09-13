@@ -1,3 +1,4 @@
+import type { Variant } from "@racing/shared";
 import type { CarInput } from "./input";
 
 export const E2E_DT = 1 / 60;
@@ -7,7 +8,12 @@ export interface E2eLocalState {
   heading: number;
   speed: number;
   checkpoint: number;
-  lap: { laps: number; active: boolean; lastLapMs?: number | null; bestLapMs?: number | null };
+  lap: {
+    laps: number;
+    active: boolean;
+    lastLapMs?: number | null;
+    bestLapMs?: number | null;
+  };
 }
 
 /**
@@ -32,12 +38,18 @@ export interface E2eGameBindings {
   remotePlayerIds(): string[];
   /** Pushes local state to the server; the seam paces these off simulated time. */
   sendState(): void;
+  /** Resolved (rendered) Variant per player id, local player included. */
+  playerVariants(): Record<string, Variant>;
+  /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
+  pacerVariant(): Variant | null;
   /** Current Pacer overlay state, or null when no Pacer is armed (or it was dismissed). */
   pacerState(): E2ePacerState | null;
 }
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
+  variants: Record<string, Variant>;
+  pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
   injectionFinished: boolean;
   lapSubmitted: boolean;
@@ -119,19 +131,34 @@ export class E2eSeam {
    * what was simulated rather than by wall clock. State sends are paced off that
    * same simulated time, keeping the server's sample spacing (and so its checkpoint
    * proximity checks) independent of how fast the client renders.
+   * A caller can bound catch-up to avoid delivering a frame's entire backlog in
+   * one network burst. Backlog beyond that bound is dropped rather than carried:
+   * spending it in later, faster frames would run the simulation ahead of the
+   * wall clock, and the server's speed window (which stamps samples on arrival)
+   * would flag the lap implausible. Dropping it only makes the lap slower.
    */
-  advance(elapsedSeconds: number): number {
-    this.stepAccumS += elapsedSeconds;
-    const steps = this.stepFrame(Math.floor(this.stepAccumS / E2E_DT));
-    this.stepAccumS -= steps * E2E_DT;
-
-    const dt = steps * E2E_DT;
-    this.sendAccumMs += dt * 1000;
-    while (this.sendAccumMs >= this.sendIntervalMs) {
-      this.sendAccumMs -= this.sendIntervalMs;
-      this.game.sendState();
+  advance(elapsedSeconds: number, maxSteps = Infinity): number {
+    this.stepAccumS = Math.min(this.stepAccumS + elapsedSeconds, maxSteps * E2E_DT);
+    const budget = Math.min(Math.floor(this.stepAccumS / E2E_DT), maxSteps);
+    let steps = 0;
+    while (steps < budget && this.driving) {
+      this.stepFrame(1);
+      steps++;
+      this.sendAccumMs += E2E_DT * 1000;
+      // Send while the car still occupies this sample. Sending after the full
+      // render-frame budget repeats only its final pose and skips checkpoints.
+      while (this.sendAccumMs >= this.sendIntervalMs) {
+        this.sendAccumMs -= this.sendIntervalMs;
+        this.game.sendState();
+      }
     }
-    return dt;
+    this.stepAccumS -= steps * E2E_DT;
+    if (steps > 0 && !this.driving && this.sendAccumMs > 0) {
+      // The input recording ends at the finish line, possibly between sends.
+      this.game.sendState();
+      this.sendAccumMs = 0;
+    }
+    return steps * E2E_DT;
   }
 
   recordLapSubmission(laps: number): void {
@@ -142,6 +169,8 @@ export class E2eSeam {
     return {
       ...this.game.localState(),
       remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
+      variants: this.game.playerVariants(),
+      pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,

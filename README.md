@@ -1,7 +1,7 @@
 # Sunset Ridge Racing
 
-A browser-based 3D multiplayer racing game. Three.js client with arcade WASD driving on a
-custom circuit, a Node.js WebSocket server with a lobby/room system, and a persistent
+A browser-based 3D multiplayer racing game. Three.js client with arcade driving on two
+circuits, a Node.js WebSocket server with a lobby/room system, and a persistent
 best-lap leaderboard.
 
 ## Running
@@ -21,8 +21,8 @@ set `DATABASE_URL` to override (this is how the deployed environment is configur
 - Client: http://localhost:5173
 - WebSocket server: ws://localhost:8080
 
-Open the client in multiple tabs/browsers to race together. Enter a driver name, create a
-room (or join an existing one), and drive.
+Open the client in multiple tabs/browsers to race together. Select a car, choose a
+circuit, then enter a driver name and create a race or join through Online rooms.
 
 ## End-to-end tests
 
@@ -55,8 +55,44 @@ refuses to start without it.
 - `shared/` — track spline definition, checkpoints, and the WebSocket message protocol
 - `server/` — room manager, server-side checkpoint validation and lap timing, persistent
   leaderboard and room list stored in Postgres
-- `client/` — Three.js scene, track mesh generation, car physics, remote player
+- `client/` — Three.js scene, Blender asset integration, car physics, remote player
   interpolation, lobby and HUD
+
+The rebuilt client has eight cosmetic cars, two circuits, keyboard and touch driving,
+live multiplayer, recorded replays, and human or trained AI pacers. The AI reference
+lap is available on Sunset Ridge at Medium difficulty. Leaderboards and recordings
+remain separated by circuit and difficulty.
+
+The full-screen garage and circuit carousels lead into race setup, online rooms,
+and records. Circuit previews use the exact Blender track layouts. The race HUD
+shows lap timing, checkpoint progress, a live circuit map, and speed over the sunset
+scene. Drag the car to rotate it; switch models with the left/right arrow keys or
+on-screen arrow buttons. The circuit carousel also supports swipes. Both carousels
+respect reduced motion preferences, and completed progress steps let you go back.
+
+Existing track records and replays remain compatible with the rework. Replay
+frames retain their original timestamps, world positions, headings, and speeds;
+the speedometer's cosmetic scale never changes saved data or playback. Older
+databases gain the default Sunset Ridge/Medium scope on startup. Recordings with
+no saved car variant keep the historical driver-name fallback.
+
+Compatibility tests use frames produced by the previous version's writer. To run
+the PostgreSQL migration check, set `LEGACY_COMPAT_DATABASE_URL` to a disposable
+database and run `npm run test -w server -- legacy-compatibility.test.ts`. The test
+creates and removes its own temporary schema; it refuses the developer `racing`
+database.
+
+The Blender source and editing instructions are in [assets/blender](assets/blender/README.md).
+The client loads one shared GLB library and instances roadside geometry. Car geometry
+and materials are reused across live drivers, replays, and garage thumbnails.
+
+`client/src/app.ts` owns lobby, race, and replay transitions. The server separates
+WebSocket transport, HTTP/static serving, room membership, and completed-lap storage.
+Lap frames are captured before database writes so the next lap can start immediately.
+
+Run `npm test`, `npm run typecheck`, and `npm run build` for local checks. The browser
+suite also accepts `E2E_CLIENT_PORT` and `E2E_SERVER_PORT` when its default ports are
+occupied. It refuses to reuse an existing server process.
 
 Laps only count when all checkpoints are passed in order (validated server-side), so
 cutting the track does not pay off. Best lap times are saved in the database and survive
@@ -76,7 +112,7 @@ describe the work in an issue and review the result.
 2. **The agent works the issue.** For issue `<N>`, Sandcastle works on a branch named
    `sandcastle/issue-<N>`. It explores the repo, makes the change (test-first where a test
    harness applies), and runs the project's feedback loops — for this repo that's
-   `npm run typecheck` (there is currently no `npm test`). Each commit message is prefixed
+   `npm test`, `npm run typecheck`, and `npm run build`. Each commit message is prefixed
    `RALPH:` and records what was done, key decisions, the files changed, and notes for the
    next iteration.
 

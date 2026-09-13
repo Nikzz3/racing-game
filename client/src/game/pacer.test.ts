@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeAll, vi } from "vitest";
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as THREE from "three";
 import type { ReplayFrame } from "@racing/shared";
-import { PacerOverlay, pacerPoseAt, pacerCheckpointTimes, pacerDelta } from "./pacer";
+
+vi.mock("./car", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./car")>();
+  return { ...original, createCarMesh: vi.fn(), animateCar: vi.fn() };
+});
+
+import { createCarMesh, resolveVariant } from "./car";
+import { pacerPoseAt, pacerCheckpointTimes, pacerDelta, PacerOverlay } from "./pacer";
 
 const frames: ReplayFrame[] = [
   [0,   0,  0,  0, 0],
@@ -173,19 +181,128 @@ describe("pacerDelta", () => {
   });
 });
 
-describe("PacerOverlay.state", () => {
-  // jsdom has no 2d canvas; the badge only needs the calls it makes to exist.
-  beforeAll(() => {
-    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
-      beginPath: vi.fn(),
-      roundRect: vi.fn(),
-      fill: vi.fn(),
-      fillText: vi.fn(),
-    })) as never;
+// ---------------------------------------------------------------------------
+// PacerOverlay Variant (#127)
+// ---------------------------------------------------------------------------
+
+function makeCarGroup(): THREE.Group {
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshLambertMaterial());
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  g.add(mesh);
+  return g;
+}
+
+function makeScene() {
+  return { add: vi.fn(), remove: vi.fn() } as unknown as THREE.Scene;
+}
+
+function mockCarMeshAndCanvas(): void {
+  vi.mocked(createCarMesh).mockReset();
+  vi.mocked(createCarMesh).mockImplementation(() => makeCarGroup());
+  // jsdom has no 2D canvas; the REPLAY badge only needs a context that
+  // swallows its draw calls.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    fillStyle: "",
+    font: "",
+    textAlign: "",
+    textBaseline: "",
+    beginPath: () => {},
+    roundRect: () => {},
+    fill: () => {},
+    fillText: () => {},
+  } as never);
+}
+
+describe("PacerOverlay Variant", () => {
+  const FRAMES: ReplayFrame[] = [
+    [0, 0, 0, 0, 0],
+    [1000, 5, 5, 0, 10],
+  ];
+
+  // resolveVariant("Ava") is "suv", so a recorded "taxi" genuinely differs
+  // from the fallback these tests compare against.
+  const DRIVER = "Ava";
+
+  beforeEach(mockCarMeshAndCanvas);
+
+  it("rebuilds the mesh from the recorded Variant when frames arrive", () => {
+    const overlay = new PacerOverlay(makeScene(), DRIVER);
+    overlay.setFrames(FRAMES, "taxi");
+    expect(createCarMesh).toHaveBeenLastCalledWith(DRIVER, undefined, "taxi");
+    expect(overlay.resolvedVariant()).toBe("taxi");
   });
 
+  it("an absent recorded Variant falls back to the driver-name hash (legacy laps)", () => {
+    const overlay = new PacerOverlay(makeScene(), DRIVER);
+    overlay.setFrames(FRAMES);
+    expect(overlay.resolvedVariant()).toBe(resolveVariant(DRIVER));
+    // The constructor's mesh already renders the fallback; no rebuild happens.
+    expect(createCarMesh).toHaveBeenCalledTimes(1);
+    expect(createCarMesh).toHaveBeenCalledWith(DRIVER, undefined, resolveVariant(DRIVER));
+  });
+
+  it("keeps the Pacer styling on a Variant rebuild: tint, translucency, no shadows, badge", () => {
+    const scene = makeScene();
+    const overlay = new PacerOverlay(scene, DRIVER);
+    overlay.setFrames(FRAMES, "taxi");
+    const added = vi.mocked(scene.add).mock.calls;
+    const mesh = added[added.length - 1][0] as THREE.Group;
+
+    let material: THREE.MeshLambertMaterial | null = null;
+    let hasBadge = false;
+    let castsShadows = false;
+    mesh.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        material = obj.material as THREE.MeshLambertMaterial;
+        castsShadows = castsShadows || obj.castShadow || obj.receiveShadow;
+      } else if (obj instanceof THREE.Sprite) {
+        hasBadge = true;
+      }
+    });
+
+    expect(material).not.toBeNull();
+    expect(material!.transparent).toBe(true);
+    expect(material!.opacity).toBe(0.5);
+    expect(material!.color.getHex()).toBe(0x00e5ff);
+    expect(castsShadows).toBe(false);
+    expect(hasBadge).toBe(true);
+    expect(overlay.resolvedVariant()).toBe("taxi");
+  });
+
+  it("a Variant rebuild removes the previous mesh and disposes its cloned materials", () => {
+    const scene = makeScene();
+    const overlay = new PacerOverlay(scene, DRIVER);
+    const first = vi.mocked(scene.add).mock.calls[0][0] as THREE.Group;
+    let disposed = false;
+    first.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        (obj.material as THREE.Material).dispose = () => {
+          disposed = true;
+        };
+      }
+    });
+
+    overlay.setFrames(FRAMES, "taxi");
+    expect(scene.remove).toHaveBeenCalledWith(first);
+    expect(disposed).toBe(true);
+  });
+
+  it("re-arming with the unchanged Variant does not rebuild the mesh", () => {
+    const overlay = new PacerOverlay(makeScene(), DRIVER);
+    overlay.setFrames(FRAMES, "taxi");
+    overlay.setFrames(FRAMES, "taxi");
+    // Constructor + the one taxi rebuild.
+    expect(createCarMesh).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("PacerOverlay.state", () => {
+  beforeEach(mockCarMeshAndCanvas);
+
   function createOverlay(): PacerOverlay {
-    return new PacerOverlay(new THREE.Scene());
+    return new PacerOverlay(makeScene(), "Ava");
   }
 
   it("reports no frames, not playing, and hidden before frames arrive", () => {
