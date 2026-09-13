@@ -1126,16 +1126,63 @@ a {
 .board-use-settings:hover {
   background: #efad6520;
 }
+.room-field {
+  align-items: start;
+}
+.room-total {
+  display: block;
+  margin-top: 7px;
+  font: 9px var(--mono);
+  color: var(--accent);
+}
 .room-list {
-  max-height: 60vh;
+  max-height: 34vh;
   overflow: auto;
+  background: #24262d80;
+  border: 1px solid #ffffff19;
+  border-radius: 2px;
 }
 .room-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 19px 0;
+  padding: 14px 16px;
   border-bottom: 1px solid #ffffff16;
+  cursor: pointer;
+}
+.room-row:last-child {
+  border-bottom: 0;
+}
+.room-row:hover {
+  background: #ffffff08;
+}
+.room-row.active {
+  background: #efad650f;
+}
+.room-row::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #ffffff40;
+  flex-shrink: 0;
+}
+.room-row.active::before {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 45%, transparent 52%);
+}
+.room-row:has(input:focus-visible) {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.setup-field .room-row input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 .room-track-thumb {
   width: 48px;
@@ -1163,27 +1210,6 @@ a {
   font-size: 10px;
   color: var(--muted);
   white-space: nowrap;
-}
-.room-row button {
-  padding: 12px 17px;
-  background: #efad6514;
-  border: 1px solid #efad6550;
-  border-radius: 2px;
-  color: var(--accent);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.rooms-empty {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 45px 0;
-  color: #8c8d95;
-  font-size: 14px;
-}
-.empty-icon {
-  color: var(--accent);
-  font-size: 32px;
 }
 .lb-list {
   list-style: none;
@@ -1518,7 +1544,7 @@ a {
     opacity: 0.06;
   }
   .room-list {
-    max-height: none;
+    max-height: 40vh;
   }
   .board-controls {
     width: 100%;
@@ -1546,9 +1572,6 @@ a {
   .room-badge,
   .room-count {
     font-size: 8px;
-  }
-  .room-row button {
-    padding: 10px;
   }
   .lb-time {
     font-size: 12px;

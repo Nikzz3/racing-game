@@ -53,10 +53,10 @@ test("two players create and join a Room and see each other", async ({ playerA, 
 
   await openRaceSettings(playerB);
   await playerB.getByLabel("Driver").fill(PLAYER_B);
-  await playerB.locator('[data-setup-tab="rooms"]').click();
   const room = playerB.locator(".room-row").filter({ hasText: ROOM_NAME });
   await expect(room).toContainText("1 racing");
-  await room.getByRole("button", { name: "Join" }).click();
+  await room.click();
+  await playerB.getByRole("button", { name: "Join & Race" }).click();
 
   for (const player of [playerA, playerB]) {
     const standings = player.locator(".hud-standings tbody");
