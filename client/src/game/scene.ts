@@ -18,7 +18,7 @@ const HORIZON = 0xe4ad80;
 // The e2e suite renders under software WebGL, where the shadow pass and MSAA
 // dominate frame time and the seam's per-frame step cap turns slow frames into
 // slow laps (docs/agents/e2e-testing.md). Nothing in the suite asserts on either.
-const CHEAP_RENDER = Boolean(import.meta.env.VITE_E2E);
+export const CHEAP_RENDER = Boolean(import.meta.env.VITE_E2E);
 const FOLLOW_DISTANCE = 10;
 const EYE_HEIGHT = 4.6;
 const look = new THREE.Vector3();

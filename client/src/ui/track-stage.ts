@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import type { TrackSlug } from "@racing/shared";
 import { getModel } from "../game/models";
+import { CHEAP_RENDER } from "../game/scene";
 
 /** Displays the miniature circuit authored in Blender. Cached geometry stays shared. */
 export class TrackStage {
   private readonly renderer = new THREE.WebGLRenderer({
     alpha: true,
-    antialias: true,
+    antialias: !CHEAP_RENDER,
   });
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
@@ -24,11 +25,13 @@ export class TrackStage {
   private direction = 1;
 
   constructor(private readonly host: HTMLElement) {
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(
+      CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5),
+    );
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !CHEAP_RENDER;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
     canvas.setAttribute("aria-hidden", "true");
@@ -38,7 +41,7 @@ export class TrackStage {
     this.camera.position.set(0, 7.5, 9.5);
     this.camera.lookAt(0, 0, 0);
     this.light.position.set(-3, 8, 4);
-    this.light.castShadow = true;
+    this.light.castShadow = !CHEAP_RENDER;
     this.light.shadow.mapSize.set(1024, 1024);
     this.light.shadow.normalBias = 0.04;
     Object.assign(this.light.shadow.camera, {

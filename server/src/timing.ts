@@ -57,10 +57,23 @@ const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
 const PLAUSIBILITY_WINDOW_MS = 1000;
 /** Multiplier applied to maxSpeedMs to allow for network burst jitter. */
 const SPEED_TOLERANCE = 1.1;
+/**
+ * Floor on the window duration used to judge the speed bound (ms). Samples are
+ * stamped on arrival, so two honest updates delivered in the same TCP read land
+ * a millisecond apart and would read as hundreds of m/s over that sliver.
+ * Mid-lap the window is a full second wide and absorbs that; right after the
+ * start-line reset, or after trimming collapsed it, it is not. Judging the
+ * distance against at least this much time keeps a 0.75 m honest hop at a few
+ * m/s while a checkpoint-sized teleport still measures in the hundreds. Young
+ * windows are never skipped, so a burst cannot hide behind the lap-start reset.
+ */
+const MIN_WINDOW_MS = 250;
 
 /**
  * True when the average speed across the window's samples exceeds the tolerated
  * speed bound — i.e. the car covered more ground than physically possible.
+ * The duration is floored at MIN_WINDOW_MS so a young window is judged
+ * leniently rather than not at all.
  */
 function windowExceedsSpeedBound(
   samples: WindowSample[],
@@ -72,8 +85,8 @@ function windowExceedsSpeedBound(
   for (let i = 1; i < samples.length; i++) {
     totalDist += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
   }
-  const windowS = (now - samples[0].t) / 1000;
-  return windowS > 0 && totalDist / windowS > maxSpeedMs * SPEED_TOLERANCE;
+  const windowMs = Math.max(now - samples[0].t, MIN_WINDOW_MS);
+  return totalDist / (windowMs / 1000) > maxSpeedMs * SPEED_TOLERANCE;
 }
 
 /**

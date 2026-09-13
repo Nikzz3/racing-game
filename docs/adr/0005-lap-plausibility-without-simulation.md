@@ -34,6 +34,12 @@ and the RL harness); the rest of the tuning stays client-private.
   reset at lap start and Respawn), deliberately independent of the replay frame
   buffer — otherwise the 5-minute replay cap could be weaponised to void the
   evidence before teleporting.
+- Samples are stamped on **arrival**, so honest updates delivered in one TCP read
+  sit a millisecond apart. The window's duration is floored at 250 ms when
+  judging, never skipped: a sub-metre honest hop reads as a few m/s, while a
+  checkpoint-sized teleport still reads in the hundreds. Skipping young windows
+  would let a client idle past the lap-time floor and then burst the remaining
+  checkpoints before the start-line reset discards the evidence.
 - Name impersonation remains open and is owned by the claim-codes proposal
   (#31); this decision does not address who a lap belongs to, only whether it
   could have been driven.

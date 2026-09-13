@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Variant } from "@racing/shared";
 import { createCarMesh, disposeCarMesh } from "../game/car";
 import { getModel } from "../game/models";
+import { CHEAP_RENDER } from "../game/scene";
 
 interface Slide {
   mesh: THREE.Group;
@@ -38,12 +39,19 @@ export class GarageStage {
     private readonly host: HTMLElement,
     private readonly interactionHost: HTMLElement,
   ) {
-    this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    // Same e2e trade as the race scene: under software WebGL the shadow pass and
+    // MSAA make every carousel step, and so every Playwright click, seconds long.
+    this.renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: !CHEAP_RENDER,
+    });
+    this.renderer.setPixelRatio(
+      CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5),
+    );
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.25;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !CHEAP_RENDER;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
     canvas.className = "garage-stage-canvas";
@@ -54,7 +62,7 @@ export class GarageStage {
     this.camera.position.set(4.6, 2.7, 6.2);
     this.camera.lookAt(0, 0.65, 0);
     this.light.position.set(-3, 6, 5);
-    this.light.castShadow = true;
+    this.light.castShadow = !CHEAP_RENDER;
     this.light.shadow.mapSize.set(1024, 1024);
     Object.assign(this.light.shadow.camera, {
       left: -7,

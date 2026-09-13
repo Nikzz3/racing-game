@@ -233,8 +233,11 @@ export class Game {
     this.previous = now;
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
-    if (this.seam?.driving) dt = this.seam.advance(elapsed, 3);
-    else {
+    let injecting = false;
+    if (this.seam?.driving) {
+      dt = this.seam.advance(elapsed, 3);
+      injecting = true;
+    } else {
       input = this.autopilot ? this.autoInput() : this.input.read(dt);
       this.car.advance(elapsed, input);
     }
@@ -266,7 +269,13 @@ export class Game {
         ? this.clock.elapsed + performance.now() - this.clock.received
         : null,
     );
-    this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
+    // While the e2e seam replays inputs, skip the draw: under software WebGL a
+    // frame costs 100ms+, and the seam's per-frame step cap (which keeps state
+    // sends from bursting past the server's speed window) would turn that into a
+    // lap several times slower than real time. Nothing asserts on pixels while
+    // inputs are injected; rendering resumes once the recording is spent.
+    if (!injecting)
+      this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animation = requestAnimationFrame(this.frame);
   };
   private autoInput(): CarInput {
