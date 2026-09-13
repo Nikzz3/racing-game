@@ -129,7 +129,7 @@ export class Lobby {
               <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
             <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
-            <div class="garage-navigation"><div class="garage" role="list" aria-label="Car models">${CHOICES.map((v, i) => `<div role="listitem" aria-current="${v === this.choice}" class="garage-card${v === "random" ? " garage-card-random" : ""}${v === this.choice ? " active" : ""}" data-variant="${v}"><span class="garage-card-number">${v === "random" ? "↝" : String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${v === "random" ? "Random" : LABELS[v]}</span><span class="garage-card-line"></span></div>`).join("")}</div></div>
+            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CHOICES.map((v, i) => `<button type="button" role="radio" aria-checked="${v === this.choice}" tabindex="${v === this.choice ? 0 : -1}" class="garage-card${v === "random" ? " garage-card-random" : ""}${v === this.choice ? " active" : ""}" data-variant="${v}"><span class="garage-card-number">${v === "random" ? "↝" : String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${v === "random" ? "Random" : LABELS[v]}</span><span class="garage-card-line"></span></button>`).join("")}</div></div>
           </section>
           <section class="track-screen menu-screen" aria-label="Choose your track" aria-hidden="true" inert>
             <div class="track-heading"><h1>CHOOSE YOUR <span>CIRCUIT.</span></h1><button class="menu-back" type="button" data-change-car aria-label="Change car">← Change car</button></div>
@@ -178,10 +178,7 @@ export class Lobby {
     );
     this.find(".create-form").addEventListener("change", (event) => {
       const target = event.target;
-      if (
-        target instanceof HTMLInputElement &&
-        target.name === "room-choice"
-      )
+      if (target instanceof HTMLInputElement && target.name === "room-choice")
         this.chooseRoom(target.value || null);
     });
     this.root.addEventListener("click", (event) => this.click(event));
@@ -251,6 +248,10 @@ export class Lobby {
     }
     if (data.carousel) {
       this.cycle(data.carousel === "next" ? 1 : -1);
+      return;
+    }
+    if (data.variant) {
+      this.chooseCar(data.variant as Choice);
       return;
     }
     if (data.selectCar !== undefined) {
@@ -332,7 +333,8 @@ export class Lobby {
     this.root.querySelectorAll<HTMLElement>(".garage-card").forEach((card) => {
       const selected = card.dataset.variant === choice;
       card.classList.toggle("active", selected);
-      card.setAttribute("aria-current", String(selected));
+      card.setAttribute("aria-checked", String(selected));
+      card.tabIndex = selected ? 0 : -1;
     });
     this.paintHero();
     this.callbacks.onVariantChange();
@@ -549,7 +551,15 @@ export class Lobby {
     } else {
       if (event.key === "ArrowLeft") this.cycle(-1);
       else if (event.key === "ArrowRight") this.cycle(1);
+      else if (event.key === "Home") this.chooseCar(CHOICES[0]);
+      else if (event.key === "End") this.chooseCar(CHOICES[CHOICES.length - 1]);
       else handled = false;
+      if (
+        handled &&
+        event.target instanceof Element &&
+        event.target.closest(".garage")
+      )
+        this.find(`.garage-card[data-variant="${this.choice}"]`).focus();
     }
     if (handled) event.preventDefault();
   }
