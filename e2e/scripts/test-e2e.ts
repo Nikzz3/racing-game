@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
+const DOCKER_SOCKET = "/var/run/docker.sock";
 const POSTGRES_IMAGE = "postgres:17-alpine";
 const POSTGRES_CONTAINER_PORT = 5432;
 const POSTGRES_CREDENTIALS = {
@@ -23,6 +25,27 @@ function stopContainer(): Promise<void> {
   return containerStopPromise;
 }
 
+/**
+ * Point testcontainers at a rootless Podman socket when Docker is absent, so the suite
+ * runs with a bare `npm run test:e2e`. Ryuk, the testcontainers reaper, cannot reap
+ * containers under rootless Podman; this script stops its own container in a `finally`
+ * block instead. An explicit DOCKER_HOST always wins.
+ */
+function adoptPodmanSocket(): void {
+  if (process.env.DOCKER_HOST !== undefined || existsSync(DOCKER_SOCKET)) {
+    return;
+  }
+
+  const runtimeDir = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.()}`;
+  const podmanSocket = `${runtimeDir}/podman/podman.sock`;
+  if (!existsSync(podmanSocket)) {
+    return;
+  }
+
+  process.env.DOCKER_HOST = `unix://${podmanSocket}`;
+  process.env.TESTCONTAINERS_RYUK_DISABLED ??= "true";
+}
+
 async function getDatabaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
     // The suite truncates rooms, best_laps, and replays between tests, so an
@@ -36,6 +59,8 @@ async function getDatabaseUrl(): Promise<string> {
     }
     return process.env.E2E_DATABASE_URL;
   }
+
+  adoptPodmanSocket();
 
   startedPostgresContainer = await new GenericContainer(POSTGRES_IMAGE)
     .withEnvironment({

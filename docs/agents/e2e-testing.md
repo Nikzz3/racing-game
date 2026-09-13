@@ -40,8 +40,11 @@ throwaway Postgres container for the invocation, then keeps that container alive
 whole invocation or UI session. The server and client use dedicated e2e ports, and the
 per-test database fixture truncates state between runs.
 
-Docker must be running. With Podman, expose its Docker-compatible socket and set
-`DOCKER_HOST` to that socket. To use an existing Postgres instead, set
+A Docker-compatible container socket must be available. With rootless Podman, enable its socket
+(`systemctl --user enable --now podman.socket`) and the wrapper finds it at
+`$XDG_RUNTIME_DIR/podman/podman.sock`, setting `DOCKER_HOST` and disabling the Ryuk
+reaper — which cannot reap under rootless Podman — for you. An explicit `DOCKER_HOST`
+overrides that detection. To use an existing Postgres instead, set
 `E2E_DATABASE_URL`; the wrapper uses that URL verbatim and skips testcontainers. This is
 also the escape hatch when no container socket is available. Because the suite truncates
 `rooms`, `best_laps`, and `replays` in the target database, an external URL also
