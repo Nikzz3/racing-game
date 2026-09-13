@@ -34,6 +34,10 @@ and the RL harness); the rest of the tuning stays client-private.
   reset at lap start and Respawn), deliberately independent of the replay frame
   buffer — otherwise the 5-minute replay cap could be weaponised to void the
   evidence before teleporting.
+- Samples are stamped on **arrival**, so honest updates delivered in one TCP read
+  sit a millisecond apart. The window is not judged until it is 250 ms old; the
+  distance stays in it (checks run before trimming), so a teleport inside that
+  grace is still caught at the next judgeable sample.
 - Name impersonation remains open and is owned by the claim-codes proposal
   (#31); this decision does not address who a lap belongs to, only whether it
   could have been driven.

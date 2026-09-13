@@ -36,10 +36,40 @@ describe("updateTiming — plausibility: speed bound", () => {
   });
 
   it("marks a teleporting lap as implausible", () => {
-    // 1 ms per checkpoint: positions jump hundreds of units in 1 ms → speed >> maxSpeed × 1.1
-    const result = driveLap(1);
+    // 100 ms per checkpoint: positions jump hundreds of units per hop → speed >> maxSpeed × 1.1
+    const result = driveLap(100);
     expect(result).not.toBeNull();
     expect(result!.isPlausible).toBe(false);
+  });
+});
+
+describe("updateTiming — plausibility: window grace after lap start", () => {
+  it("tolerates two honest updates delivered a millisecond apart right after the start line", () => {
+    const t = createTiming();
+    const { x: x0, z: z0 } = atCP(0);
+    // Crossing the line at 15 m/s; the next 50 ms update (0.75 m on) arrives
+    // in the same TCP read, one clock tick later.
+    updateTiming(t, x0, z0, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    updateTiming(t, x0 + 0.75, z0, 1, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(t.lapImplausible).toBe(false);
+    // Honest pace afterwards keeps the lap clean once the window is old enough.
+    for (let ms = 50; ms <= 1000; ms += 50) {
+      updateTiming(t, x0 + 0.75 + (15 * ms) / 1000, z0, ms, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    }
+    expect(t.lapImplausible).toBe(false);
+  });
+
+  it("still catches a teleport that arrives inside the grace once the window is old enough", () => {
+    const t = createTiming();
+    const { x: x0, z: z0 } = atCP(0);
+    updateTiming(t, x0, z0, 0, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    // 500 m in one tick, then standing still. Too young to judge at first…
+    updateTiming(t, x0 + 500, z0, 1, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    updateTiming(t, x0 + 500, z0, 100, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(t.lapImplausible).toBe(false);
+    // …but the hop is still in the window when it becomes judgeable.
+    updateTiming(t, x0 + 500, z0, 300, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+    expect(t.lapImplausible).toBe(true);
   });
 });
 
@@ -70,9 +100,9 @@ describe("updateTiming — plausibility state reset", () => {
     let now = 0;
     // Start the first lap.
     updateTiming(t, x0, z0, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
-    // Teleport through checkpoints 1…N in 1 ms each.
+    // Teleport through checkpoints 1…N in 100 ms each.
     for (let k = 1; k < CHECKPOINTS.length; k++) {
-      now += 1;
+      now += 100;
       const { x, z } = atCP(k);
       updateTiming(t, x, z, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     }
@@ -100,7 +130,7 @@ describe("updateTiming — plausibility state reset", () => {
     // Start a lap and teleport (marks implausible).
     updateTiming(t, x0, z0, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     for (let k = 1; k < CHECKPOINTS.length; k++) {
-      now += 1;
+      now += 100;
       const { x, z } = atCP(k);
       updateTiming(t, x, z, now, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     }

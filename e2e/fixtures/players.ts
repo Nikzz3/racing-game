@@ -11,7 +11,12 @@ async function usePlayer(
   baseURL: string | undefined,
   use: (page: Page) => Promise<void>,
 ): Promise<void> {
-  const context = await browser.newContext({ baseURL });
+  // Two Rooms render under software WebGL at once; frame cost scales with the
+  // canvas, and a slow main thread stalls every locator action and assertion.
+  const context = await browser.newContext({
+    baseURL,
+    viewport: { width: 640, height: 480 },
+  });
   try {
     await use(await context.newPage());
   } finally {

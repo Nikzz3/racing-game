@@ -13,7 +13,16 @@ export default defineConfig({
   // Each retry re-pays the timeout above, so 2 retries put a single stuck test at
   // 15 minutes. One retry still absorbs a flake without dominating the job.
   retries: process.env.CI ? 1 : 0,
-  reporter: [["html", { outputFolder: "playwright-report" }]],
+  // Under software WebGL a page's first race frames compile every shader on the
+  // main thread and block it for seconds, during which no snapshot reaches the
+  // HUD. The 5s default is tuned for GPU-backed browsers.
+  expect: { timeout: 15_000 },
+  // The html report only reaches CI as an artifact after the job ends; the list
+  // reporter streams per-test progress into the job log so a run that hits the
+  // job's wall-clock limit still shows which test it was on.
+  reporter: process.env.CI
+    ? [["list"], ["html", { outputFolder: "playwright-report" }]]
+    : [["html", { outputFolder: "playwright-report" }]],
   use: {
     baseURL: clientUrl,
     trace: "on-first-retry",
