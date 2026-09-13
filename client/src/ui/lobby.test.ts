@@ -164,8 +164,10 @@ describe("Lobby unified difficulty selector", () => {
     expect(parent.querySelector('button[data-diff="hard"]')).not.toBeNull();
   });
 
-  it("has no separate board-only difficulty tabs", () => {
-    expect(parent.querySelector("button[data-board-diff]")).toBeNull();
+  it("the Records board has its own difficulty radios that never carry data-diff", () => {
+    const boardRadios = parent.querySelectorAll("button[data-board-diff]");
+    expect(boardRadios).toHaveLength(3);
+    boardRadios.forEach((b) => expect(b.hasAttribute("data-diff")).toBe(false));
   });
 
   it("clicking hard filters the leaderboard to hard entries", () => {
@@ -1073,5 +1075,218 @@ describe("Lobby difficulty keyboard navigation", () => {
     } finally {
       parent.remove();
     }
+  });
+});
+
+describe("Lobby Records board filters", () => {
+  let parent: HTMLElement;
+  let lobby: Lobby;
+  let cbs: LobbyCallbacks;
+
+  const sunsetMedium: LeaderboardEntry = {
+    name: "Alice",
+    timeMs: 60000,
+    date: "2026-01-01",
+    hasReplay: true,
+    difficulty: "medium",
+    track: "sunset-ridge",
+  };
+  const sunsetHard: LeaderboardEntry = {
+    name: "Bob",
+    timeMs: 55000,
+    date: "2026-01-02",
+    hasReplay: false,
+    difficulty: "hard",
+    track: "sunset-ridge",
+  };
+  const stormMedium: LeaderboardEntry = {
+    name: "Carol",
+    timeMs: 65000,
+    date: "2026-01-03",
+    hasReplay: true,
+    difficulty: "medium",
+    track: "stormhaven",
+  };
+
+  beforeEach(() => {
+    parent = makeParent();
+    cbs = makeCallbacks();
+    lobby = new Lobby(parent, cbs);
+    lobby.setLeaderboard([sunsetMedium, sunsetHard, stormMedium]);
+  });
+  afterEach(() => parent.remove());
+
+  function names(): string[] {
+    return [...parent.querySelectorAll(".lb-list .lb-name")].map(
+      (n) => n.textContent!,
+    );
+  }
+  function boardDiff(d: string): HTMLButtonElement {
+    return parent.querySelector<HTMLButtonElement>(
+      `.board-diff-opt[data-board-diff="${d}"]`,
+    )!;
+  }
+  function raceDiff(d: string): HTMLButtonElement {
+    return parent.querySelector<HTMLButtonElement>(
+      `.diff-opt[data-diff="${d}"]`,
+    )!;
+  }
+  function boardTrackValue(): string | undefined {
+    return parent.querySelector<HTMLElement>(
+      '.board-track-opt[aria-selected="true"]',
+    )?.dataset.boardTrack;
+  }
+  function pickBoardTrack(slug: string): void {
+    parent
+      .querySelector<HTMLButtonElement>(`[data-board-track="${slug}"]`)!
+      .click();
+  }
+  function note(): HTMLElement {
+    return parent.querySelector<HTMLElement>(".board-note")!;
+  }
+  function submitCreate(): void {
+    parent
+      .querySelector<HTMLFormElement>(".create-form")!
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+  }
+
+  it("board filters default to the race selection and follow it", () => {
+    expect(boardDiff("medium").getAttribute("aria-checked")).toBe("true");
+    expect(boardTrackValue()).toBe("sunset-ridge");
+    expect(note().hidden).toBe(true);
+    raceDiff("hard").click();
+    parent
+      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
+      .click();
+    expect(boardDiff("hard").getAttribute("aria-checked")).toBe("true");
+    expect(boardTrackValue()).toBe("stormhaven");
+    expect(note().hidden).toBe(true);
+  });
+
+  it("changing board difficulty re-filters the list without touching the race", () => {
+    expect(names()).toEqual(["Alice"]);
+    boardDiff("hard").click();
+    expect(names()).toEqual(["Bob"]);
+    // Differing on difficulty alone is enough to show the browsing note.
+    expect(note().hidden).toBe(false);
+    expect(boardDiff("hard").classList.contains("active")).toBe(true);
+    expect(boardDiff("medium").getAttribute("aria-checked")).toBe("false");
+    // Race picker is untouched.
+    expect(raceDiff("medium").classList.contains("active")).toBe(true);
+    expect(raceDiff("hard").getAttribute("aria-checked")).toBe("false");
+    submitCreate();
+    expect(cbs.onCreate).toHaveBeenCalledWith(
+      expect.any(String),
+      "sunset-ridge",
+      "medium",
+    );
+  });
+
+  it("changing board track re-filters the list and keeps the pacer on the race", () => {
+    const picker = parent.querySelector<HTMLSelectElement>(".pacer-select")!;
+    picker.value = "0";
+    picker.dispatchEvent(new Event("change"));
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
+    pickBoardTrack("stormhaven");
+    expect(names()).toEqual(["Carol"]);
+    // Differing on track alone is enough to show the browsing note.
+    expect(note().hidden).toBe(false);
+    // Pacer choices and the armed pacer still belong to the race setup.
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
+    const texts = [...picker.options].map((o) => o.textContent!);
+    expect(texts.some((t) => t.includes("Alice"))).toBe(true);
+    expect(texts.some((t) => t.includes("Carol"))).toBe(false);
+    expect(parent.querySelector(".selected-track-name")!.textContent).toContain(
+      "Sunset Ridge",
+    );
+  });
+
+  it("replay buttons carry the browsed entry's track and difficulty", () => {
+    pickBoardTrack("stormhaven");
+    parent.querySelector<HTMLButtonElement>(".lb-replay")!.click();
+    expect(cbs.onReplay).toHaveBeenCalledWith("Carol", "stormhaven", "medium");
+  });
+
+  it("shows the browsing note when filters differ; Use these settings syncs the race", () => {
+    boardDiff("hard").click();
+    pickBoardTrack("stormhaven");
+    expect(note().hidden).toBe(false);
+    expect(note().textContent).toContain(
+      "Browsing only. Your race is still Sunset Ridge Circuit, Medium.",
+    );
+    const use = parent.querySelector<HTMLButtonElement>(".board-use-settings")!;
+    use.focus();
+    use.click();
+    expect(note().hidden).toBe(true);
+    // Focus moves off the now-hidden note rather than dropping to <body>.
+    expect(document.activeElement).toBe(boardDiff("hard"));
+    expect(raceDiff("hard").classList.contains("active")).toBe(true);
+    expect(
+      parent
+        .querySelector('.track-card[data-track="stormhaven"]')!
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    submitCreate();
+    expect(cbs.onCreate).toHaveBeenCalledWith(
+      expect.any(String),
+      "stormhaven",
+      "hard",
+    );
+  });
+
+  it("the empty state names the browsed track and difficulty", () => {
+    boardDiff("easy").click();
+    pickBoardTrack("stormhaven");
+    const empty = parent.querySelector<HTMLElement>(".lb-empty")!;
+    expect(empty.hidden).toBe(false);
+    expect(empty.querySelector(".empty-timer")).not.toBeNull();
+    expect(empty.textContent).toContain(
+      "No laps yet on Stormhaven Circuit, Easy.",
+    );
+  });
+
+  it("the AI Record button follows the board, not the race", () => {
+    const ai = parent.querySelector<HTMLElement>(".lb-ai-record")!;
+    expect(ai.hidden).toBe(false);
+    boardDiff("hard").click();
+    expect(ai.hidden).toBe(true);
+    boardDiff("medium").click();
+    raceDiff("hard").click(); // syncs board to hard too
+    expect(ai.hidden).toBe(true);
+    boardDiff("medium").click();
+    expect(ai.hidden).toBe(false);
+  });
+
+  it("supports roving tabindex and arrow/Home/End keys on the board radiogroup", () => {
+    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
+    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
+    const key = (el: HTMLElement, k: string) =>
+      el.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: k,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    expect(
+      parent.querySelectorAll('.board-diff-opt[tabindex="0"]'),
+    ).toHaveLength(1);
+    boardDiff("medium").focus();
+    key(boardDiff("medium"), "ArrowRight");
+    expect(document.activeElement).toBe(boardDiff("hard"));
+    expect(boardDiff("hard").getAttribute("aria-checked")).toBe("true");
+    expect(boardDiff("medium").tabIndex).toBe(-1);
+    expect(names()).toEqual(["Bob"]);
+    key(boardDiff("hard"), "ArrowRight"); // wraps
+    expect(document.activeElement).toBe(boardDiff("easy"));
+    key(boardDiff("easy"), "ArrowLeft"); // wraps back
+    expect(document.activeElement).toBe(boardDiff("hard"));
+    key(boardDiff("hard"), "Home");
+    expect(document.activeElement).toBe(boardDiff("easy"));
+    key(boardDiff("easy"), "End");
+    expect(document.activeElement).toBe(boardDiff("hard"));
+    // The race difficulty never moved.
+    expect(raceDiff("medium").getAttribute("aria-checked")).toBe("true");
+    expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
   });
 });
