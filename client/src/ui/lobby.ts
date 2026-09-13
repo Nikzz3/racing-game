@@ -47,7 +47,7 @@ export type ArmedPacer =
     };
 type Choice = Variant | "random";
 type Screen = "garage" | "track" | "settings";
-type SetupTab = "race" | "rooms" | "records";
+type SetupTab = "race" | "records";
 const CHOICES: readonly Choice[] = [...CAR_VARIANTS, "random"];
 const LABELS: Record<Variant, string> = {
   race: "Race",
@@ -99,6 +99,9 @@ export class Lobby {
   private readonly picker: HTMLSelectElement;
   private screen: Screen = "garage";
   private setupTab: SetupTab = "race";
+  private rooms: RoomInfo[] = [];
+  /** Open room the player intends to join; null means "create a new room". */
+  private roomChoice: string | null = null;
   private stage: GarageStage | null = null;
   private trackStage: TrackStage | null = null;
   private slideDirection = 1;
@@ -140,10 +143,9 @@ export class Lobby {
           <section class="settings-screen menu-screen" aria-label="Race settings" aria-hidden="true" inert>
             <div class="setup-scene" aria-hidden="true"><div class="setup-halo"></div><img class="setup-car-image" alt="" hidden><div class="setup-circuit-outline"></div></div>
             <div class="settings-inner"><div class="settings-heading"><h1>RACE <span>SETUP.</span></h1><div class="setup-selections"><button class="change-selection change-car" type="button" data-change-car aria-label="Change car"><img class="selected-car-thumb" alt="" hidden><span class="selected-car-name"></span><span class="change-label">Change car</span></button><button class="change-selection change-track" type="button" data-change-track aria-label="Change track"><span class="selected-track-name"></span><span class="change-label">Change track</span></button></div></div>
-            <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist"><button type="button" role="tab" aria-selected="true" aria-controls="setup-race-panel" id="setup-race-tab" data-setup-tab="race" class="setup-menu-item active"><span>01</span>Race<span class="setup-menu-arrow">→</span></button><button type="button" role="tab" aria-selected="false" aria-controls="setup-rooms-panel" id="setup-rooms-tab" data-setup-tab="rooms" class="setup-menu-item" tabindex="-1"><span>02</span>Online rooms<span class="setup-menu-arrow">→</span></button><button type="button" role="tab" aria-selected="false" aria-controls="setup-records-panel" id="setup-records-tab" data-setup-tab="records" class="setup-menu-item" tabindex="-1"><span>03</span>Records<span class="setup-menu-arrow">→</span></button></nav>
+            <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist"><button type="button" role="tab" aria-selected="true" aria-controls="setup-race-panel" id="setup-race-tab" data-setup-tab="race" class="setup-menu-item active"><span>01</span>Race<span class="setup-menu-arrow">→</span></button><button type="button" role="tab" aria-selected="false" aria-controls="setup-records-panel" id="setup-records-tab" data-setup-tab="records" class="setup-menu-item" tabindex="-1"><span>02</span>Records<span class="setup-menu-arrow">→</span></button></nav>
             <div class="setup-workspace">
-              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.difficulty}" class="diff-opt diff-${d}${d === this.difficulty ? " active" : ""}" tabindex="${d === this.difficulty ? 0 : -1}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><label class="setup-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action">Create &amp; Race <span>→</span></button></form></section>
-              <section class="setup-panel online-rooms" role="tabpanel" id="setup-rooms-panel" aria-labelledby="setup-rooms-tab" data-setup-panel="rooms" hidden><div class="panel-heading"><h2>ONLINE ROOMS</h2><span class="room-total">OPEN ROOMS</span></div><div class="room-list"></div></section>
+              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.difficulty}" class="diff-opt diff-${d}${d === this.difficulty ? " active" : ""}" tabindex="${d === this.difficulty ? 0 : -1}" data-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
               <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => `<button type="button" role="radio" aria-checked="${d === this.boardDifficulty}" class="board-diff-opt diff-${d}${d === this.boardDifficulty ? " active" : ""}" tabindex="${d === this.boardDifficulty ? 0 : -1}" data-board-diff="${d}">${DIFFICULTY_LABELS[d]}</button>`).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="${t.id === this.boardTrack}" data-board-track="${html(t.id)}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
             </div></div></div>
           </section>
@@ -161,7 +163,11 @@ export class Lobby {
       (event) => {
         event.preventDefault();
         this.saveName();
-        const input = this.find<HTMLInputElement>(".create-form input");
+        if (this.roomChoice) {
+          callbacks.onJoin(this.roomChoice);
+          return;
+        }
+        const input = this.find<HTMLInputElement>(".room-name-field input");
         callbacks.onCreate(
           input.value.trim() || `${this.playerName}'s race`,
           this.track,
@@ -170,6 +176,14 @@ export class Lobby {
         input.value = "";
       },
     );
+    this.find(".create-form").addEventListener("change", (event) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement &&
+        target.name === "room-choice"
+      )
+        this.chooseRoom(target.value || null);
+    });
     this.root.addEventListener("click", (event) => this.click(event));
     this.picker.addEventListener("change", () => this.choosePacer());
     document.addEventListener("pointerdown", (event) => {
@@ -271,11 +285,6 @@ export class Lobby {
       );
       return;
     }
-    if (data.room) {
-      this.saveName();
-      this.callbacks.onJoin(data.room);
-      return;
-    }
     if (data.boardDiff) {
       this.chooseBoardDifficulty(data.boardDiff as Difficulty);
       return;
@@ -309,6 +318,7 @@ export class Lobby {
     this.root.querySelectorAll<HTMLElement>(".diff-opt").forEach((button) => {
       button.tabIndex = button.dataset.diff === difficulty ? 0 : -1;
     });
+    this.reconcileRoomChoice();
     this.renderBoard();
   }
   private chooseCar(choice: Choice): void {
@@ -342,6 +352,7 @@ export class Lobby {
       card.tabIndex = card.dataset.track === track ? 0 : -1;
     });
     this.paintTrack(direction);
+    this.reconcileRoomChoice();
     this.renderBoard();
   }
   private cycleTrack(direction: number): void {
@@ -504,7 +515,7 @@ export class Lobby {
         !event.target.closest(".setup-menu")
       )
         return;
-      const tabs: SetupTab[] = ["race", "rooms", "records"];
+      const tabs: SetupTab[] = ["race", "records"];
       const delta =
         event.key === "ArrowDown" || event.key === "ArrowRight"
           ? 1
@@ -676,16 +687,66 @@ export class Lobby {
     }
   }
   setRooms(rooms: RoomInfo[]): void {
-    this.find(".room-total").textContent =
-      `${rooms.length} OPEN ${rooms.length === 1 ? "ROOM" : "ROOMS"}`;
-    this.find(".room-list").innerHTML = rooms.length
-      ? rooms
-          .map(
-            (room) =>
-              `<div class="room-row diff-edge-${room.difficulty}">${outline(resolveTrack(room.track), "room-track-thumb")}<span class="room-name">${html(room.name)}<small class="room-track-name">${html(resolveTrack(room.track).name)}</small></span><span class="room-badge diff-${room.difficulty}">${DIFFICULTY_LABELS[room.difficulty]}</span><span class="room-count">${room.players} racing</span><button data-room="${html(room.id)}">Join ↗</button></div>`,
-          )
-          .join("")
-      : '<div class="rooms-empty"><span class="empty-icon">↗</span><div>No open rooms.</div></div>';
+    this.rooms = rooms;
+    this.find(".room-total").textContent = rooms.length
+      ? `${rooms.length} OPEN ${rooms.length === 1 ? "ROOM" : "ROOMS"}`
+      : "NO OPEN ROOMS";
+    const row = (value: string, body: string): string =>
+      `<label class="room-row"><input type="radio" name="room-choice" value="${html(value)}">${body}</label>`;
+    this.find(".room-list").innerHTML =
+      row(
+        "",
+        '<span class="room-name">New room<small class="room-track-name">Open a room with the settings above</small></span>',
+      ) +
+      rooms
+        .map((room) =>
+          row(
+            room.id,
+            `${outline(resolveTrack(room.track), "room-track-thumb")}<span class="room-name">${html(room.name)}<small class="room-track-name">${html(resolveTrack(room.track).name)}</small></span><span class="room-badge diff-${room.difficulty}">${DIFFICULTY_LABELS[room.difficulty]}</span><span class="room-count">${room.players} racing</span>`,
+          ),
+        )
+        .join("");
+    this.reconcileRoomChoice();
+  }
+  /** Pick an open room to join (its track and difficulty apply) or null for a new room. */
+  private chooseRoom(id: string | null): void {
+    const room = this.rooms.find((r) => r.id === id) ?? null;
+    // Sync settings first: each setter reconciles, and the room only survives
+    // reconciliation once both track and difficulty match.
+    this.roomChoice = null;
+    if (room) {
+      this.chooseTrack(room.track);
+      this.chooseDifficulty(room.difficulty);
+    }
+    this.roomChoice = room?.id ?? null;
+    this.syncRoomChoice();
+  }
+  /**
+   * A chosen room only stays chosen while it is still open and the race
+   * settings still match it; otherwise fall back to creating a new room.
+   */
+  private reconcileRoomChoice(): void {
+    const room = this.rooms.find((r) => r.id === this.roomChoice);
+    if (
+      !room ||
+      room.track !== this.track ||
+      room.difficulty !== this.difficulty
+    )
+      this.roomChoice = null;
+    this.syncRoomChoice();
+  }
+  private syncRoomChoice(): void {
+    const choice = this.roomChoice ?? "";
+    this.root
+      .querySelectorAll<HTMLInputElement>('input[name="room-choice"]')
+      .forEach((radio) => {
+        radio.checked = radio.value === choice;
+        radio.closest(".room-row")?.classList.toggle("active", radio.checked);
+      });
+    this.find(".room-name-field").hidden = this.roomChoice !== null;
+    this.find(".primary-action-label").textContent = this.roomChoice
+      ? "Join & Race"
+      : "Create & Race";
   }
   setLeaderboard(entries: LeaderboardEntry[]): void {
     this.entries = entries;

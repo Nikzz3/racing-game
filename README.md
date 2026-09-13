@@ -22,7 +22,8 @@ set `DATABASE_URL` to override (this is how the deployed environment is configur
 - WebSocket server: ws://localhost:8080
 
 Open the client in multiple tabs/browsers to race together. Select a car, choose a
-circuit, then enter a driver name and create a race or join through Online rooms.
+circuit, then enter a driver name and pick a room: a new one you name, or an open one
+listed in the Room field.
 
 ## End-to-end tests
 
