@@ -765,6 +765,19 @@ describe("Lobby Garage picker", () => {
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
+  it("clicking a garage card selects that model directly", () => {
+    makeLobby();
+    card("police").click();
+    expect(card("police").classList.contains("active")).toBe(true);
+    expect(card("police").getAttribute("aria-checked")).toBe("true");
+    expect(card("police").tabIndex).toBe(0);
+    expect(card("random").getAttribute("aria-checked")).toBe("false");
+    expect(card("random").tabIndex).toBe(-1);
+    expect(lobby.selectedVariant).toBe("police");
+    expect(localStorage.getItem("racer-variant")).toBe("police");
+    expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
+  });
+
   it("cycling to a model stores the choice and moves the highlight", () => {
     makeLobby();
     selectCar("suv");
@@ -818,12 +831,15 @@ describe("Lobby Garage picker", () => {
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
   });
 
-  it("model indicators cannot change the selection", () => {
+  it("clicking model indicators notifies once per change and ignores repeats", () => {
     makeLobby();
     card("suv").click();
+    expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
+    card("suv").click();
+    expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
     card("random").click();
     expect(card("random").classList.contains("active")).toBe(true);
-    expect(cbs.onVariantChange).not.toHaveBeenCalled();
+    expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
   });
 
   it("painting thumbnails without WebGL leaves the cards name-only", () => {
@@ -846,7 +862,7 @@ describe("Lobby Garage picker", () => {
     )!;
     for (const variant of CAR_VARIANTS) {
       next.click();
-      expect(card(variant).getAttribute("aria-current")).toBe("true");
+      expect(card(variant).getAttribute("aria-checked")).toBe("true");
       expect(
         parent
           .querySelector('.car-slide[data-position="current"]')!
@@ -854,9 +870,9 @@ describe("Lobby Garage picker", () => {
       ).toBe(variant);
     }
     next.click();
-    expect(card("random").getAttribute("aria-current")).toBe("true");
+    expect(card("random").getAttribute("aria-checked")).toBe("true");
     previous.click();
-    expect(card(CAR_VARIANTS.at(-1)!).getAttribute("aria-current")).toBe(
+    expect(card(CAR_VARIANTS.at(-1)!).getAttribute("aria-checked")).toBe(
       "true",
     );
   });
@@ -935,7 +951,7 @@ describe("Lobby Garage picker", () => {
     expect(document.activeElement).toBe(stage);
     expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
     expect(parent.querySelectorAll('.garage-card[tabindex="0"]')).toHaveLength(
-      0,
+      1,
     );
     parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
     parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
@@ -956,14 +972,14 @@ describe("Lobby Garage picker", () => {
     stage.dispatchEvent(
       new MouseEvent("pointerup", { clientX: 90, clientY: 130 }),
     );
-    expect(card("random").getAttribute("aria-current")).toBe("true");
+    expect(card("random").getAttribute("aria-checked")).toBe("true");
     stage.dispatchEvent(
       new MouseEvent("pointerdown", { clientX: 220, clientY: 120 }),
     );
     stage.dispatchEvent(
       new MouseEvent("pointerup", { clientX: 190, clientY: 280 }),
     );
-    expect(card("random").getAttribute("aria-current")).toBe("true");
+    expect(card("random").getAttribute("aria-checked")).toBe("true");
     expect(cbs.onVariantChange).not.toHaveBeenCalled();
   });
 

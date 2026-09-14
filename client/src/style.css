@@ -493,6 +493,7 @@ a {
     background 0.25s;
   min-width: 0;
 }
+.garage-card:hover,
 .garage-card.active {
   color: var(--accent);
 }
