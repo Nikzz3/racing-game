@@ -123,16 +123,10 @@ a {
   margin-top: 4px;
 }
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
+  flex-shrink: 0;
   width: 40px;
-  height: 34px;
-  background: var(--accent);
-  color: #161616;
-  font-family: "Barlow Condensed", Impact, sans-serif;
-  font-size: 25px;
-  font-style: italic;
-  font-weight: 900;
+  height: 40px;
 }
 .menu-progress {
   display: flex;
@@ -1315,8 +1309,7 @@ a {
   }
   .brand-mark {
     width: 32px;
-    height: 30px;
-    font-size: 22px;
+    height: 32px;
   }
   .menu-progress {
     display: none;
