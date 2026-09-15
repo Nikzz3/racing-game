@@ -168,6 +168,32 @@ a {
   height: 1px;
   background: #38383c;
 }
+.lobby-nav-aside {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.desktop-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 9px var(--mono);
+  color: #8e9097;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.desktop-notice svg {
+  flex-shrink: 0;
+}
+.desktop-notice:hover,
+.desktop-notice:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
 .connection-status {
   font: 9px var(--mono);
   color: #b9b9bf;
@@ -1295,6 +1321,9 @@ a {
   .menu-progress i {
     width: 24px;
   }
+  .desktop-notice span {
+    display: none;
+  }
 }
 @media (max-width: 700px) {
   .lobby {
@@ -1312,7 +1341,8 @@ a {
     width: 32px;
     height: 32px;
   }
-  .menu-progress {
+  .menu-progress,
+  .desktop-notice {
     display: none;
   }
   .connection-status {

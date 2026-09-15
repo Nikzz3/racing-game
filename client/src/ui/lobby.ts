@@ -49,6 +49,17 @@ type Choice = Variant | "random";
 type Screen = "garage" | "track" | "settings";
 type SetupTab = "race" | "records";
 const CHOICES: readonly Choice[] = [...CAR_VARIANTS, "random"];
+/** GitHub releases page where the desktop installers (`desktop-v*` tags) are published. */
+export const DESKTOP_DOWNLOAD_URL =
+  "https://github.com/Nikzz3/racing-game/releases";
+/**
+ * Link to the desktop installers, shown only in the browser build: inside the Electron
+ * app `window.desktop` is present and the notice would be noise.
+ */
+function desktopNotice(): string {
+  if (window.desktop !== undefined) return "";
+  return `<a class="desktop-notice" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer" aria-label="Download the desktop app for macOS and Windows"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3M8 4.5v4M6.3 7l1.7 1.7L9.7 7"/></svg><span>Download for macOS &amp; Windows</span></a>`;
+}
 const LABELS: Record<Variant, string> = {
   race: "Race",
   "race-future": "Hyper",
@@ -117,7 +128,7 @@ export class Lobby {
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
-        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><span class="connection-status" role="status">CONNECTING</span></header>
+        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside">${desktopNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
         <div class="lobby-deck" data-screen="garage">
           <section class="garage-screen menu-screen" aria-label="Choose your car">
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>

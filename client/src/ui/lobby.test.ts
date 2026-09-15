@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { LobbyCallbacks } from "./lobby";
-import { Lobby } from "./lobby";
+import { DESKTOP_DOWNLOAD_URL, Lobby } from "./lobby";
 import {
   CAR_VARIANTS,
   type LeaderboardEntry,
@@ -1304,5 +1304,40 @@ describe("Lobby Records board filters", () => {
     // The race difficulty never moved.
     expect(raceDiff("medium").getAttribute("aria-checked")).toBe("true");
     expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe("Lobby desktop download notice", () => {
+  let parent: HTMLElement;
+
+  beforeEach(() => {
+    parent = makeParent();
+  });
+  afterEach(() => {
+    parent.remove();
+    Reflect.deleteProperty(window, "desktop");
+  });
+
+  it("links to the GitHub releases page in the browser build", () => {
+    new Lobby(parent, makeCallbacks());
+    const link = parent.querySelector<HTMLAnchorElement>(
+      ".lobby-nav .desktop-notice",
+    );
+    expect(link).not.toBeNull();
+    expect(link!.href).toBe(DESKTOP_DOWNLOAD_URL);
+    expect(link!.target).toBe("_blank");
+    expect(link!.rel).toBe("noopener noreferrer");
+    expect(link!.textContent).toContain("Download for macOS & Windows");
+    expect(link!.getAttribute("aria-label")).toMatch(/macOS and Windows/);
+  });
+
+  it("is absent inside the desktop app (window.desktop defined)", () => {
+    Object.defineProperty(window, "desktop", {
+      value: { serverUrl: "wss://play.example.com" },
+      configurable: true,
+    });
+    new Lobby(parent, makeCallbacks());
+    expect(parent.querySelector(".desktop-notice")).toBeNull();
+    expect(parent.querySelector(".connection-status")).not.toBeNull();
   });
 });
