@@ -107,6 +107,8 @@ jobs:
             desktop/release/*.exe
             desktop/release/*.AppImage
             desktop/release/*.yml
+            # electron-builder's own debug dump also matches *.yml; keep it out of releases.
+            !desktop/release/builder-debug.yml
             desktop/release/*.blockmap
           retention-days: 7
 
