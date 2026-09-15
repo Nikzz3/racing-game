@@ -58,7 +58,7 @@ export const DESKTOP_DOWNLOAD_URL =
  */
 function desktopNotice(): string {
   if (window.desktop !== undefined) return "";
-  return `<a class="desktop-notice" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer" aria-label="Download the desktop app for macOS and Windows"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3M8 4.5v4M6.3 7l1.7 1.7L9.7 7"/></svg><span>Download for macOS &amp; Windows</span></a>`;
+  return `<a class="desktop-notice" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer" aria-label="Download the desktop app for macOS, Windows and Linux"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3M8 4.5v4M6.3 7l1.7 1.7L9.7 7"/></svg><span>Download for macOS, Windows &amp; Linux</span></a>`;
 }
 const LABELS: Record<Variant, string> = {
   race: "Race",

@@ -1,7 +1,7 @@
 # Desktop distribution via Electron + electron-builder
 
 The game is a browser client plus a WebSocket server, and some players want a
-double-clickable app rather than a URL. We decided to ship native macOS and Windows
+double-clickable app rather than a URL. We decided to ship native macOS, Windows and Linux
 installers from a **separate `desktop` workspace** (`@racing/desktop`) that wraps the
 already-built `client/dist` in Electron. The desktop package has **zero runtime
 dependencies**: its main and preload scripts are compiled TypeScript with nothing in
@@ -41,6 +41,11 @@ that produces a draft GitHub release.
 - **Signing and notarization are deferred.** The workflow honours the `CSC_*`/`APPLE_*`
   secrets when present but ships unsigned builds when they are not, accepting Gatekeeper
   and SmartScreen warnings until certificates are procured.
+- **Linux ships as an x64 AppImage only.** The target players are on immutable,
+  SteamOS-style distros (Bazzite), where a self-contained executable that never involves
+  the package manager is the natural fit and can be added to Steam as a non-Steam game.
+  deb, rpm, Flatpak and snap would each need their own packaging and repository story
+  for no additional reach, so they are not built.
 - **The desktop workspace rides the existing root scripts.** `npm run typecheck` fans
   out to all workspaces, so it is typechecked by the normal CI job with no ci.yml change;
   only packaging lives in the separate `desktop.yml` workflow.

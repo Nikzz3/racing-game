@@ -23,8 +23,8 @@ jobs:
     permissions:
       contents: write
     strategy:
-      # A broken Windows build should not cancel a good macOS one (or vice versa);
-      # each platform's installer is independently useful.
+      # A broken Windows build should not cancel a good macOS or Linux one (or
+      # vice versa); each platform's installer is independently useful.
       fail-fast: false
       matrix:
         include:
@@ -35,6 +35,10 @@ jobs:
             args: --mac --x64 --arm64
           - os: windows-latest
             args: --win --x64
+          # Linux ships as a single x64 AppImage aimed at immutable gaming distros
+          # (Bazzite, SteamOS); see ADR 0007 for why there is no deb/rpm/flatpak.
+          - os: ubuntu-latest
+            args: --linux --x64
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,6 +95,7 @@ jobs:
             desktop/release/*.dmg
             desktop/release/*.zip
             desktop/release/*.exe
+            desktop/release/*.AppImage
             desktop/release/*.yml
             desktop/release/*.blockmap
           retention-days: 7

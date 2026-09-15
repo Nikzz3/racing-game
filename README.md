@@ -47,7 +47,7 @@ of whatever database it runs against, so you must also set
 `E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the database is disposable — the wrapper
 refuses to start without it.
 
-## Desktop app (macOS / Windows)
+## Desktop app (macOS / Windows / Linux)
 
 The `desktop/` workspace wraps the same client in Electron. Instead of talking to the
 server that served the page, the desktop build connects to the WebSocket URL baked in at
@@ -64,15 +64,21 @@ main/preload; `desktop:start` launches it. To package installers locally run
 `npm run desktop:dist` — output lands in `desktop/release/` (for the current platform only).
 
 Releases are cut by tagging: pushing a `desktop-v*` tag runs `.github/workflows/desktop.yml`,
-which builds macOS (x64 + arm64 dmg/zip) and Windows (x64 nsis) installers and attaches
-them to a **draft** GitHub release for review before publishing. Set the `RACING_SERVER_URL`
-repository variable so released installers point at the deployed server; manual
-`workflow_dispatch` runs skip publishing and upload the installers as workflow artifacts.
+which builds macOS (x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage)
+installers and attaches them to a **draft** GitHub release for review before publishing.
+Set the `RACING_SERVER_URL` repository variable so released installers point at the
+deployed server; manual `workflow_dispatch` runs skip publishing and upload the installers
+as workflow artifacts.
 
 Builds are unsigned unless the `CSC_LINK` / `CSC_KEY_PASSWORD` secrets (and, for macOS
 notarization, `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`) are set.
 Unsigned installers work, but macOS Gatekeeper and Windows SmartScreen will warn on first
 launch.
+
+On Linux the AppImage is the whole install: `chmod +x Sunset-Ridge-Racing-*.AppImage` and
+run it, or add it to Steam as a non-Steam game for Game Mode / Big Picture. AppImages need
+FUSE, which Bazzite and other SteamOS-style distros ship out of the box. No deb, rpm,
+Flatpak or snap is produced — see `docs/adr/0007-desktop-distribution-via-electron.md`.
 
 ## Controls
 

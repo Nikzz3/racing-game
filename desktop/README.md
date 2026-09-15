@@ -1,7 +1,7 @@
 # @racing/desktop
 
 Electron wrapper that ships the prebuilt Vite client (`client/dist`) as a macOS
-(dmg/zip, x64 + arm64) or Windows (NSIS x64) desktop app. It has no production
+(dmg/zip, x64 + arm64), Windows (NSIS x64) or Linux (AppImage x64) desktop app. It has no production
 dependencies; the client is served from a privileged `app://bundle/` scheme and
 connects to the game server over WebSocket.
 
@@ -37,7 +37,19 @@ npm run dist -w desktop       # installers for the current platform, no publish
 
 Cross-building: macOS installers must be built on macOS; Windows NSIS can be
 built on Windows or Linux (electron-builder pulls Wine in a Docker image when
-needed). Icons come from `build/icon.png`; electron-builder derives `.icns`/`.ico`.
+needed); the Linux AppImage builds on Linux. Icons come from `build/icon.png`;
+electron-builder derives `.icns`/`.ico` and the Linux icon set.
+
+### Linux (AppImage)
+
+Linux ships as a single x64 AppImage named
+`Sunset-Ridge-Racing-<version>-linux-x86_64.AppImage`, aimed at immutable gaming
+distros such as Bazzite and SteamOS where nothing should go through the package
+manager. To run it: `chmod +x` the file and launch it, or add it to Steam as a
+non-Steam game so it shows up in Game Mode. AppImages need FUSE, which Bazzite
+ships by default. The `linux.desktop.entry` block in `electron-builder.yml` is the
+`.desktop` file launchers and Steam read (`Name`, `Comment`, `Categories=Game`).
+deb, rpm, Flatpak and snap are intentionally not built.
 
 ## Signing and notarization
 

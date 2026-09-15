@@ -60,10 +60,28 @@ nsis:
   allowToChangeInstallationDirectory: true
 
 linux:
-  # Not a supported platform; AppImage is just a cheap smoke test on Linux dev boxes.
+  # AppImage only, x64 only. The target audience is immutable gaming distros
+  # (Bazzite, SteamOS) where a self-contained executable that never touches the
+  # package manager is the right shape; deb/rpm/flatpak/snap are deliberately
+  # not built. The .desktop entry is what Steam and app launchers read when the
+  # AppImage is integrated.
   target:
-    - AppImage
+    - target: AppImage
+      arch: [x64]
   category: Game
+  executableName: sunset-ridge-racing
+  # Names the installed .desktop file after `desktopName` in package.json so
+  # StartupWMClass matches Electron's app_id and launchers/Steam can associate the
+  # running window with the entry.
+  syncDesktopName: true
+  artifactName: Sunset-Ridge-Racing-${version}-linux-${arch}.${ext}
+  # Becomes the .desktop file's Comment= line (electron-builder always writes it
+  # from `description`, so it cannot be set under `desktop.entry`).
+  description: 3D multiplayer arcade racing, from the browser to your desktop
+  desktop:
+    entry:
+      Name: Sunset Ridge Racing
+      Categories: Game;
 
 publish:
   provider: github

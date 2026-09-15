@@ -1327,8 +1327,8 @@ describe("Lobby desktop download notice", () => {
     expect(link!.href).toBe(DESKTOP_DOWNLOAD_URL);
     expect(link!.target).toBe("_blank");
     expect(link!.rel).toBe("noopener noreferrer");
-    expect(link!.textContent).toContain("Download for macOS & Windows");
-    expect(link!.getAttribute("aria-label")).toMatch(/macOS and Windows/);
+    expect(link!.textContent).toContain("Download for macOS, Windows & Linux");
+    expect(link!.getAttribute("aria-label")).toMatch(/macOS, Windows and Linux/);
   });
 
   it("is absent inside the desktop app (window.desktop defined)", () => {
