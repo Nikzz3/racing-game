@@ -5,6 +5,35 @@
 interface DesktopBridge {
   /** WebSocket URL of the racing server, e.g. `wss://play.example.com`. */
   readonly serverUrl: string;
+  /** Installed desktop app version (semver, from desktop/package.json). Older preloads omit it. */
+  readonly version?: string;
+  /** In-app update bridge; absent on preloads that predate auto-updates. */
+  readonly updates?: DesktopUpdates;
+}
+
+/** Snapshot of the auto-updater, mirrored from `desktop/src/main.ts`. */
+type DesktopUpdateState =
+  | { readonly status: "idle" }
+  | {
+      readonly status: "available";
+      readonly version: string;
+      /**
+       * `false` when the update can only be fetched by hand (unsigned macOS builds):
+       * `install()` then opens the releases page instead of installing in place.
+       */
+      readonly canInstall: boolean;
+    }
+  | { readonly status: "downloading"; readonly version: string; readonly percent: number }
+  | { readonly status: "downloaded"; readonly version: string }
+  | { readonly status: "error"; readonly message: string };
+
+interface DesktopUpdates {
+  /** Current state, for renderers that load after the first check completed. */
+  getState(): Promise<DesktopUpdateState>;
+  /** Download when `available`, restart into the new version when `downloaded`. */
+  install(): Promise<void>;
+  /** Subscribe to state changes; returns an unsubscribe function. */
+  onState(cb: (state: DesktopUpdateState) => void): () => void;
 }
 
 interface Window {

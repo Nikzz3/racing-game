@@ -1,9 +1,9 @@
 # @racing/desktop
 
 Electron wrapper that ships the prebuilt Vite client (`client/dist`) as a macOS
-(dmg/zip, x64 + arm64), Windows (NSIS x64) or Linux (AppImage x64) desktop app. It has no production
-dependencies; the client is served from a privileged `app://bundle/` scheme and
-connects to the game server over WebSocket.
+(dmg/zip, x64 + arm64), Windows (NSIS x64) or Linux (AppImage x64) desktop app. Its
+only production dependency is `electron-updater`; the client is served from a
+privileged `app://bundle/` scheme and connects to the game server over WebSocket.
 
 ## Run in development
 
@@ -50,6 +50,35 @@ non-Steam game so it shows up in Game Mode. AppImages need FUSE, which Bazzite
 ships by default. The `linux.desktop.entry` block in `electron-builder.yml` is the
 `.desktop` file launchers and Steam read (`Name`, `Comment`, `Categories=Game`).
 deb, rpm, Flatpak and snap are intentionally not built.
+
+## In-app updates
+
+`src/main.ts` wires `electron-updater` (GitHub provider, `publish` block in
+`electron-builder.yml`) in packaged builds only: it checks for a newer release ten
+seconds after launch and every six hours, and forwards the state to the renderer
+over IPC. The preload exposes it as `window.desktop.updates` (plus
+`window.desktop.version`); the lobby header renders an update button from it. The
+download starts only when the player clicks, and the app restarts into the new
+version on the next click (or installs on quit if they never do).
+
+Release checklist, since the updater is picky about names:
+
+1. Bump `version` in `package.json`; electron-builder names the GitHub release
+   `v<version>` no matter which git tag triggered it.
+2. Push the matching `v<version>` tag. The workflow uploads the installers plus the
+   updater metadata (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `*.blockmap`)
+   to a **draft** release.
+3. Publish the release. Installed apps only see published releases (the updater
+   reads `/releases/latest`), so nothing happens until this step.
+
+macOS can only install updates into a code-signed app (Squirrel.Mac rejects unsigned
+bundles). When the download or install fails on macOS the button falls back to
+"Download vX.Y.Z" and opens the releases page instead. Windows (NSIS) and Linux
+(AppImage) install in place regardless of signing.
+
+To exercise the updater locally you need a packaged build (`npm run dist -w desktop`)
+whose version is lower than the latest published release; the unpackaged
+`npm run desktop:start` skips the updater entirely.
 
 ## Signing and notarization
 

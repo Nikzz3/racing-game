@@ -63,12 +63,19 @@ npm run desktop:start
 main/preload; `desktop:start` launches it. To package installers locally run
 `npm run desktop:dist` — output lands in `desktop/release/` (for the current platform only).
 
-Releases are cut by tagging: pushing a `desktop-v*` tag runs `.github/workflows/desktop.yml`,
-which builds macOS (x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage)
-installers and attaches them to a **draft** GitHub release for review before publishing.
-Set the `RACING_SERVER_URL` repository variable so released installers point at the
-deployed server; manual `workflow_dispatch` runs skip publishing and upload the installers
-as workflow artifacts.
+Releases are cut by tagging: bump `version` in `desktop/package.json`, then push a matching
+`v<version>` tag (e.g. `v0.2.0`) to run `.github/workflows/desktop.yml`, which builds macOS
+(x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage) installers and attaches
+them to a **draft** GitHub release for review before publishing. Set the
+`RACING_SERVER_URL` repository variable so released installers point at the deployed
+server; manual `workflow_dispatch` runs skip publishing and upload the installers as
+workflow artifacts.
+
+Installed apps check GitHub for a newer release on launch and every six hours, and show an
+update button in the lobby header when one exists; clicking it downloads the update and
+restarts into it. Only **published** releases count (drafts are invisible to the updater),
+and in-place install on macOS needs a code-signed app: unsigned macOS builds show a
+"Download" button that opens the releases page instead.
 
 Builds are unsigned unless the `CSC_LINK` / `CSC_KEY_PASSWORD` secrets (and, for macOS
 notarization, `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`) are set.

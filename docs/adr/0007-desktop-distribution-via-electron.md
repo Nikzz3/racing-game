@@ -3,13 +3,14 @@
 The game is a browser client plus a WebSocket server, and some players want a
 double-clickable app rather than a URL. We decided to ship native macOS, Windows and Linux
 installers from a **separate `desktop` workspace** (`@racing/desktop`) that wraps the
-already-built `client/dist` in Electron. The desktop package has **zero runtime
-dependencies**: its main and preload scripts are compiled TypeScript with nothing in
-`dependencies`, and it never runs Vite or a dev server. The prebuilt client is packaged as
+already-built `client/dist` in Electron. The desktop package has a **single runtime
+dependency**, `electron-updater`, for in-app updates from GitHub releases; its main and
+preload scripts are otherwise compiled TypeScript, and it never runs Vite or a dev server. The prebuilt client is packaged as
 `extraResources` and served over a custom `app://` protocol, so the client is built with
 a relative base (`vite build --base=./`) and is otherwise the same bundle the web deploy
-ships. Packaging and publishing use **electron-builder**, driven by a `desktop-v*` git tag
-that produces a draft GitHub release.
+ships. Packaging and publishing use **electron-builder**, driven by a `v<version>` git tag
+that produces a draft GitHub release (electron-builder names releases `v<version>`, and
+the updater resolves the latest release by that name, so the git tag matches it).
 
 ## Considered Options
 
@@ -49,4 +50,8 @@ that produces a draft GitHub release.
 - **The desktop workspace rides the existing root scripts.** `npm run typecheck` fans
   out to all workspaces, so it is typechecked by the normal CI job with no ci.yml change;
   only packaging lives in the separate `desktop.yml` workflow.
+- **Updates only flow from published releases.** electron-updater reads
+  `/releases/latest`, which excludes drafts, so publishing the draft is the release act.
+  On macOS in-place install additionally requires a signed bundle; unsigned mac builds
+  fall back to opening the releases page.
 - **`desktop/release/` joins `dist/` as build output** and is ignored by git.

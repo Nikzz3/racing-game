@@ -49,7 +49,7 @@ type Choice = Variant | "random";
 type Screen = "garage" | "track" | "settings";
 type SetupTab = "race" | "records";
 const CHOICES: readonly Choice[] = [...CAR_VARIANTS, "random"];
-/** GitHub releases page where the desktop installers (`desktop-v*` tags) are published. */
+/** GitHub releases page where the desktop installers (`v*` tags) are published. */
 export const DESKTOP_DOWNLOAD_URL =
   "https://github.com/Nikzz3/racing-game/releases";
 /**
@@ -59,6 +59,31 @@ export const DESKTOP_DOWNLOAD_URL =
 function desktopNotice(): string {
   if (window.desktop !== undefined) return "";
   return `<a class="desktop-notice" href="${DESKTOP_DOWNLOAD_URL}" target="_blank" rel="noopener noreferrer" aria-label="Download the desktop app for macOS, Windows and Linux"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3M8 4.5v4M6.3 7l1.7 1.7L9.7 7"/></svg><span>Download for macOS, Windows &amp; Linux</span></a>`;
+}
+/**
+ * In-app update control, rendered only inside the Electron app (the preload exposes
+ * `window.desktop.updates`). Starts hidden; `paintUpdate` shows it once a release is on
+ * offer. The circular-arrows glyph is the same 16px stroke style as the download notice.
+ */
+function updateNotice(): string {
+  if (window.desktop?.updates === undefined) return "";
+  return `<button type="button" class="update-notice" hidden><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.65M2.5 8a5.5 5.5 0 0 1 9.6-3.65"/><path d="M12.5 1.8v2.9h-2.9M3.5 14.2v-2.9h2.9"/></svg><span></span></button>`;
+}
+/** Label + enabled state for each update status; `null` keeps the control hidden. */
+function updateLabel(state: DesktopUpdateState): { text: string; busy: boolean } | null {
+  switch (state.status) {
+    case "available":
+      return {
+        text: `${state.canInstall ? "Update to" : "Download"} v${state.version}`,
+        busy: false,
+      };
+    case "downloading":
+      return { text: `Updating… ${state.percent}%`, busy: true };
+    case "downloaded":
+      return { text: "Restart to update", busy: false };
+    default:
+      return null;
+  }
 }
 const LABELS: Record<Variant, string> = {
   race: "Race",
@@ -128,7 +153,7 @@ export class Lobby {
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
-        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside">${desktopNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
+        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside">${desktopNotice()}${updateNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
         <div class="lobby-deck" data-screen="garage">
           <section class="garage-screen menu-screen" aria-label="Choose your car">
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
@@ -227,6 +252,32 @@ export class Lobby {
     this.paintTrack();
     this.setRooms([]);
     this.renderBoard();
+    this.bindUpdates();
+  }
+  /** Hook the desktop update bridge (no-op in the browser build). */
+  private bindUpdates(): void {
+    const updates = window.desktop?.updates;
+    if (updates === undefined) return;
+    const button = this.find<HTMLButtonElement>(".update-notice");
+    button.addEventListener("click", () => {
+      void updates.install();
+    });
+    updates.onState((state) => this.paintUpdate(state));
+    // Catch up: the main process may have finished its first check before this
+    // renderer subscribed.
+    void updates.getState().then((state) => this.paintUpdate(state));
+  }
+  private paintUpdate(state: DesktopUpdateState): void {
+    const button = this.find<HTMLButtonElement>(".update-notice");
+    const label = updateLabel(state);
+    button.hidden = label === null;
+    button.disabled = label?.busy ?? false;
+    button.dataset.state = state.status;
+    const text = label?.text ?? "";
+    this.find(".update-notice span").textContent = text;
+    button.setAttribute("aria-label", text);
+    if (label === null) button.removeAttribute("title");
+    else button.title = text;
   }
   private find<T extends HTMLElement = HTMLElement>(selector: string): T {
     return this.root.querySelector<T>(selector)!;

@@ -1341,3 +1341,114 @@ describe("Lobby desktop download notice", () => {
     expect(parent.querySelector(".connection-status")).not.toBeNull();
   });
 });
+
+describe("Lobby desktop update notice", () => {
+  let parent: HTMLElement;
+  let onStateCb: ((state: DesktopUpdateState) => void) | undefined;
+  let updates: DesktopUpdates;
+
+  function installBridge(initial: DesktopUpdateState = { status: "idle" }): void {
+    onStateCb = undefined;
+    updates = {
+      getState: vi.fn(async () => initial),
+      install: vi.fn(async () => {}),
+      onState: vi.fn((cb: (state: DesktopUpdateState) => void) => {
+        onStateCb = cb;
+        return () => {
+          onStateCb = undefined;
+        };
+      }),
+    };
+    Object.defineProperty(window, "desktop", {
+      value: { serverUrl: "wss://play.example.com", version: "0.1.0", updates },
+      configurable: true,
+    });
+  }
+  const button = () =>
+    parent.querySelector<HTMLButtonElement>(".lobby-nav-aside .update-notice");
+
+  beforeEach(() => {
+    parent = makeParent();
+  });
+  afterEach(() => {
+    parent.remove();
+    Reflect.deleteProperty(window, "desktop");
+  });
+
+  it("is absent in the browser build", () => {
+    new Lobby(parent, makeCallbacks());
+    expect(button()).toBeNull();
+  });
+
+  it("is absent when the desktop preload predates updates", () => {
+    Object.defineProperty(window, "desktop", {
+      value: { serverUrl: "wss://play.example.com" },
+      configurable: true,
+    });
+    new Lobby(parent, makeCallbacks());
+    expect(button()).toBeNull();
+  });
+
+  it("is present but hidden while the updater is idle", async () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    await Promise.resolve();
+    expect(button()).not.toBeNull();
+    expect(button()!.hidden).toBe(true);
+    expect(updates.onState).toHaveBeenCalledTimes(1);
+    expect(updates.getState).toHaveBeenCalledTimes(1);
+    expect(button()!.compareDocumentPosition(parent.querySelector(".connection-status")!))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("catches up from getState when the check already finished", async () => {
+    installBridge({ status: "downloaded", version: "0.2.0" });
+    new Lobby(parent, makeCallbacks());
+    await Promise.resolve();
+    expect(button()!.hidden).toBe(false);
+    expect(button()!.textContent).toContain("Restart to update");
+  });
+
+  it("shows the version once onState reports an update", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
+    expect(button()!.hidden).toBe(false);
+    expect(button()!.disabled).toBe(false);
+    expect(button()!.textContent).toContain("Update to v0.2.0");
+    expect(button()!.getAttribute("aria-label")).toBe("Update to v0.2.0");
+    expect(button()!.dataset.state).toBe("available");
+  });
+
+  it("offers a download instead when the update cannot be installed in place", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "available", version: "0.2.0", canInstall: false });
+    expect(button()!.textContent).toContain("Download v0.2.0");
+  });
+
+  it("reports progress and disables itself while downloading", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "downloading", version: "0.2.0", percent: 42 });
+    expect(button()!.hidden).toBe(false);
+    expect(button()!.disabled).toBe(true);
+    expect(button()!.textContent).toContain("Updating… 42%");
+  });
+
+  it("hides again on error", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
+    onStateCb!({ status: "error", message: "offline" });
+    expect(button()!.hidden).toBe(true);
+  });
+
+  it("calls install when clicked", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
+    button()!.click();
+    expect(updates.install).toHaveBeenCalledTimes(1);
+  });
+});

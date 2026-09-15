@@ -1,12 +1,16 @@
 name: Desktop installers
 
-# Installers are cut from `desktop-v*` tags so a desktop release is an explicit,
-# versioned act rather than a side effect of every push to master. The manual
-# trigger exists to smoke-test the packaging pipeline on a branch; those runs
-# never publish, they only upload artifacts.
+# Installers are cut from `v*` tags so a desktop release is an explicit,
+# versioned act rather than a side effect of every push to master. The tag must
+# be `v` + desktop/package.json `version`: electron-builder always names the
+# GitHub release `v<version>` (it ignores the pushed tag name), and the in-app
+# updater resolves `/releases/latest` by that same name, so any other tag scheme
+# would leave the git tag and the release tag pointing at different things. The
+# manual trigger exists to smoke-test the packaging pipeline on a branch; those
+# runs never publish, they only upload artifacts.
 on:
   push:
-    tags: ["desktop-v*"]
+    tags: ["v*"]
   workflow_dispatch:
 
 # Read-only by default, matching ci.yml. Only the packaging job is granted a
@@ -59,7 +63,11 @@ jobs:
           RACING_SERVER_URL: ${{ vars.RACING_SERVER_URL }}
       # On tag pushes electron-builder publishes to a draft GitHub release for
       # review before it goes public; on manual runs it only writes to
-      # desktop/release. `shell: bash` keeps the command identical on Windows.
+      # desktop/release. `--publish always` also uploads the electron-updater
+      # metadata (latest.yml, latest-mac.yml, latest-linux.yml and the .blockmap
+      # files) that installed apps poll; drafts are invisible to them, so the
+      # in-app update only appears once the release is published.
+      # `shell: bash` keeps the command identical on Windows.
       #
       # Signing is optional. When the CSC_*/APPLE_* secrets are absent
       # electron-builder produces unsigned installers, which macOS Gatekeeper

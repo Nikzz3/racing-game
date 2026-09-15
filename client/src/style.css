@@ -194,6 +194,50 @@ a {
   text-decoration: underline;
   text-underline-offset: 5px;
 }
+.update-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 9px var(--mono);
+  color: #b9b9bf;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.update-notice[hidden] {
+  display: none;
+}
+.update-notice svg {
+  flex-shrink: 0;
+}
+.update-notice[data-state="available"],
+.update-notice[data-state="downloaded"] {
+  color: var(--accent);
+}
+.update-notice:hover,
+.update-notice:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.update-notice:disabled {
+  color: #8e9097;
+  cursor: progress;
+  text-decoration: none;
+}
+.update-notice:disabled svg {
+  animation: update-spin 1.2s linear infinite;
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .connection-status {
   font: 9px var(--mono);
   color: #b9b9bf;
@@ -1321,7 +1365,8 @@ a {
   .menu-progress i {
     width: 24px;
   }
-  .desktop-notice span {
+  .desktop-notice span,
+  .update-notice span {
     display: none;
   }
 }
@@ -1342,7 +1387,8 @@ a {
     height: 32px;
   }
   .menu-progress,
-  .desktop-notice {
+  .desktop-notice,
+  .update-notice {
     display: none;
   }
   .connection-status {
