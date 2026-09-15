@@ -60,7 +60,17 @@ jobs:
       # Signing is optional. When the CSC_*/APPLE_* secrets are absent
       # electron-builder produces unsigned installers, which macOS Gatekeeper
       # and Windows SmartScreen will warn about but still allow.
-      - run: npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+      #
+      # Secrets that are not configured arrive as empty strings, and electron-builder
+      # treats an empty CSC_LINK as "a certificate at path ''", which fails with
+      # "not a file". Unset any empty signing variables so it falls back to unsigned
+      # builds, and skip the keychain identity search on macOS in that case.
+      - run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
+          npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         working-directory: desktop
         shell: bash
         env:
