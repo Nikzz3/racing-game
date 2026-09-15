@@ -15,6 +15,8 @@ npm install
 npm run dev
 ```
 
+Node 24 is required (see `.nvmrc`); CI and the desktop installer workflow build on it too.
+
 The server connects to `postgres://postgres:postgres@localhost:5432/racing` by default;
 set `DATABASE_URL` to override (this is how the deployed environment is configured).
 
