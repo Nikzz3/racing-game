@@ -134,9 +134,10 @@ workflow on the same tag updates the draft in place. Set the `RACING_SERVER_URL`
 repository variable so released installers point at the deployed server; manual
 `workflow_dispatch` runs stop at the artifacts and create no release.
 
-Installed apps check GitHub for a newer release on launch and every six hours, and show an
-update button in the lobby header when one exists; clicking it downloads the update and
-restarts into it. Only **published** releases count (drafts are invisible to the updater),
+Installed apps check GitHub for a newer release on launch and every six hours. The update
+button in the lobby header is always visible: it shows the installed version when up to
+date (clicking it re-checks) and, when a newer release exists, clicking it downloads the
+update and restarts into it. Only **published** releases count (drafts are invisible to the updater),
 and in-place install on macOS needs a code-signed app: unsigned macOS builds show a
 "Download" button that opens the releases page instead.
 

@@ -62,16 +62,19 @@ function desktopNotice(): string {
 }
 /**
  * In-app update control, rendered only inside the Electron app (the preload exposes
- * `window.desktop.updates`). Starts hidden; `paintUpdate` shows it once a release is on
- * offer. The circular-arrows glyph is the same 16px stroke style as the download notice.
+ * `window.desktop.updates`). Always visible there: it reports the installed version
+ * while idle and the updater's progress otherwise (`paintUpdate`). The circular-arrows
+ * glyph is the same 16px stroke style as the download notice.
  */
 function updateNotice(): string {
   if (window.desktop?.updates === undefined) return "";
-  return `<button type="button" class="update-notice" hidden><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.65M2.5 8a5.5 5.5 0 0 1 9.6-3.65"/><path d="M12.5 1.8v2.9h-2.9M3.5 14.2v-2.9h2.9"/></svg><span></span></button>`;
+  return `<button type="button" class="update-notice" data-status="idle" aria-live="polite"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.65M2.5 8a5.5 5.5 0 0 1 9.6-3.65"/><path d="M12.5 1.8v2.9h-2.9M3.5 14.2v-2.9h2.9"/></svg><span></span></button>`;
 }
-/** Label + enabled state for each update status; `null` keeps the control hidden. */
-function updateLabel(state: DesktopUpdateState): { text: string; busy: boolean } | null {
+/** Label + enabled state for each update status. */
+function updateLabel(state: DesktopUpdateState): { text: string; busy: boolean } {
   switch (state.status) {
+    case "checking":
+      return { text: "Checking for updates…", busy: true };
     case "available":
       return {
         text: `${state.canInstall ? "Update to" : "Download"} v${state.version}`,
@@ -81,8 +84,10 @@ function updateLabel(state: DesktopUpdateState): { text: string; busy: boolean }
       return { text: `Updating… ${state.percent}%`, busy: true };
     case "downloaded":
       return { text: "Restart to update", busy: false };
+    case "error":
+      return { text: "Update check failed · Retry", busy: false };
     default:
-      return null;
+      return { text: `v${window.desktop?.version ?? "0.0.0"} · Up to date`, busy: false };
   }
 }
 const LABELS: Record<Variant, string> = {
@@ -129,6 +134,7 @@ export class Lobby {
   private entries: LeaderboardEntry[] = [];
   private eligible: LeaderboardEntry[] = [];
   private pacer: ArmedPacer | null = null;
+  private updateState: DesktopUpdateState = { status: "idle" };
   private reference: ReferenceLap | null | undefined;
   private images = new Map<Variant, string>();
   private readonly nameInput: HTMLInputElement;
@@ -260,24 +266,34 @@ export class Lobby {
     if (updates === undefined) return;
     const button = this.find<HTMLButtonElement>(".update-notice");
     button.addEventListener("click", () => {
-      void updates.install();
+      switch (this.updateState.status) {
+        case "available":
+        case "downloaded":
+          void updates.install();
+          return;
+        case "idle":
+        case "error":
+          void updates.check();
+          return;
+        default:
+          return;
+      }
     });
     updates.onState((state) => this.paintUpdate(state));
+    this.paintUpdate(this.updateState);
     // Catch up: the main process may have finished its first check before this
     // renderer subscribed.
     void updates.getState().then((state) => this.paintUpdate(state));
   }
   private paintUpdate(state: DesktopUpdateState): void {
+    this.updateState = state;
     const button = this.find<HTMLButtonElement>(".update-notice");
-    const label = updateLabel(state);
-    button.hidden = label === null;
-    button.disabled = label?.busy ?? false;
-    button.dataset.state = state.status;
-    const text = label?.text ?? "";
+    const { text, busy } = updateLabel(state);
+    button.disabled = busy;
+    button.dataset.status = state.status;
     this.find(".update-notice span").textContent = text;
     button.setAttribute("aria-label", text);
-    if (label === null) button.removeAttribute("title");
-    else button.title = text;
+    button.title = text;
   }
   private find<T extends HTMLElement = HTMLElement>(selector: string): T {
     return this.root.querySelector<T>(selector)!;

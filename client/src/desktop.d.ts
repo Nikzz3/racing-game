@@ -14,6 +14,7 @@ interface DesktopBridge {
 /** Snapshot of the auto-updater, mirrored from `desktop/src/main.ts`. */
 type DesktopUpdateState =
   | { readonly status: "idle" }
+  | { readonly status: "checking" }
   | {
       readonly status: "available";
       readonly version: string;
@@ -32,6 +33,8 @@ interface DesktopUpdates {
   getState(): Promise<DesktopUpdateState>;
   /** Download when `available`, restart into the new version when `downloaded`. */
   install(): Promise<void>;
+  /** Ask the updater to look for a newer release now (no-op while one is downloading). */
+  check(): Promise<void>;
   /** Subscribe to state changes; returns an unsubscribe function. */
   onState(cb: (state: DesktopUpdateState) => void): () => void;
 }

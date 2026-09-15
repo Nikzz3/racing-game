@@ -50,8 +50,10 @@ node desktop/scripts/release-notes.mjs v0.2.0
 ## What the installed app does with a release
 
 Packaged apps check the latest **published** release ten seconds after launch and every six
-hours (`electron-updater`, configured in `desktop/src/main.ts`). When a newer version exists
-the lobby header shows an update control; clicking it downloads and installs, then restarts.
+hours (`electron-updater`, configured in `desktop/src/main.ts`). The lobby header always
+shows an update control: it reads `v<version> · Up to date` when nothing is newer (clicking
+it re-checks), and when a newer version exists clicking it downloads and installs, then
+restarts.
 
 - **Windows and Linux** install in place, unsigned or not.
 - **macOS** can only install in place when the app is code-signed. Unsigned builds detect the

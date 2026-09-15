@@ -193,6 +193,7 @@ function installMenu(): void {
 // ever sees this snapshot; electron-updater's own events stay in the main process.
 type UpdateState =
   | { status: "idle" }
+  | { status: "checking" }
   | { status: "available"; version: string; canInstall: boolean }
   | { status: "downloading"; version: string; percent: number }
   | { status: "downloaded"; version: string }
@@ -211,7 +212,7 @@ function publishUpdateState(next: UpdateState): void {
  * Wire electron-updater to the renderer. Only meaningful in a packaged build:
  * unpackaged runs have no app-update.yml, so `checkForUpdates` would just log an
  * error. Every updater call is wrapped so a flaky network, a missing release or a
- * signature failure degrades to a hidden control, never to a crashed app.
+ * signature failure degrades to an `error` state on the control, never to a crashed app.
  *
  * macOS: Squirrel.Mac refuses to install an update into an app that is not
  * code-signed, and electron-updater surfaces that as an `error` after the zip has
@@ -225,7 +226,13 @@ function publishUpdateState(next: UpdateState): void {
  * in place like Windows and Linux.
  */
 function setupAutoUpdater(): void {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged) {
+    // Keep the IPC surface so the always-visible lobby control works in dev runs.
+    ipcMain.handle("desktop:update:state", () => updateState);
+    ipcMain.handle("desktop:update:check", () => {});
+    ipcMain.handle("desktop:update:install", () => {});
+    return;
+  }
   let updater: typeof electronUpdater.autoUpdater;
   try {
     updater = electronUpdater.autoUpdater;
@@ -241,6 +248,10 @@ function setupAutoUpdater(): void {
   // be attributed to it even after electron-updater has moved on.
   let offered: string | null = null;
 
+  updater.on("checking-for-update", () => {
+    if (updateState.status === "downloading" || updateState.status === "downloaded") return;
+    publishUpdateState({ status: "checking" });
+  });
   updater.on("update-available", (info) => {
     offered = info.version;
     publishUpdateState({ status: "available", version: info.version, canInstall: true });
@@ -284,6 +295,7 @@ function setupAutoUpdater(): void {
   };
 
   ipcMain.handle("desktop:update:state", () => updateState);
+  ipcMain.handle("desktop:update:check", () => check());
   ipcMain.handle("desktop:update:install", async () => {
     try {
       switch (updateState.status) {

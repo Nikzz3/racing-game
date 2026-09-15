@@ -202,22 +202,22 @@ a {
   border: 0;
   background: none;
   font: 9px var(--mono);
-  color: #b9b9bf;
+  color: #8e9097;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
   transition: color 0.15s;
 }
-.update-notice[hidden] {
-  display: none;
-}
 .update-notice svg {
   flex-shrink: 0;
 }
-.update-notice[data-state="available"],
-.update-notice[data-state="downloaded"] {
+.update-notice[data-status="available"],
+.update-notice[data-status="downloaded"] {
   color: var(--accent);
+}
+.update-notice[data-status="error"] {
+  color: #c9a06a;
 }
 .update-notice:hover,
 .update-notice:focus-visible {
@@ -227,6 +227,7 @@ a {
 }
 .update-notice:disabled {
   color: #8e9097;
+  opacity: 0.7;
   cursor: progress;
   text-decoration: none;
 }

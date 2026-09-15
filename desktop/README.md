@@ -57,7 +57,8 @@ deb, rpm, Flatpak and snap are intentionally not built.
 `electron-builder.yml`) in packaged builds only: it checks for a newer release ten
 seconds after launch and every six hours, and forwards the state to the renderer
 over IPC. The preload exposes it as `window.desktop.updates` (plus
-`window.desktop.version`); the lobby header renders an update button from it. The
+`window.desktop.version`); the lobby header renders an always-visible update button
+from it, showing the installed version when up to date and offering a manual check. The
 download starts only when the player clicks, and the app restarts into the new
 version on the next click (or installs on quit if they never do).
 

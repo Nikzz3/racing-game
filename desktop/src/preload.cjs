@@ -15,13 +15,14 @@ const version = argValue("--app-version=") ?? "0.0.0";
 // Contract with the client (see client/src/desktop.d.ts):
 //   window.desktop.serverUrl  overrides the WebSocket URL
 //   window.desktop.version    the installed app version
-//   window.desktop.updates    in-app update state + install trigger
+//   window.desktop.updates    in-app update state + check/install triggers
 contextBridge.exposeInMainWorld("desktop", {
   serverUrl,
   version,
   updates: {
     getState: () => ipcRenderer.invoke("desktop:update:state"),
     install: () => ipcRenderer.invoke("desktop:update:install"),
+    check: () => ipcRenderer.invoke("desktop:update:check"),
     onState: (cb) => {
       const listener = (_event, state) => cb(state);
       ipcRenderer.on("desktop:update", listener);

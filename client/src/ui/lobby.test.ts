@@ -1352,6 +1352,7 @@ describe("Lobby desktop update notice", () => {
     updates = {
       getState: vi.fn(async () => initial),
       install: vi.fn(async () => {}),
+      check: vi.fn(async () => {}),
       onState: vi.fn((cb: (state: DesktopUpdateState) => void) => {
         onStateCb = cb;
         return () => {
@@ -1389,12 +1390,16 @@ describe("Lobby desktop update notice", () => {
     expect(button()).toBeNull();
   });
 
-  it("is present but hidden while the updater is idle", async () => {
+  it("is visible with the installed version while the updater is idle", async () => {
     installBridge();
     new Lobby(parent, makeCallbacks());
     await Promise.resolve();
     expect(button()).not.toBeNull();
-    expect(button()!.hidden).toBe(true);
+    expect(button()!.hidden).toBe(false);
+    expect(button()!.disabled).toBe(false);
+    expect(button()!.textContent).toContain("v0.1.0 · Up to date");
+    expect(button()!.dataset.status).toBe("idle");
+    expect(button()!.getAttribute("aria-live")).toBe("polite");
     expect(updates.onState).toHaveBeenCalledTimes(1);
     expect(updates.getState).toHaveBeenCalledTimes(1);
     expect(button()!.compareDocumentPosition(parent.querySelector(".connection-status")!))
@@ -1405,19 +1410,27 @@ describe("Lobby desktop update notice", () => {
     installBridge({ status: "downloaded", version: "0.2.0" });
     new Lobby(parent, makeCallbacks());
     await Promise.resolve();
-    expect(button()!.hidden).toBe(false);
     expect(button()!.textContent).toContain("Restart to update");
+    expect(button()!.dataset.status).toBe("downloaded");
+  });
+
+  it("reports a check in progress and disables itself", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "checking" });
+    expect(button()!.disabled).toBe(true);
+    expect(button()!.textContent).toContain("Checking for updates…");
+    expect(button()!.dataset.status).toBe("checking");
   });
 
   it("shows the version once onState reports an update", () => {
     installBridge();
     new Lobby(parent, makeCallbacks());
     onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
-    expect(button()!.hidden).toBe(false);
     expect(button()!.disabled).toBe(false);
     expect(button()!.textContent).toContain("Update to v0.2.0");
     expect(button()!.getAttribute("aria-label")).toBe("Update to v0.2.0");
-    expect(button()!.dataset.state).toBe("available");
+    expect(button()!.dataset.status).toBe("available");
   });
 
   it("offers a download instead when the update cannot be installed in place", () => {
@@ -1431,24 +1444,43 @@ describe("Lobby desktop update notice", () => {
     installBridge();
     new Lobby(parent, makeCallbacks());
     onStateCb!({ status: "downloading", version: "0.2.0", percent: 42 });
-    expect(button()!.hidden).toBe(false);
     expect(button()!.disabled).toBe(true);
     expect(button()!.textContent).toContain("Updating… 42%");
+    expect(button()!.dataset.status).toBe("downloading");
   });
 
-  it("hides again on error", () => {
+  it("offers a retry on error", () => {
     installBridge();
     new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
     onStateCb!({ status: "error", message: "offline" });
-    expect(button()!.hidden).toBe(true);
+    expect(button()!.hidden).toBe(false);
+    expect(button()!.disabled).toBe(false);
+    expect(button()!.textContent).toContain("Update check failed · Retry");
+    expect(button()!.dataset.status).toBe("error");
   });
 
-  it("calls install when clicked", () => {
+  it("triggers a manual check when clicked while idle", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    button()!.click();
+    expect(updates.check).toHaveBeenCalledTimes(1);
+    expect(updates.install).not.toHaveBeenCalled();
+  });
+
+  it("calls install when clicked with an update available", () => {
     installBridge();
     new Lobby(parent, makeCallbacks());
     onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
     button()!.click();
     expect(updates.install).toHaveBeenCalledTimes(1);
+    expect(updates.check).not.toHaveBeenCalled();
+  });
+
+  it("re-checks when clicked after an error", () => {
+    installBridge();
+    new Lobby(parent, makeCallbacks());
+    onStateCb!({ status: "error", message: "offline" });
+    button()!.click();
+    expect(updates.check).toHaveBeenCalledTimes(1);
   });
 });
