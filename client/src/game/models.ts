@@ -7,7 +7,8 @@ const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
 let ready = false;
 let pending: Promise<void> | undefined;
-export const ASSET_LIBRARY_URL = "/models/rework/sunset-ridge.glb";
+/** Resolved against Vite's base so the packaged desktop build (base "./") can load it too. */
+export const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge.glb`;
 
 /** Blender collection names are preserved in glTF extras even after Three sanitizes node names. */
 export function registerLibrary(root: THREE.Group): void {

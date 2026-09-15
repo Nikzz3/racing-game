@@ -6,7 +6,8 @@
     "shared",
     "server",
     "client",
-    "e2e"
+    "e2e",
+    "desktop"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
@@ -15,6 +16,9 @@
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npx tsx e2e/scripts/test-e2e.ts",
+    "desktop:build": "npm run build -w client -- --base=./ && npm run build -w desktop",
+    "desktop:start": "npm run start -w desktop",
+    "desktop:dist": "npm run dist -w desktop",
     "sandcastle": "npx tsx .sandcastle/main.ts"
   },
   "devDependencies": {
@@ -26,7 +30,9 @@
     "esbuild@0.28.1": true,
     "cpu-features@0.0.10": true,
     "protobufjs@7.6.5": true,
-    "ssh2@1.17.0": true
+    "ssh2@1.17.0": true,
+    "electron@44.3.0": true,
+    "electron-winstaller@5.4.0": true
   },
   "dependencies": {
     "zod": "^4.4.3"

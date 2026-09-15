@@ -1,0 +1,22 @@
+{
+  "name": "@racing/desktop",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Electron desktop wrapper for Sunset Ridge Racing (macOS and Windows installers)",
+  "author": "Nick Zimmermann",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "electron": "44.3.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^6.0.3"
+  }
+}

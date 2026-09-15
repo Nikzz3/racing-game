@@ -44,6 +44,33 @@ of whatever database it runs against, so you must also set
 `E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the database is disposable — the wrapper
 refuses to start without it.
 
+## Desktop app (macOS / Windows)
+
+The `desktop/` workspace wraps the same client in Electron. Instead of talking to the
+server that served the page, the desktop build connects to the WebSocket URL baked in at
+build time from `RACING_SERVER_URL` (default `ws://localhost:8080`, i.e. a local
+`npm run dev` server).
+
+```bash
+RACING_SERVER_URL=wss://your-server.example npm run desktop:build
+npm run desktop:start
+```
+
+`desktop:build` builds the client with a relative Vite base and compiles the Electron
+main/preload; `desktop:start` launches it. To package installers locally run
+`npm run desktop:dist` — output lands in `desktop/release/` (for the current platform only).
+
+Releases are cut by tagging: pushing a `desktop-v*` tag runs `.github/workflows/desktop.yml`,
+which builds macOS (x64 + arm64 dmg/zip) and Windows (x64 nsis) installers and attaches
+them to a **draft** GitHub release for review before publishing. Set the `RACING_SERVER_URL`
+repository variable so released installers point at the deployed server; manual
+`workflow_dispatch` runs skip publishing and upload the installers as workflow artifacts.
+
+Builds are unsigned unless the `CSC_LINK` / `CSC_KEY_PASSWORD` secrets (and, for macOS
+notarization, `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`) are set.
+Unsigned installers work, but macOS Gatekeeper and Windows SmartScreen will warn on first
+launch.
+
 ## Controls
 
 - `W` — throttle

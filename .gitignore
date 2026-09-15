@@ -16,3 +16,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv*/
+
+# electron-builder output (desktop/dist is already covered by dist/ above).
+desktop/release/

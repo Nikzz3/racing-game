@@ -1,0 +1,72 @@
+# electron-builder configuration for Sunset Ridge Racing.
+#
+# From the repo root, `npm run desktop:build` builds the client with a relative Vite
+# base and compiles this workspace; then `npm run desktop:dist` packages it.
+#
+# Code signing / notarization (all optional; unsigned builds still work but
+# macOS Gatekeeper and Windows SmartScreen will warn users before launch):
+#   CSC_LINK                    base64 or file path of the .p12 signing certificate
+#                               (Developer ID Application on mac, Authenticode on win)
+#   CSC_KEY_PASSWORD            password for that certificate
+#   APPLE_ID                    Apple account e-mail used for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD app-specific password for that Apple ID
+#   APPLE_TEAM_ID               10-character Apple Developer team id
+# Set CSC_IDENTITY_AUTO_DISCOVERY=false to force an unsigned local build on a
+# machine that has certificates in its keychain.
+
+appId: com.sunsetridge.racing
+productName: Sunset Ridge Racing
+copyright: Copyright © 2026 Nick Zimmermann
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - "!**/*.map"
+
+extraResources:
+  - from: ../client/dist
+    to: client
+
+asar: true
+npmRebuild: false
+
+mac:
+  category: public.app-category.games
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarization is off by default so unsigned local builds succeed. To enable,
+  # set `notarize: true` and provide APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and
+  # APPLE_TEAM_ID (plus CSC_LINK / CSC_KEY_PASSWORD for the signing cert).
+  notarize: false
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  # Not a supported platform; AppImage is just a cheap smoke test on Linux dev boxes.
+  target:
+    - AppImage
+  category: Game
+
+publish:
+  provider: github
+  owner: Nikzz3
+  repo: racing-game
+  releaseType: draft

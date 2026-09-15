@@ -64,12 +64,8 @@ export class RacingApp {
     const attempt = ++this.connectionAttempt;
     this.notice?.remove();
     this.notice = null;
-    const protocol = location.protocol === "https:" ? "wss" : "ws";
-    const host = import.meta.env.DEV
-      ? `${location.hostname}:${import.meta.env.VITE_SERVER_PORT ?? "8080"}`
-      : location.host;
     try {
-      await this.net.connect(`${protocol}://${host}`);
+      await this.net.connect(resolveServerUrl());
     } catch (error) {
       if (
         attempt !== this.connectionAttempt ||
@@ -221,4 +217,20 @@ export class RacingApp {
     this.root.append(notice);
     this.notice = notice;
   }
+}
+
+/**
+ * The desktop (Electron) build injects `window.desktop.serverUrl` from its preload script
+ * because the page origin there (`app://bundle`) says nothing about where the server is.
+ * In the browser the server is the same host that served the page (or the dev server's
+ * sibling port).
+ */
+export function resolveServerUrl(): string {
+  const injected = window.desktop?.serverUrl;
+  if (injected) return injected;
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const host = import.meta.env.DEV
+    ? `${location.hostname}:${import.meta.env.VITE_SERVER_PORT ?? "8080"}`
+    : location.host;
+  return `${protocol}://${host}`;
 }

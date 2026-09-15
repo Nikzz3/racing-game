@@ -1,0 +1,86 @@
+name: Desktop installers
+
+# Installers are cut from `desktop-v*` tags so a desktop release is an explicit,
+# versioned act rather than a side effect of every push to master. The manual
+# trigger exists to smoke-test the packaging pipeline on a branch; those runs
+# never publish, they only upload artifacts.
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+# Read-only by default, matching ci.yml. Only the packaging job is granted a
+# writable token, and only because electron-builder needs it to create the draft
+# GitHub release on tag pushes.
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    strategy:
+      # A broken Windows build should not cancel a good macOS one (or vice versa);
+      # each platform's installer is independently useful.
+      fail-fast: false
+      matrix:
+        include:
+          # macOS builds must run on macOS: electron-builder can only produce
+          # signed/notarizable .dmg and .zip bundles there. Both Intel and Apple
+          # Silicon are built from the one runner.
+          - os: macos-latest
+            args: --mac --x64 --arm64
+          - os: windows-latest
+            args: --win --x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Builds the client with a relative Vite base (so assets resolve under the
+      # app's custom protocol) and compiles the Electron main/preload. The server
+      # URL is baked into desktop/dist/config.json at this step; set the
+      # RACING_SERVER_URL repository variable to point installers at the deployed
+      # server. Unset, it defaults to ws://localhost:8080, which is only useful
+      # for local testing.
+      - run: npm run desktop:build
+        env:
+          RACING_SERVER_URL: ${{ vars.RACING_SERVER_URL }}
+      # On tag pushes electron-builder publishes to a draft GitHub release for
+      # review before it goes public; on manual runs it only writes to
+      # desktop/release. `shell: bash` keeps the command identical on Windows.
+      #
+      # Signing is optional. When the CSC_*/APPLE_* secrets are absent
+      # electron-builder produces unsigned installers, which macOS Gatekeeper
+      # and Windows SmartScreen will warn about but still allow.
+      - run: npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        working-directory: desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # Manual runs have no release to publish to, so expose the installers as a
+      # workflow artifact instead. The .yml and .blockmap files are the
+      # auto-update metadata electron-builder writes alongside the installers.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.exe
+            desktop/release/*.yml
+            desktop/release/*.blockmap
+          retention-days: 7
