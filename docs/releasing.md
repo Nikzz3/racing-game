@@ -31,7 +31,7 @@ choose the tag) rebuilds everything and updates the existing draft in place.
 `desktop/scripts/release-notes.mjs` produces the release body from git at release time:
 
 - **Downloads** — a table linking each platform's installer on the release, followed by
-  one-line first-launch hints (unsigned macOS → right-click and Open, Windows SmartScreen →
+  one-line first-launch hints (macOS not notarized → Open Anyway or `xattr -cr`, Windows SmartScreen →
   More info and Run anyway, Linux → `chmod +x` the AppImage).
 - **What's Changed** — every non-merge commit subject between the previous `v*` tag and
   this one, each linked to its commit. Descriptive commit subjects are therefore the
@@ -67,4 +67,6 @@ the lobby header shows an update control; clicking it downloads and installs, th
 | `version` | `desktop/package.json` | Release version; must match the tag |
 
 Without the signing secrets the workflow still succeeds and ships unsigned installers, which
-macOS Gatekeeper and Windows SmartScreen warn about on first launch.
+macOS Gatekeeper and Windows SmartScreen warn about on first launch. The macOS bundle is
+still ad-hoc signed by `desktop/scripts/after-pack.cjs` so Gatekeeper offers Open Anyway
+instead of declaring the app damaged.

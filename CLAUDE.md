@@ -1,7 +1,7 @@
 # Sunset Ridge Racing
 
 A browser-based 3D multiplayer racing game (Three.js client, Node.js WebSocket server,
-Postgres leaderboard). See `README.md` for how to run it and `CONTEXT.md` for the domain
+Postgres leaderboard). See `CONTRIBUTING.md` for how to run it and `CONTEXT.md` for the domain
 glossary.
 
 ## Agent skills

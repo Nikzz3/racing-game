@@ -31,6 +31,8 @@ extraResources:
     to: client
 
 asar: true
+# Ad-hoc signs the macOS bundle when no certificate is configured; see the script.
+afterPack: scripts/after-pack.cjs
 npmRebuild: false
 
 # One naming template for every platform, with no spaces: GitHub rewrites spaces
