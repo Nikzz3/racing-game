@@ -5,6 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { CAR_VARIANTS, ROAD_HALF_WIDTH, TRACKS } from "@racing/shared";
 import { createCarMesh } from "./car";
 import { getMaterial, getModel, registerLibrary } from "./models";
+import { garageBayX } from "../ui/garage-camera";
 
 beforeAll(async () => {
   const bytes = await readFile(
@@ -33,7 +34,50 @@ beforeAll(async () => {
 });
 
 describe("Blender asset integration", () => {
-  it.each(["leafy_grass", "gravel_concrete"])(
+  it.each(CAR_VARIANTS)("connects both %s mirrors to the cabin", (variant) => {
+    const car = getModel(`car:${variant}`)!;
+    car.updateMatrixWorld(true);
+    for (const side of [-1, 1]) {
+      const ray = new THREE.Raycaster(
+        new THREE.Vector3(side * 0.93, 1.12, 0.45),
+        new THREE.Vector3(0, -1, 0),
+        0,
+        0.14,
+      );
+      expect(
+        ray.intersectObject(car, true).length,
+        `${variant} ${side < 0 ? "left" : "right"} mirror has an empty attachment gap`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("exports a garage with a floor at the car's tire contact height", () => {
+    const garage = getModel("environment:garage");
+    expect(garage, "Missing lobby garage collection").not.toBeNull();
+    garage!.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(garage!, true);
+    expect(bounds.min.x).toBeLessThan(-9);
+    expect(bounds.max.x).toBeGreaterThan(9);
+    expect(bounds.max.y).toBeGreaterThan(6);
+    const ray = new THREE.Raycaster(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0, -1, 0),
+    );
+    for (const variant of CAR_VARIANTS) {
+      ray.ray.origin.x = garageBayX(variant);
+      const floor = ray.intersectObject(garage!, true)[0];
+      expect(floor, `No floor under ${variant}`).toBeDefined();
+      expect(floor.point.y).toBeCloseTo(0, 3);
+    }
+    ray.ray.origin.set(0, 2, 0);
+    ray.ray.direction.set(0, 0, -1);
+    expect(ray.intersectObject(garage!, true)[0]?.distance).toBeLessThan(8);
+  });
+
+  it.each([
+    "leafy_grass", "gravel_concrete", "concrete_floor_worn_001",
+    "painted_plaster_wall", "blue_metal_plate", "painted_metal_shutter",
+  ])(
     "exports %s with color, roughness, and normal textures",
     (name) => {
       const material = getMaterial(name);

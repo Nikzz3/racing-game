@@ -269,6 +269,7 @@ a {
 .menu-screen {
   position: absolute;
   inset: 0;
+  z-index: 1;
   transition:
     transform 0.72s cubic-bezier(0.22, 0.75, 0.13, 1),
     visibility 0.72s;
@@ -426,15 +427,27 @@ a {
 }
 .live-car-stage {
   position: absolute;
-  width: 80%;
-  height: 130%;
-  top: -15%;
-  left: 10%;
-  z-index: 3;
+  inset: 0;
+  z-index: 0;
   pointer-events: none;
 }
-.car-stage:has(.has-live-car) .car-slide[data-position="current"] img {
+.lobby-deck:has(.has-live-car) .car-slides {
   visibility: hidden;
+}
+.lobby-deck:has(.has-live-car) .garage-screen {
+  background: linear-gradient(180deg, #10111480, transparent 30%, transparent 58%, #101114ed);
+}
+.lobby-deck:has(.has-garage-environment) .track-screen {
+  background: linear-gradient(180deg, #101114b0, #10111455 45%, #101114ed);
+}
+.lobby-deck:has(.has-garage-environment) .settings-screen {
+  background: #101114bf;
+}
+.lobby-deck:has(.has-garage-environment) :is(.stage-sun, .stage-horizon, .stage-grid, .stage-watermark, .stage-platform, .setup-scene) {
+  display: none;
+}
+.lobby-deck:has(.has-garage-environment) :is(.garage-heading, .track-heading, .selected-car-copy, .selected-track-copy) {
+  text-shadow: 0 2px 14px #000b;
 }
 .showroom-loading {
   position: absolute;
@@ -1419,12 +1432,6 @@ a {
   }
   .stage-car {
     width: 80%;
-  }
-  .live-car-stage {
-    width: 145%;
-    left: -22.5%;
-    height: 125%;
-    top: -12.5%;
   }
   .stage-watermark {
     font-size: 24vw;
