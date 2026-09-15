@@ -63,13 +63,16 @@ npm run desktop:start
 main/preload; `desktop:start` launches it. To package installers locally run
 `npm run desktop:dist` — output lands in `desktop/release/` (for the current platform only).
 
-Releases are cut by tagging: bump `version` in `desktop/package.json`, then push a matching
-`v<version>` tag (e.g. `v0.2.0`) to run `.github/workflows/desktop.yml`, which builds macOS
-(x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage) installers and attaches
-them to a **draft** GitHub release for review before publishing. Set the
-`RACING_SERVER_URL` repository variable so released installers point at the deployed
-server; manual `workflow_dispatch` runs skip publishing and upload the installers as
-workflow artifacts.
+The step-by-step release flow is in [docs/releasing.md](docs/releasing.md). In short: bump
+`version` in `desktop/package.json`, then push a matching
+`v<version>` tag (e.g. `v0.2.0`) to run `.github/workflows/desktop.yml`. A per-platform
+matrix builds the macOS (x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage)
+installers and uploads them as workflow artifacts; a single `release` job then assembles
+them into **one draft** GitHub release with generated notes (download table plus the
+commits since the previous tag). Publish the draft manually once reviewed. Re-running the
+workflow on the same tag updates the draft in place. Set the `RACING_SERVER_URL`
+repository variable so released installers point at the deployed server; manual
+`workflow_dispatch` runs stop at the artifacts and create no release.
 
 Installed apps check GitHub for a newer release on launch and every six hours, and show an
 update button in the lobby header when one exists; clicking it downloads the update and

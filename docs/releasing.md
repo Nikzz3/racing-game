@@ -1,0 +1,70 @@
+# Releasing the desktop app
+
+The desktop app (`desktop/`) ships as installers for macOS, Windows and Linux through
+GitHub releases. A release is a tag push; everything after that is automated by
+`.github/workflows/desktop.yml`. Nobody writes release notes by hand.
+
+## Cutting a release
+
+1. **Bump the version** in `desktop/package.json` (`"version": "0.2.0"`), commit it to
+   `master`, and push. The tag must equal `v` + this version, so bump first.
+2. **Tag and push the tag:**
+
+   ```bash
+   git tag -a v0.2.0 -m "Sunset Ridge Racing desktop 0.2.0"
+   git push origin v0.2.0
+   ```
+
+3. **Wait for the workflow.** Three `package` jobs build the installers on macOS, Windows
+   and Ubuntu runners and upload them as artifacts. A final `release` job then downloads
+   all of them, checks the tag matches the package version, generates the notes, and
+   creates **one draft release** named after the tag with every installer plus the
+   `latest*.yml` and `.blockmap` files the in-app updater reads.
+4. **Review and publish the draft** on the releases page. Until it is published, installed
+   apps cannot see it, so nothing reaches players by accident.
+
+Re-running the workflow on the same tag (Actions → Desktop installers → Run workflow →
+choose the tag) rebuilds everything and updates the existing draft in place.
+
+## Where the release notes come from
+
+`desktop/scripts/release-notes.mjs` produces the release body from git at release time:
+
+- **Downloads** — a table linking each platform's installer on the release, followed by
+  one-line first-launch hints (unsigned macOS → right-click and Open, Windows SmartScreen →
+  More info and Run anyway, Linux → `chmod +x` the AppImage).
+- **What's Changed** — every non-merge commit subject between the previous `v*` tag and
+  this one, each linked to its commit. Descriptive commit subjects are therefore the
+  changelog; write them for the player reading the release.
+- **Full Changelog** — a GitHub compare link from the previous tag to this one.
+
+For the first release there is no previous tag, so the list is limited to commits that
+touched the desktop workspace or its workflow.
+
+To preview the notes locally for an existing tag:
+
+```bash
+node desktop/scripts/release-notes.mjs v0.2.0
+```
+
+## What the installed app does with a release
+
+Packaged apps check the latest **published** release ten seconds after launch and every six
+hours (`electron-updater`, configured in `desktop/src/main.ts`). When a newer version exists
+the lobby header shows an update control; clicking it downloads and installs, then restarts.
+
+- **Windows and Linux** install in place, unsigned or not.
+- **macOS** can only install in place when the app is code-signed. Unsigned builds detect the
+  update and open the releases page instead.
+
+## Configuration that feeds a release
+
+| Setting | Where | Purpose |
+|---|---|---|
+| `RACING_SERVER_URL` | GitHub repository variable | WebSocket URL baked into the installers (`wss://racing.nickzimmermann.com`) |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | GitHub secrets (optional) | Code-signing certificate for macOS and Windows |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | GitHub secrets (optional) | macOS notarization; also set `notarize: true` in `desktop/electron-builder.yml` |
+| `version` | `desktop/package.json` | Release version; must match the tag |
+
+Without the signing secrets the workflow still succeeds and ships unsigned installers, which
+macOS Gatekeeper and Windows SmartScreen warn about on first launch.

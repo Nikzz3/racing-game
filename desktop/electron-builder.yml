@@ -33,6 +33,14 @@ extraResources:
 asar: true
 npmRebuild: false
 
+# One naming template for every platform, with no spaces: GitHub rewrites spaces
+# in asset names to dots, which breaks both the download links in the release
+# notes and the file names electron-updater reads from latest*.yml. `${os}`
+# renders as mac/win/linux and `${arch}` as x64/arm64 (mac), x64 (win) or x86_64
+# (AppImage). desktop/scripts/release-notes.mjs derives its links from this
+# template, so change both together.
+artifactName: Sunset-Ridge-Racing-${version}-${os}-${arch}.${ext}
+
 mac:
   category: public.app-category.games
   target:
@@ -74,7 +82,6 @@ linux:
   # StartupWMClass matches Electron's app_id and launchers/Steam can associate the
   # running window with the entry.
   syncDesktopName: true
-  artifactName: Sunset-Ridge-Racing-${version}-linux-${arch}.${ext}
   # Becomes the .desktop file's Comment= line (electron-builder always writes it
   # from `description`, so it cannot be set under `desktop.entry`).
   description: 3D multiplayer arcade racing, from the browser to your desktop
@@ -83,6 +90,10 @@ linux:
       Name: Sunset Ridge Racing
       Categories: Game;
 
+# Uploads no longer go through electron-builder (the workflow always packages with
+# `--publish never` and a separate job creates the release with `gh`), but this
+# block must stay: it is what makes electron-builder write app-update.yml into
+# the bundle, which is how electron-updater knows which GitHub repo to poll.
 publish:
   provider: github
   owner: Nikzz3

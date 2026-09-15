@@ -63,13 +63,22 @@ version on the next click (or installs on quit if they never do).
 
 Release checklist, since the updater is picky about names:
 
-1. Bump `version` in `package.json`; electron-builder names the GitHub release
-   `v<version>` no matter which git tag triggered it.
-2. Push the matching `v<version>` tag. The workflow uploads the installers plus the
-   updater metadata (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `*.blockmap`)
-   to a **draft** release.
-3. Publish the release. Installed apps only see published releases (the updater
+1. Bump `version` in `package.json`. The workflow refuses to release unless the tag
+   is exactly `v<version>`, because that version is stamped into the installer names
+   and the updater metadata.
+2. Push the matching `v<version>` tag. Each platform job packages with
+   `--publish never` and uploads its installers plus the updater metadata
+   (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `*.blockmap`) as a workflow
+   artifact; the `release` job then creates **one draft** release from all of them,
+   with notes from `scripts/release-notes.mjs` (download table and the commits
+   since the previous tag). Re-running the workflow on the same tag replaces the
+   draft's assets and notes in place.
+3. Publish the draft. Installed apps only see published releases (the updater
    reads `/releases/latest`), so nothing happens until this step.
+
+Every asset follows `artifactName` in `electron-builder.yml`
+(`Sunset-Ridge-Racing-<version>-<os>-<arch>.<ext>`, no spaces). The notes script
+derives its download links from that template, so change both together.
 
 macOS can only install updates into a code-signed app (Squirrel.Mac rejects unsigned
 bundles). When the download or install fails on macOS the button falls back to

@@ -2,20 +2,26 @@ name: Desktop installers
 
 # Installers are cut from `v*` tags so a desktop release is an explicit,
 # versioned act rather than a side effect of every push to master. The tag must
-# be `v` + desktop/package.json `version`: electron-builder always names the
-# GitHub release `v<version>` (it ignores the pushed tag name), and the in-app
-# updater resolves `/releases/latest` by that same name, so any other tag scheme
-# would leave the git tag and the release tag pointing at different things. The
-# manual trigger exists to smoke-test the packaging pipeline on a branch; those
-# runs never publish, they only upload artifacts.
+# be `v` + desktop/package.json `version`: electron-builder stamps that version
+# into the installer names and updater metadata, and the in-app updater resolves
+# `/releases/latest` by tag, so any other tag scheme would leave the git tag and
+# the installers disagreeing about which version they are. The `release` job
+# enforces the match before it creates anything.
+#
+# Packaging and releasing are separate jobs. Each platform packages with
+# `--publish never` and hands its installers over as a workflow artifact; a
+# single `release` job then assembles ONE draft GitHub release from all three.
+# Letting each matrix leg publish on its own used to race and leave three draft
+# releases for the same tag. The manual trigger exists to smoke-test the
+# packaging pipeline on a branch; those runs only upload artifacts.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-# Read-only by default, matching ci.yml. Only the packaging job is granted a
-# writable token, and only because electron-builder needs it to create the draft
-# GitHub release on tag pushes.
+# Read-only by default, matching ci.yml. Only the release job is granted a
+# writable token, and only because it creates the draft GitHub release; the
+# packaging jobs never talk to the GitHub API.
 permissions:
   contents: read
 
@@ -24,8 +30,6 @@ jobs:
     name: Package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    permissions:
-      contents: write
     strategy:
       # A broken Windows build should not cancel a good macOS or Linux one (or
       # vice versa); each platform's installer is independently useful.
@@ -61,13 +65,11 @@ jobs:
       - run: npm run desktop:build
         env:
           RACING_SERVER_URL: ${{ vars.RACING_SERVER_URL }}
-      # On tag pushes electron-builder publishes to a draft GitHub release for
-      # review before it goes public; on manual runs it only writes to
-      # desktop/release. `--publish always` also uploads the electron-updater
-      # metadata (latest.yml, latest-mac.yml, latest-linux.yml and the .blockmap
-      # files) that installed apps poll; drafts are invisible to them, so the
-      # in-app update only appears once the release is published.
-      # `shell: bash` keeps the command identical on Windows.
+      # Always `--publish never`: uploading is the release job's business. The
+      # `publish` block in electron-builder.yml is still consulted here, because
+      # it is what makes electron-builder write app-update.yml (the updater's
+      # pointer to this repo) and the latest*.yml / .blockmap metadata into
+      # desktop/release. `shell: bash` keeps the command identical on Windows.
       #
       # Signing is optional. When the CSC_*/APPLE_* secrets are absent
       # electron-builder produces unsigned installers, which macOS Gatekeeper
@@ -82,21 +84,21 @@ jobs:
             [ -n "${!v}" ] || unset "$v"
           done
           [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
-          npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+          npx electron-builder ${{ matrix.args }} --publish never
         working-directory: desktop
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      # Manual runs have no release to publish to, so expose the installers as a
-      # workflow artifact instead. The .yml and .blockmap files are the
-      # auto-update metadata electron-builder writes alongside the installers.
+      # The artifact is the hand-off to the release job on tag pushes and the
+      # deliverable of a manual smoke-test run. The .yml and .blockmap files are
+      # the auto-update metadata electron-builder writes alongside the installers;
+      # installed apps read the installer names out of latest*.yml, so they must
+      # travel together.
       - uses: actions/upload-artifact@v7
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           name: desktop-${{ matrix.os }}
           path: |
@@ -107,3 +109,57 @@ jobs:
             desktop/release/*.yml
             desktop/release/*.blockmap
           retention-days: 7
+
+  release:
+    name: Draft GitHub release
+    runs-on: ubuntu-latest
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # The notes script walks tags and history to find the previous release
+          # and the commits since; a shallow checkout has neither.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # All three platform artifacts land flat in one directory, which is what
+      # `gh release create` wants to attach.
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+      - name: Check the tag matches desktop/package.json
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(node -p "require('./desktop/package.json').version")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag '$TAG' does not match desktop/package.json version '$VERSION' (expected tag 'v$VERSION'). Bump the version and re-tag."
+            exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Generate release notes
+        run: node desktop/scripts/release-notes.mjs "$TAG" > notes.md
+      # The release is created as a draft and stays one: publishing is a manual
+      # review step, and the in-app updater ignores drafts until then. Re-running
+      # the workflow on the same tag updates the existing draft in place instead
+      # of failing on "release already exists".
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l release-assets
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; replacing assets and notes"
+            gh release upload "$TAG" release-assets/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --draft --title "Sunset Ridge Racing $VERSION" --notes-file notes.md release-assets/*
+          fi
