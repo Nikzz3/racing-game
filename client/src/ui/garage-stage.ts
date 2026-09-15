@@ -71,7 +71,6 @@ export class GarageStage {
     canvas.setAttribute("aria-hidden", "true");
     canvas.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
-    host.append(canvas);
     this.camera.position.set(5, 2.8, 7.6);
     this.camera.lookAt(0, 1, 0);
     const environment = new RoomEnvironment();
@@ -107,7 +106,6 @@ export class GarageStage {
     if (garage) {
       this.scene.add(garage.clone(true));
       this.scene.background = new THREE.Color(0x323b43);
-      host.classList.add("has-garage-environment");
       // Match the authored ceiling fixtures without adding six shadow passes.
       RectAreaLightUniformsLib.init();
       const ceiling = new THREE.RectAreaLight(0xe2edff, 3, 36, 5);
@@ -131,6 +129,10 @@ export class GarageStage {
       this.cars.add(car);
     }
     this.scene.add(this.cars);
+    // Touch the DOM last so a failed GPU setup leaves nothing behind for the
+    // still-preview fallback to clean up.
+    host.append(canvas);
+    if (garage) host.classList.add("has-garage-environment");
     this.observer = new ResizeObserver(this.resize);
     this.observer.observe(host);
     document.addEventListener("visibilitychange", this.visibility);
