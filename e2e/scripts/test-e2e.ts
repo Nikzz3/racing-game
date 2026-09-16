@@ -8,7 +8,10 @@ let interrupted = false;
 let stopping: Promise<unknown> | undefined;
 
 function stopContainer(): Promise<unknown> {
-  stopping ??= container?.stop() ?? Promise.resolve();
+  // Only memoise once a container exists; a signal during startup must not
+  // cache a no-op that leaves the container running afterwards.
+  if (!container) return Promise.resolve();
+  stopping ??= container.stop();
   return stopping;
 }
 
