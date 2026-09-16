@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import {
   asDifficulty,
-  DEFAULT_TRACK_SLUG,
+  MAX_SPEED_MS,
+  minPlausibleLapMs,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
@@ -13,6 +14,7 @@ import {
   type Variant,
 } from "@racing/shared";
 import { pool } from "./db";
+import { SerialQueues } from "./serial";
 import { createTiming, type TimingState } from "./timing";
 import { sendEncoded } from "./transport";
 
@@ -30,8 +32,8 @@ export interface Player {
   rot: number;
   speed: number;
   timing: TimingState;
-  lapFrames: ReplayFrame[];
-  lapFramesValid: boolean;
+  /** Frames of the lap in progress; null once the lap outgrew MAX_REPLAY_FRAMES. */
+  lapFrames: ReplayFrame[] | null;
 }
 
 export function createPlayer(id: string, ws: WebSocket): Player {
@@ -47,12 +49,13 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     speed: 0,
     timing: createTiming(),
     lapFrames: [],
-    lapFramesValid: true,
   };
 }
 
 export class Room {
   readonly players = new Map<string, Player>();
+  readonly maxSpeedMs: number;
+  readonly minLapMs: number;
 
   constructor(
     readonly id: string,
@@ -60,7 +63,10 @@ export class Room {
     readonly createdAt: number,
     readonly difficulty: Difficulty,
     readonly track: Track,
-  ) {}
+  ) {
+    this.maxSpeedMs = MAX_SPEED_MS[difficulty];
+    this.minLapMs = minPlausibleLapMs(track, this.maxSpeedMs);
+  }
 
   info(): RoomInfo {
     return {
@@ -102,7 +108,9 @@ export class Room {
 
 export class RoomManager {
   readonly rooms = new Map<string, Room>();
-  private readonly pendingWrites = new Map<string, Promise<void>>();
+  // Per-room write order matters: the insert must finish before a fast
+  // departure's delete, or a restart would restore an empty room.
+  private readonly writes = new SerialQueues("Failed to persist room");
 
   async load(): Promise<void> {
     await pool.query(
@@ -124,11 +132,7 @@ export class RoomManager {
     }
   }
 
-  create(
-    name: string,
-    difficulty: Difficulty,
-    trackSlug: string = DEFAULT_TRACK_SLUG,
-  ): Room {
+  create(name: string, difficulty: Difficulty, trackSlug?: string): Room {
     const room = new Room(
       randomUUID().slice(0, 8),
       name.trim().slice(0, 24) || "Race Room",
@@ -137,16 +141,10 @@ export class RoomManager {
       resolveTrack(trackSlug),
     );
     this.rooms.set(room.id, room);
-    this.persist(room.id, () =>
+    this.writes.enqueue(room.id, () =>
       pool.query(
         "INSERT INTO rooms (id, name, created_at, difficulty, track) VALUES ($1, $2, $3, $4, $5)",
-        [
-          room.id,
-          room.name,
-          new Date(room.createdAt),
-          room.difficulty,
-          room.track.id,
-        ],
+        [room.id, room.name, new Date(room.createdAt), room.difficulty, room.track.id],
       ),
     );
     return room;
@@ -158,7 +156,6 @@ export class RoomManager {
     if (player.room !== room) this.leave(player);
     player.timing = createTiming();
     player.lapFrames = [];
-    player.lapFramesValid = true;
     player.room = room;
     room.players.set(player.id, player);
     return room;
@@ -170,21 +167,17 @@ export class RoomManager {
     room.players.delete(player.id);
     player.room = null;
     player.lapFrames = [];
-    player.lapFramesValid = true;
     if (room.players.size === 0) this.remove(room);
     return room;
   }
 
-  close(room: Room): Player[] {
-    const players = [...room.players.values()];
-    for (const player of players) {
+  close(room: Room): void {
+    for (const player of room.players.values()) {
       player.room = null;
       player.lapFrames = [];
-      player.lapFramesValid = true;
     }
     room.players.clear();
     this.remove(room);
-    return players;
   }
 
   list(): RoomInfo[] {
@@ -193,24 +186,8 @@ export class RoomManager {
 
   private remove(room: Room): void {
     this.rooms.delete(room.id);
-    this.persist(room.id, () =>
+    this.writes.enqueue(room.id, () =>
       pool.query("DELETE FROM rooms WHERE id = $1", [room.id]),
     );
-  }
-
-  /** Finish inserts before deletes so a fast departure cannot leave a restored empty room. */
-  private persist(roomId: string, write: () => Promise<unknown>): void {
-    const previous = this.pendingWrites.get(roomId) ?? Promise.resolve();
-    const pending = previous.then(write).then(
-      () => {},
-      (error) => {
-        console.error("Failed to persist room:", error);
-      },
-    );
-    this.pendingWrites.set(roomId, pending);
-    void pending.then(() => {
-      if (this.pendingWrites.get(roomId) === pending)
-        this.pendingWrites.delete(roomId);
-    });
   }
 }

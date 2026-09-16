@@ -44,21 +44,14 @@ export class Net {
         this.status("offline");
       });
       socket.addEventListener("message", (event) => {
-        if (this.socket !== socket) return;
-        if (typeof event.data !== "string") return;
+        if (this.socket !== socket || typeof event.data !== "string") return;
         let data: unknown;
         try {
           data = JSON.parse(event.data);
         } catch {
           return;
         }
-        if (
-          !data ||
-          typeof data !== "object" ||
-          !("type" in data) ||
-          typeof data.type !== "string"
-        )
-          return;
+        if (typeof (data as { type?: unknown })?.type !== "string") return;
         for (const callback of this.messages) callback(data as ServerMessage);
       });
     });

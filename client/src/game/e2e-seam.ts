@@ -120,7 +120,7 @@ export class E2eSeam {
       this.game.step(E2E_DT, input);
       this.nextInputIndex++;
       steps++;
-      this.samples.push(structuredClone(this.game.localState()));
+      this.samples.push(this.game.localState());
     }
     return steps;
   }

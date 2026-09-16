@@ -9,13 +9,18 @@ import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
 import { createPlayer, RoomManager, type Player } from "./rooms";
+import { SerialQueues } from "./serial";
 import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
+
+const MAX_NAME_LENGTH = 16;
 
 export class RacingApplication {
   readonly rooms = new RoomManager();
   private readonly players = new Set<Player>();
-  private readonly boardWrites = new Map<string, Promise<void>>();
+  // Each (track, difficulty) board compares the record and writes the lap as
+  // one job, so two laps finishing together cannot both claim the record.
+  private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -24,6 +29,7 @@ export class RacingApplication {
   connect(socket: WebSocket): void {
     const player = createPlayer(randomUUID().slice(0, 8), socket);
     this.players.add(player);
+    // Messages arriving before the welcome is sent are held until then.
     const pending: ClientMessage[] = [];
     let ready = false;
 
@@ -47,7 +53,7 @@ export class RacingApplication {
       if (room) this.broadcastRooms();
     });
 
-    void topEntries(10)
+    void topEntries()
       .catch((error) => {
         console.error("Failed to load welcome leaderboard:", error);
         return [];
@@ -83,18 +89,15 @@ export class RacingApplication {
   private receive(player: Player, message: ClientMessage): void {
     switch (message.type) {
       case "hello":
-        player.name = message.name.trim().slice(0, 16) || "Racer";
+        player.name = message.name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
         player.variant = message.variant;
         return;
-      case "createRoom": {
-        const room = this.rooms.create(
-          message.roomName,
-          message.difficulty,
-          message.track,
+      case "createRoom":
+        this.join(
+          player,
+          this.rooms.create(message.roomName, message.difficulty, message.track).id,
         );
-        this.join(player, room.id);
         return;
-      }
       case "joinRoom":
         this.join(player, message.roomId);
         return;
@@ -107,7 +110,6 @@ export class RacingApplication {
         if (player.room) {
           respawnTiming(player.timing);
           player.lapFrames = [];
-          player.lapFramesValid = true;
         }
         return;
       case "state": {
@@ -118,10 +120,7 @@ export class RacingApplication {
       case "getReplay":
         void this.replay(player, message).catch((error) => {
           console.error("Failed to load replay:", error);
-          send(player.ws, {
-            type: "error",
-            message: "Replay is temporarily unavailable",
-          });
+          send(player.ws, { type: "error", message: "Replay is temporarily unavailable" });
         });
         return;
     }
@@ -147,10 +146,8 @@ export class RacingApplication {
     player: Player,
     message: Extract<ClientMessage, { type: "getReplay" }>,
   ): Promise<void> {
-    const name = message.name.trim().slice(0, 16);
-    const replay = name
-      ? await getReplay(name, message.track, message.difficulty)
-      : null;
+    const name = message.name.trim().slice(0, MAX_NAME_LENGTH);
+    const replay = name ? await getReplay(name, message.track, message.difficulty) : null;
     if (!replay) {
       send(player.ws, {
         type: "error",
@@ -162,46 +159,35 @@ export class RacingApplication {
   }
 
   private completeLap(lap: CompletedLap): void {
+    const { room, message } = lap;
     if (!lap.plausible) {
       console.info(
-        `Implausible lap rejected: player=${lap.message.name} track=${lap.room.track.id}` +
-          ` difficulty=${lap.room.difficulty} lapTimeMs=${lap.message.lapTimeMs} minLapMs=${lap.minimumTimeMs}`,
+        `Implausible lap rejected: player=${message.name} track=${room.track.id}` +
+          ` difficulty=${room.difficulty} lapTimeMs=${message.lapTimeMs} minLapMs=${room.minLapMs}`,
       );
-      lap.room.broadcast(lap.message);
+      room.broadcast(message);
       return;
     }
-
-    // Serialize each board's record comparison with its write, while position updates continue.
-    const key = `${lap.room.track.id}:${lap.room.difficulty}`;
-    const previous = this.boardWrites.get(key) ?? Promise.resolve();
-    const pending = previous.then(async () => {
+    // The lap is broadcast only after the record comparison so isTrackRecord
+    // is right; position snapshots keep flowing meanwhile.
+    this.boardWrites.enqueue(`${room.track.id}:${room.difficulty}`, async () => {
       try {
-        const record = await bestTime(lap.room.track.id, lap.room.difficulty);
+        const record = await bestTime(room.track.id, room.difficulty);
         const changed = await submitLap(
-          lap.message.name,
-          lap.room.track.id,
-          lap.room.difficulty,
-          lap.message.lapTimeMs,
+          message.name,
+          room.track.id,
+          room.difficulty,
+          message.lapTimeMs,
           lap.frames,
           lap.variant,
         );
         if (changed) {
-          lap.message.isTrackRecord =
-            lap.message.lapTimeMs < (record ?? Infinity);
-          this.broadcast({
-            type: "leaderboard",
-            entries: await topEntries(10),
-          });
+          message.isTrackRecord = message.lapTimeMs < (record ?? Infinity);
+          this.broadcast({ type: "leaderboard", entries: await topEntries() });
         }
-      } catch (error) {
-        console.error("Failed to persist completed lap:", error);
       } finally {
-        lap.room.broadcast(lap.message);
+        room.broadcast(message);
       }
-    });
-    this.boardWrites.set(key, pending);
-    void pending.then(() => {
-      if (this.boardWrites.get(key) === pending) this.boardWrites.delete(key);
     });
   }
 

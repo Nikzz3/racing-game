@@ -27,29 +27,17 @@ async function isFile(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
   } catch (error) {
-    if (
-      (error as NodeJS.ErrnoException).code === "ENOENT" ||
-      (error as NodeJS.ErrnoException).code === "ENOTDIR"
-    )
-      return false;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
     throw error;
   }
 }
 
+/** Serve the built client as a static SPA: unknown paths fall back to index.html. */
 export function createHttpHandler(clientDirectory: string) {
   const root = resolve(clientDirectory);
-  return (request: IncomingMessage, response: ServerResponse): void => {
-    void serve(request, response).catch((error) => {
-      console.error("Failed to serve client:", error);
-      if (response.headersSent) response.destroy();
-      else response.writeHead(500).end("Internal server error");
-    });
-  };
 
-  async function serve(
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): Promise<void> {
+  async function serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const rawPath = (request.url ?? "/").split("?")[0];
     if (rawPath === "/healthz") {
       response.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
@@ -68,11 +56,7 @@ export function createHttpHandler(clientDirectory: string) {
     }
     let file = resolve(root, `.${path}`);
     const within = relative(root, file);
-    if (
-      within === ".." ||
-      within.startsWith(`..${sep}`) ||
-      isAbsolute(within)
-    ) {
+    if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within)) {
       response.writeHead(403).end();
       return;
     }
@@ -96,4 +80,12 @@ export function createHttpHandler(clientDirectory: string) {
     response.on("close", () => stream.destroy());
     stream.pipe(response);
   }
+
+  return (request: IncomingMessage, response: ServerResponse): void => {
+    void serve(request, response).catch((error) => {
+      console.error("Failed to serve client:", error);
+      if (response.headersSent) response.destroy();
+      else response.writeHead(500).end("Internal server error");
+    });
+  };
 }

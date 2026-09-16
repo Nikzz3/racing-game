@@ -1,181 +1,94 @@
-// Parallel Planner with Review — four-phase orchestration loop
+// Sandcastle orchestration loop: plan -> implement + review (per issue, in
+// parallel) -> merge into the integration branch. Repeats up to MAX_ITERATIONS
+// so issues unblocked by a round of merges are picked up next round. Master is
+// never touched; promoting integration to master is a human-driven step.
 //
-// This template drives a multi-phase workflow:
-//   Phase 1 (Plan):             A Codex agent analyzes open issues, builds a
-//                               dependency graph, and outputs a <plan> JSON
-//                               listing unblocked issues with branch names.
-//   Phase 2 (Execute + Review): For each issue, a sandbox is created via
-//                               createSandbox(). The implementer runs first
-//                               (100 iterations). If it produces commits, a
-//                               reviewer runs in the same sandbox on the same
-//                               branch (1 iteration). All issue pipelines run
-//                               concurrently via Promise.allSettled().
-//   Phase 3 (Merge):            A single agent merges all completed branches
-//                               into the integration branch (never master
-//                               directly — promoting integration to master is
-//                               a separate, human-driven step).
-//
-// The outer loop repeats up to MAX_ITERATIONS times so that newly unblocked
-// issues are picked up after each round of merges.
-//
-// Usage:
-//   npx tsx .sandcastle/main.ts
-// Or add to package.json:
-//   "scripts": { "sandcastle": "npx tsx .sandcastle/main.ts" }
+// Usage: npm run sandcastle
 
 import * as sandcastle from "@ai-hero/sandcastle";
 import { podman } from "@ai-hero/sandcastle/sandboxes/podman";
 import { execSync } from "node:child_process";
 import { z } from "zod";
 
-// The planner emits its plan as JSON inside <plan> tags; Output.object extracts
-// and validates it against this schema. We use Zod here, but any Standard
-// Schema validator works just as well — Valibot, ArkType, etc. See
-// https://standardschema.dev.
 const planSchema = z.object({
-  issues: z.array(
-    z.object({ id: z.string(), title: z.string(), branch: z.string() }),
-  ),
+  issues: z.array(z.object({ id: z.string(), title: z.string(), branch: z.string() })),
 });
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-// Maximum number of plan→execute→merge cycles before stopping.
-// Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
-
-// Agent providers can be tuned or switched independently for each phase.
 const PLANNER_AGENT = sandcastle.claudeCode("claude-opus-4-8");
 const IMPLEMENTER_AGENT = sandcastle.claudeCode("claude-fable-5");
 const REVIEWER_AGENT = sandcastle.claudeCode("claude-fable-5");
 const MERGER_AGENT = sandcastle.claudeCode("claude-opus-4-8");
+const INTEGRATION_BRANCH = "integration/sandcastle";
 
-// Share the host Codex login with every ephemeral Sandcastle container. Run
-// `codex login` on the host to create/refresh this subscription credential.
+// Share the host Codex login with every ephemeral container. Run `codex login`
+// on the host to create/refresh this subscription credential.
 const SANDBOX = podman({
   mounts: [
-    {
-      hostPath: "~/.codex/auth.json",
-      sandboxPath: "/home/agent/.codex/auth.json",
-      readonly: true,
-    },
+    { hostPath: "~/.codex/auth.json", sandboxPath: "/home/agent/.codex/auth.json", readonly: true },
   ],
 });
 
-// All completed branches are merged into this branch — never into master
-// directly. Promote integration to master yourself (e.g. via a PR) once
-// you've reviewed the accumulated work.
-const INTEGRATION_BRANCH = "integration/sandcastle";
+// node_modules is copied from the host so the sandbox skips a full install; the
+// hook then picks up platform-specific binaries and packages added since the copy.
+const hooks = { sandbox: { onSandboxReady: [{ command: "npm install" }] } };
+const copyToWorktree = ["node_modules"];
 
-// Ensure the integration branch exists, then bring it up to date with master
-// before the loop starts; new issue branches fork from it, so without this
-// sync the run drifts behind master and the promotion PR ends in conflicts.
-// Conflicts between master and integration abort the run — resolve them by
-// hand rather than letting agents build on a half-merged base.
+// Ensure the integration branch exists and is up to date with master before the
+// loop starts; issue branches fork from it, so without this sync the run drifts
+// behind master and the promotion PR ends in conflicts. Conflicts between master
+// and integration abort the run: resolve them by hand rather than letting agents
+// build on a half-merged base.
 execSync("git fetch origin master", { stdio: "inherit" });
 execSync(
   `git rev-parse --verify --quiet ${INTEGRATION_BRANCH} || git branch ${INTEGRATION_BRANCH} origin/master`,
   { stdio: "inherit" },
 );
-const currentBranch = execSync("git branch --show-current").toString().trim();
-if (currentBranch === INTEGRATION_BRANCH) {
-  // The integration branch is checked out here — merge in place.
+if (execSync("git branch --show-current").toString().trim() === INTEGRATION_BRANCH) {
   execSync("git merge --no-edit origin/master", { stdio: "inherit" });
 } else {
   try {
     // Fast-forward the ref without touching this working tree.
-    execSync(`git fetch . origin/master:${INTEGRATION_BRANCH}`, {
-      stdio: "inherit",
-    });
+    execSync(`git fetch . origin/master:${INTEGRATION_BRANCH}`, { stdio: "inherit" });
   } catch {
-    // Branches diverged — merge in a throwaway worktree.
+    // Branches diverged: merge in a throwaway worktree.
     const syncWorktree = ".sandcastle/worktrees/integration-sync";
-    execSync(`git worktree add ${syncWorktree} ${INTEGRATION_BRANCH}`, {
-      stdio: "inherit",
-    });
+    execSync(`git worktree add ${syncWorktree} ${INTEGRATION_BRANCH}`, { stdio: "inherit" });
     try {
-      execSync("git merge --no-edit origin/master", {
-        cwd: syncWorktree,
-        stdio: "inherit",
-      });
+      execSync("git merge --no-edit origin/master", { cwd: syncWorktree, stdio: "inherit" });
     } finally {
-      execSync(`git worktree remove --force ${syncWorktree}`, {
-        stdio: "inherit",
-      });
+      execSync(`git worktree remove --force ${syncWorktree}`, { stdio: "inherit" });
     }
   }
 }
 
-// Hooks run inside the sandbox before the agent starts each iteration.
-// npm install ensures the sandbox always has fresh dependencies.
-const hooks = {
-  sandbox: { onSandboxReady: [{ command: "npm install" }] },
-};
-
-// Copy node_modules from the host into the worktree before each sandbox
-// starts. Avoids a full npm install from scratch; the hook above handles
-// platform-specific binaries and any packages added since the last copy.
-const copyToWorktree = ["node_modules"];
-
-// ---------------------------------------------------------------------------
-// Main loop
-// ---------------------------------------------------------------------------
-
 for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} ===\n`);
 
-  // -------------------------------------------------------------------------
-  // Phase 1: Plan
-  //
-  // The planning agent reads the open issue list,
-  // builds a dependency graph, and selects the issues that can be worked in
-  // parallel right now (i.e., no blocking dependencies on other open issues).
-  //
-  // It outputs a <plan> JSON block — Output.object parses and validates it.
-  // -------------------------------------------------------------------------
+  // The planner reads the open issues and picks the ones with no blocking
+  // dependencies, emitted as a <plan> JSON block. Structured output requires
+  // maxIterations: 1; a missing or invalid plan throws and aborts the loop.
   const plan = await sandcastle.run({
     hooks,
     sandbox: SANDBOX,
     name: "planner",
-    // One iteration is enough: the planner just needs to read and reason,
-    // not write code. (Structured output requires maxIterations: 1.)
     maxIterations: 1,
-    // Use the same Codex model across planning, implementation, and review.
     agent: PLANNER_AGENT,
     promptFile: "./.sandcastle/plan-prompt.md",
-    // Extract and validate the <plan> JSON into a typed object. Throws
-    // StructuredOutputError if the tag is missing, the JSON is malformed, or
-    // validation fails — which aborts the loop.
     output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
   });
 
   const issues = plan.output.issues;
-
   if (issues.length === 0) {
-    // No unblocked work — either everything is done or everything is blocked.
     console.log("No unblocked issues to work on. Exiting.");
     break;
   }
 
-  console.log(
-    `Planning complete. ${issues.length} issue(s) to work in parallel:`,
-  );
-  for (const issue of issues) {
-    console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
-  }
+  console.log(`Planning complete. ${issues.length} issue(s) to work in parallel:`);
+  for (const issue of issues) console.log(`  ${issue.id}: ${issue.title} → ${issue.branch}`);
 
-  // -------------------------------------------------------------------------
-  // Phase 2: Execute + Review
-  //
-  // For each issue, create a sandbox via createSandbox() so the implementer
-  // and reviewer share the same sandbox instance per branch. The implementer
-  // runs first; if it produces commits, the reviewer runs in the same sandbox.
-  //
-  // Promise.allSettled means one failing pipeline doesn't cancel the others.
-  // -------------------------------------------------------------------------
-
+  // Implementer and reviewer share one sandbox per issue; the reviewer only runs
+  // if the implementer committed. allSettled keeps one failure from cancelling the rest.
   const settled = await Promise.allSettled(
     issues.map(async (issue) => {
       const sandbox = await sandcastle.createSandbox({
@@ -185,94 +98,48 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         hooks,
         copyToWorktree,
       });
-
       try {
-        // Run the implementer
         const implement = await sandbox.run({
           name: "implementer",
           maxIterations: 100,
           agent: IMPLEMENTER_AGENT,
           promptFile: "./.sandcastle/implement-prompt.md",
-          promptArgs: {
-            TASK_ID: issue.id,
-            ISSUE_TITLE: issue.title,
-            BRANCH: issue.branch,
-          },
+          promptArgs: { TASK_ID: issue.id, ISSUE_TITLE: issue.title, BRANCH: issue.branch },
         });
+        if (implement.commits.length === 0) return implement;
 
-        // Only review if the implementer produced commits
-        if (implement.commits.length > 0) {
-          const review = await sandbox.run({
-            name: "reviewer",
-            maxIterations: 1,
-            agent: REVIEWER_AGENT,
-            promptFile: "./.sandcastle/review-prompt.md",
-            promptArgs: {
-              BRANCH: issue.branch,
-            },
-          });
-
-          // Merge commits from both runs so the merge phase sees all of them.
-          // Each sandbox.run() only returns commits from its own run.
-          return {
-            ...review,
-            commits: [...implement.commits, ...review.commits],
-          };
-        }
-
-        return implement;
+        const review = await sandbox.run({
+          name: "reviewer",
+          maxIterations: 1,
+          agent: REVIEWER_AGENT,
+          promptFile: "./.sandcastle/review-prompt.md",
+          promptArgs: { BRANCH: issue.branch },
+        });
+        // Each run only reports its own commits; the merge phase needs both.
+        return { ...review, commits: [...implement.commits, ...review.commits] };
       } finally {
         await sandbox.close();
       }
     }),
   );
 
-  // Log any agents that threw (network error, sandbox crash, etc.).
-  for (const [i, outcome] of settled.entries()) {
+  const completedIssues = issues.filter((issue, i) => {
+    const outcome = settled[i]!;
     if (outcome.status === "rejected") {
-      console.error(
-        `  ✗ ${issues[i]!.id} (${issues[i]!.branch}) failed: ${outcome.reason}`,
-      );
+      console.error(`  ✗ ${issue.id} (${issue.branch}) failed: ${outcome.reason}`);
+      return false;
     }
-  }
-
-  // Only pass branches that actually produced commits to the merge phase.
-  // An agent that ran successfully but made no commits has nothing to merge.
-  const completedIssues = settled
-    .map((outcome, i) => ({ outcome, issue: issues[i]! }))
-    .filter(
-      (entry) =>
-        entry.outcome.status === "fulfilled" &&
-        entry.outcome.value.commits.length > 0,
-    )
-    .map((entry) => entry.issue);
-
+    return outcome.value.commits.length > 0;
+  });
   const completedBranches = completedIssues.map((i) => i.branch);
 
-  console.log(
-    `\nExecution complete. ${completedBranches.length} branch(es) with commits:`,
-  );
-  for (const branch of completedBranches) {
-    console.log(`  ${branch}`);
-  }
-
+  console.log(`\nExecution complete. ${completedBranches.length} branch(es) with commits:`);
+  for (const branch of completedBranches) console.log(`  ${branch}`);
   if (completedBranches.length === 0) {
-    // All agents ran but none made commits — nothing to merge this cycle.
     console.log("No commits produced. Nothing to merge.");
     continue;
   }
 
-  // -------------------------------------------------------------------------
-  // Phase 3: Merge
-  //
-  // One agent merges all completed branches into the integration branch,
-  // resolving any conflicts and running tests to confirm everything works.
-  // Master is never touched; promoting integration to master is a separate,
-  // human-driven step.
-  //
-  // The {{BRANCHES}} and {{ISSUES}} prompt arguments are lists that the agent
-  // uses to know which branches to merge and which issues to close.
-  // -------------------------------------------------------------------------
   await sandcastle.run({
     hooks,
     sandbox: SANDBOX,
@@ -280,14 +147,11 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     maxIterations: 1,
     agent: MERGER_AGENT,
     promptFile: "./.sandcastle/merge-prompt.md",
-    // Run the merger's worktree on the integration branch so merge commits
-    // land there instead of on the host's current branch (master).
+    // Merge commits land on the integration branch, not the host's current branch.
     branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
     promptArgs: {
       INTEGRATION_BRANCH,
-      // A markdown list of branch names, one per line.
       BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
-      // A markdown list of issue IDs and titles, one per line.
       ISSUES: completedIssues.map((i) => `- ${i.id}: ${i.title}`).join("\n"),
     },
   });

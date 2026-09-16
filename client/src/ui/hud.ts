@@ -9,6 +9,9 @@ export class Hud {
   private readonly root = document.createElement("div");
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private readonly fields = new Map<string, HTMLElement>();
+  private standings = "";
+  private dial = "";
+  private dot = "";
   constructor(
     parent: HTMLElement,
     roomName: string,
@@ -44,15 +47,20 @@ export class Hud {
   setSpeed(speed: number): void {
     const kmh = Math.round(Math.abs(speed) * 3.6 * DISPLAY_SPEED_SCALE);
     this.text(".speed-value", String(kmh));
-    this.el(".speed-dial-fill").style.strokeDasharray =
-      `${Math.min(100, (kmh / DIAL_MAX_KMH) * 100)} 100`;
+    const dial = `${Math.min(100, (kmh / DIAL_MAX_KMH) * 100)} 100`;
+    if (dial === this.dial) return;
+    this.dial = dial;
+    this.el(".speed-dial-fill").style.strokeDasharray = dial;
   }
   setPosition(x: number, z: number): void {
     const dot = this.el(".hud-map-driver");
-    if (dot) {
-      dot.setAttribute("cx", x.toFixed(1));
-      dot.setAttribute("cy", z.toFixed(1));
-    }
+    if (!dot) return;
+    const cx = x.toFixed(1),
+      cy = z.toFixed(1);
+    if (cx + cy === this.dot) return;
+    this.dot = cx + cy;
+    dot.setAttribute("cx", cx);
+    dot.setAttribute("cy", cy);
   }
   setCurrentLap(time: number | null): void {
     this.text(".hud-cur-lap", formatMs(time));
@@ -77,14 +85,15 @@ export class Hud {
         (a.bestLapMs ?? Infinity) - (b.bestLapMs ?? Infinity) ||
         a.name.localeCompare(b.name),
     );
-    const table = this.el(".hud-standings tbody");
     const markup = sorted
       .map(
         (p, i) =>
           `<tr class="${p.id === id ? "me" : ""}"><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td class="st-time">${formatMs(p.bestLapMs)}</td><td class="st-time">L${p.laps}</td></tr>`,
       )
       .join("");
-    if (table.innerHTML !== markup) table.innerHTML = markup;
+    if (markup === this.standings) return;
+    this.standings = markup;
+    this.el(".hud-standings tbody").innerHTML = markup;
   }
   showPacerChip(onDismiss: () => void, name = ""): void {
     this.el(".pacer-chip-dismiss").onclick = onDismiss;

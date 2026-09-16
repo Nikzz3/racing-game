@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { LobbyCallbacks } from "./lobby";
-import { DESKTOP_DOWNLOAD_URL, Lobby } from "./lobby";
+import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
 import {
   CAR_VARIANTS,
   type LeaderboardEntry,
-  type RoomInfo,
   type ReplayFrame,
+  type RoomInfo,
 } from "@racing/shared";
 import type { ReferenceLap } from "../game/reference-lap";
 import { formatMs } from "../util";
@@ -27,7 +26,7 @@ const AI_FRAMES: ReplayFrame[] = [
   [1000 / 60, 0.5, 0.1, 0.01, 3],
 ];
 
-function makeReferenceLap(timeMs = 23800): ReferenceLap {
+function referenceLap(timeMs = 23800): ReferenceLap {
   return {
     name: "AI Record",
     variant: "police",
@@ -37,131 +36,136 @@ function makeReferenceLap(timeMs = 23800): ReferenceLap {
   };
 }
 
-beforeEach(() => {
-  buildReferenceLapMock.mockReset();
-  buildReferenceLapMock.mockReturnValue(makeReferenceLap());
-});
-
-function makeCallbacks(): LobbyCallbacks {
+function entry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
   return {
+    name: "Alice",
+    timeMs: 60000,
+    date: "2026-01-01",
+    hasReplay: false,
+    difficulty: "medium",
+    track: "sunset-ridge",
+    ...overrides,
+  };
+}
+
+let parent: HTMLElement;
+let lobby: Lobby;
+let cbs: LobbyCallbacks;
+
+/** Mounts a fresh Lobby into `parent`; call again in a test to remount. */
+function mount(): Lobby {
+  cbs = {
     onCreate: vi.fn(),
     onJoin: vi.fn(),
     onReplay: vi.fn(),
     onReferenceLap: vi.fn(),
     onVariantChange: vi.fn(),
   };
+  lobby = new Lobby(parent, cbs);
+  return lobby;
 }
+function q<T extends HTMLElement = HTMLElement>(selector: string): T {
+  return parent.querySelector<T>(selector)!;
+}
+function click(selector: string): void {
+  q<HTMLButtonElement>(selector).click();
+}
+function press(el: HTMLElement, key: string): void {
+  el.dispatchEvent(
+    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+  );
+}
+function active(selector: string): boolean {
+  return q(selector).classList.contains("active");
+}
+function checked(selector: string): string | null {
+  return q(selector).getAttribute("aria-checked");
+}
+function picker(): HTMLSelectElement {
+  return q<HTMLSelectElement>(".pacer-select");
+}
+function pickPacer(value: string): void {
+  picker().value = value;
+  picker().dispatchEvent(new Event("change"));
+}
+function optionTexts(): string[] {
+  return [...picker().options].map((o) => o.textContent!);
+}
+function names(): string[] {
+  return [...parent.querySelectorAll(".lb-list .lb-name")].map(
+    (n) => n.textContent!,
+  );
+}
+function submitForm(): void {
+  q<HTMLFormElement>(".create-form").dispatchEvent(
+    new Event("submit", { bubbles: true, cancelable: true }),
+  );
+}
+/** Walks to the settings screen the way a player does. */
+function enterSettings(): void {
+  click("[data-select-car]");
+  click("[data-select-track]");
+}
+const track = (slug: string) => `button[data-track="${slug}"]`;
+const diff = (d: string) => `button[data-diff="${d}"]`;
+const boardDiff = (d: string) => `.board-diff-opt[data-board-diff="${d}"]`;
+const card = (variant: string) => `.garage-card[data-variant="${variant}"]`;
 
-function makeParent(): HTMLElement {
-  const el = document.createElement("div");
-  document.body.appendChild(el);
-  return el;
-}
+beforeEach(() => {
+  buildReferenceLapMock.mockReset();
+  buildReferenceLapMock.mockReturnValue(referenceLap());
+  localStorage.clear();
+  parent = document.createElement("div");
+  document.body.appendChild(parent);
+});
+afterEach(() => {
+  parent.remove();
+  localStorage.clear();
+  Reflect.deleteProperty(window, "desktop");
+});
 
 describe("Lobby track selector cards", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-  let cbs: LobbyCallbacks;
-
-  beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-  });
-  afterEach(() => parent.remove());
+  beforeEach(mount);
 
   it("renders a card for each registered track", () => {
-    expect(
-      parent.querySelector('button[data-track="sunset-ridge"]'),
-    ).not.toBeNull();
-    expect(
-      parent.querySelector('button[data-track="stormhaven"]'),
-    ).not.toBeNull();
+    expect(q(track("sunset-ridge"))).not.toBeNull();
+    expect(q(track("stormhaven"))).not.toBeNull();
   });
 
   it("Sunset Ridge card is active by default", () => {
-    expect(
-      parent
-        .querySelector<HTMLElement>('button[data-track="sunset-ridge"]')!
-        .classList.contains("active"),
-    ).toBe(true);
-    expect(
-      parent
-        .querySelector<HTMLElement>('button[data-track="stormhaven"]')!
-        .classList.contains("active"),
-    ).toBe(false);
+    expect(active(track("sunset-ridge"))).toBe(true);
+    expect(active(track("stormhaven"))).toBe(false);
   });
 
   it("clicking Stormhaven marks it active and deactivates Sunset Ridge", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
-    expect(
-      parent
-        .querySelector<HTMLElement>('button[data-track="stormhaven"]')!
-        .classList.contains("active"),
-    ).toBe(true);
-    expect(
-      parent
-        .querySelector<HTMLElement>('button[data-track="sunset-ridge"]')!
-        .classList.contains("active"),
-    ).toBe(false);
+    click(track("stormhaven"));
+    expect(active(track("stormhaven"))).toBe(true);
+    expect(active(track("sunset-ridge"))).toBe(false);
   });
 
   it("track cards contain the track name", () => {
-    expect(
-      parent.querySelector('button[data-track="sunset-ridge"]')!.textContent,
-    ).toContain("Sunset Ridge Circuit");
-    expect(
-      parent.querySelector('button[data-track="stormhaven"]')!.textContent,
-    ).toContain("Stormhaven Circuit");
+    expect(q(track("sunset-ridge")).textContent).toContain(
+      "Sunset Ridge Circuit",
+    );
+    expect(q(track("stormhaven")).textContent).toContain("Stormhaven Circuit");
   });
 
   it("selecting Stormhaven filters the leaderboard to Stormhaven entries", () => {
-    const entries: LeaderboardEntry[] = [
-      {
-        name: "Alice",
-        timeMs: 60000,
-        date: "2026-01-01",
-        hasReplay: false,
-        difficulty: "medium",
-        track: "sunset-ridge",
-      },
-      {
-        name: "Bob",
-        timeMs: 65000,
-        date: "2026-01-02",
-        hasReplay: false,
-        difficulty: "medium",
-        track: "stormhaven",
-      },
-    ];
-    lobby.setLeaderboard(entries);
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
-    const lb = parent.querySelector(".lb-list")!.textContent ?? "";
-    expect(lb).toContain("Bob");
-    expect(lb).not.toContain("Alice");
+    lobby.setLeaderboard([
+      entry(),
+      entry({ name: "Bob", timeMs: 65000, track: "stormhaven" }),
+    ]);
+    click(track("stormhaven"));
+    expect(names()).toEqual(["Bob"]);
   });
 });
 
 describe("Lobby unified difficulty selector", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-  let cbs: LobbyCallbacks;
-
-  beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-  });
-  afterEach(() => parent.remove());
+  beforeEach(mount);
 
   it("has a unified difficulty button for each difficulty", () => {
-    expect(parent.querySelector('button[data-diff="easy"]')).not.toBeNull();
-    expect(parent.querySelector('button[data-diff="medium"]')).not.toBeNull();
-    expect(parent.querySelector('button[data-diff="hard"]')).not.toBeNull();
+    for (const d of ["easy", "medium", "hard"])
+      expect(q(diff(d))).not.toBeNull();
   });
 
   it("the Records board has its own difficulty radios that never carry data-diff", () => {
@@ -171,51 +175,17 @@ describe("Lobby unified difficulty selector", () => {
   });
 
   it("clicking hard filters the leaderboard to hard entries", () => {
-    const entries: LeaderboardEntry[] = [
-      {
-        name: "Alice",
-        timeMs: 60000,
-        date: "2026-01-01",
-        hasReplay: false,
-        difficulty: "medium",
-        track: "sunset-ridge",
-      },
-      {
-        name: "Bob",
-        timeMs: 55000,
-        date: "2026-01-02",
-        hasReplay: false,
-        difficulty: "hard",
-        track: "sunset-ridge",
-      },
-    ];
-    lobby.setLeaderboard(entries);
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
-    const lb = parent.querySelector(".lb-list")!.textContent ?? "";
-    expect(lb).toContain("Bob");
-    expect(lb).not.toContain("Alice");
+    lobby.setLeaderboard([
+      entry(),
+      entry({ name: "Bob", timeMs: 55000, difficulty: "hard" }),
+    ]);
+    click(diff("hard"));
+    expect(names()).toEqual(["Bob"]);
   });
 });
 
 describe("Lobby create-room callback", () => {
-  let parent: HTMLElement;
-  let cbs: LobbyCallbacks;
-  let lobby: Lobby;
-
-  beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-  });
-  afterEach(() => parent.remove());
-
-  function submitForm(): void {
-    parent
-      .querySelector<HTMLFormElement>(".create-form")!
-      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-  }
+  beforeEach(mount);
 
   it("submitting the form calls onCreate with default track (sunset-ridge) and difficulty (medium)", () => {
     submitForm();
@@ -227,9 +197,7 @@ describe("Lobby create-room callback", () => {
   });
 
   it("onCreate includes selected track after switching to Stormhaven", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
+    click(track("stormhaven"));
     submitForm();
     expect(cbs.onCreate).toHaveBeenCalledWith(
       expect.any(String),
@@ -239,9 +207,7 @@ describe("Lobby create-room callback", () => {
   });
 
   it("onCreate includes selected difficulty after switching to hard", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
+    click(diff("hard"));
     submitForm();
     expect(cbs.onCreate).toHaveBeenCalledWith(
       expect.any(String),
@@ -252,100 +218,55 @@ describe("Lobby create-room callback", () => {
 });
 
 describe("Lobby room list tracks", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
+  beforeEach(mount);
 
-  beforeEach(() => {
-    parent = makeParent();
-    lobby = new Lobby(parent, makeCallbacks());
-  });
-  afterEach(() => parent.remove());
-
-  it("room rows show the track name for Stormhaven", () => {
+  it.each([
+    ["stormhaven", "Stormhaven Circuit"],
+    ["sunset-ridge", "Sunset Ridge Circuit"],
+  ] as const)("room rows show the track name for %s", (slug, name) => {
     lobby.setRooms([
       {
         id: "r1",
         name: "Test Room",
         players: 2,
         difficulty: "medium",
-        track: "stormhaven",
+        track: slug,
       } as RoomInfo,
     ]);
-    expect(parent.querySelector(".room-list")!.textContent).toContain(
-      "Stormhaven Circuit",
-    );
-  });
-
-  it("room rows show the track name for Sunset Ridge", () => {
-    lobby.setRooms([
-      {
-        id: "r2",
-        name: "Another Room",
-        players: 1,
-        difficulty: "hard",
-        track: "sunset-ridge",
-      } as RoomInfo,
-    ]);
-    expect(parent.querySelector(".room-list")!.textContent).toContain(
-      "Sunset Ridge Circuit",
-    );
+    expect(q(".room-list").textContent).toContain(name);
   });
 });
 
 describe("Lobby Pacer arming UX", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-  let cbs: LobbyCallbacks;
-
-  const replayEntry: LeaderboardEntry = {
-    name: "Alice",
-    timeMs: 62340,
-    date: "2026-01-01",
-    hasReplay: true,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
-  const noReplayEntry: LeaderboardEntry = {
+  const replayEntry = entry({ timeMs: 62340, hasReplay: true });
+  const noReplayEntry = entry({
     name: "Bob",
     timeMs: 65000,
     date: "2026-01-02",
-    hasReplay: false,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
-  const replayEntry2: LeaderboardEntry = {
+  });
+  const replayEntry2 = entry({
     name: "Carol",
     timeMs: 63000,
     date: "2026-01-03",
     hasReplay: true,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
+  });
 
   beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-    lobby.setLeaderboard([replayEntry, noReplayEntry, replayEntry2]);
+    mount().setLeaderboard([replayEntry, noReplayEntry, replayEntry2]);
   });
-  afterEach(() => parent.remove());
-
-  function picker(): HTMLSelectElement {
-    return parent.querySelector<HTMLSelectElement>(".pacer-select")!;
-  }
 
   /** Selects the option naming `name` (or "No Pacer" when null) and fires change. */
-  function pickPacer(name: string | null): void {
-    const sel = picker();
-    sel.value =
+  function pickByName(name: string | null): void {
+    pickPacer(
       name === null
         ? "-1"
-        : [...sel.options].find((o) => o.textContent!.includes(name))!.value;
-    sel.dispatchEvent(new Event("change"));
+        : [...picker().options].find((o) => o.textContent!.includes(name))!
+            .value,
+    );
   }
 
   it("picker lives in the Starting Grid panel", () => {
-    expect(parent.querySelector(".panel-rooms .pacer-select")).not.toBeNull();
+    expect(q(".panel-rooms .pacer-select")).not.toBeNull();
   });
 
   it("non-replay row shows no Watch button", () => {
@@ -361,21 +282,18 @@ describe("Lobby Pacer arming UX", () => {
   });
 
   it("offers only replay-bearing entries", () => {
-    const texts = [...picker().options].map((o) => o.textContent!);
-    expect(texts.some((t) => t.includes("Alice"))).toBe(true);
-    expect(texts.some((t) => t.includes("Carol"))).toBe(true);
-    expect(texts.some((t) => t.includes("Bob"))).toBe(false);
+    const texts = optionTexts().join("\n");
+    expect(texts).toContain("Alice");
+    expect(texts).toContain("Carol");
+    expect(texts).not.toContain("Bob");
   });
 
   it("options show a formatted lap time", () => {
-    const alice = [...picker().options].find((o) =>
-      o.textContent!.includes("Alice"),
-    )!;
-    expect(alice.textContent).toContain("1:02");
+    expect(optionTexts().find((t) => t.includes("Alice"))).toContain("1:02");
   });
 
   it('picking an entry arms it as a kind:"replay" Pacer', () => {
-    pickPacer("Alice");
+    pickByName("Alice");
     expect(lobby.armedPacer).toEqual({
       kind: "replay",
       name: "Alice",
@@ -386,14 +304,14 @@ describe("Lobby Pacer arming UX", () => {
   });
 
   it('picking "No Pacer" clears the armed entry', () => {
-    pickPacer("Alice");
-    pickPacer(null);
+    pickByName("Alice");
+    pickByName(null);
     expect(lobby.armedPacer).toBeNull();
   });
 
   it("picking a new entry replaces the previous one", () => {
-    pickPacer("Alice");
-    pickPacer("Carol");
+    pickByName("Alice");
+    pickByName("Carol");
     expect(lobby.armedPacer).toMatchObject({
       kind: "replay",
       entry: replayEntry2,
@@ -401,32 +319,24 @@ describe("Lobby Pacer arming UX", () => {
   });
 
   it("only offers entries matching selected Track and Difficulty", () => {
-    const otherTrackEntry: LeaderboardEntry = {
-      name: "Dave",
-      timeMs: 60000,
-      date: "2026-01-04",
-      hasReplay: true,
-      difficulty: "medium",
-      track: "stormhaven",
-    };
-    lobby.setLeaderboard([replayEntry, otherTrackEntry]);
-    // Default view is sunset-ridge / medium — Dave (stormhaven) should not be offered
-    const texts = [...picker().options].map((o) => o.textContent!);
-    expect(texts.some((t) => t.includes("Alice"))).toBe(true);
-    expect(texts.some((t) => t.includes("Dave"))).toBe(false);
+    lobby.setLeaderboard([
+      replayEntry,
+      entry({ name: "Dave", hasReplay: true, track: "stormhaven" }),
+    ]);
+    const texts = optionTexts().join("\n");
+    expect(texts).toContain("Alice");
+    expect(texts).not.toContain("Dave");
   });
 
   it("switching Track clears the armed Pacer and resets the picker", () => {
-    pickPacer("Alice");
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
+    pickByName("Alice");
+    click(track("stormhaven"));
     expect(lobby.armedPacer).toBeNull();
     expect(picker().value).toBe("-1");
   });
 
   it("the armed Pacer survives a leaderboard refresh with new entry objects", () => {
-    pickPacer("Alice");
+    pickByName("Alice");
     lobby.setLeaderboard([{ ...replayEntry }, noReplayEntry, replayEntry2]);
     expect(lobby.armedPacer).toMatchObject({
       kind: "replay",
@@ -436,9 +346,7 @@ describe("Lobby Pacer arming UX", () => {
   });
 
   it("is disabled when no entry has a replay and the AI is ineligible", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
+    click(diff("hard"));
     lobby.setLeaderboard([{ ...noReplayEntry, difficulty: "hard" }]);
     expect(picker().disabled).toBe(true);
   });
@@ -450,68 +358,34 @@ describe("Lobby Pacer arming UX", () => {
 });
 
 describe("Lobby AI Record Pacer option", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-
-  const alice: LeaderboardEntry = {
-    name: "Alice",
-    timeMs: 22000,
-    date: "2026-01-01",
-    hasReplay: true,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
-  const carol: LeaderboardEntry = {
+  const alice = entry({ timeMs: 22000, hasReplay: true });
+  const carol = entry({
     name: "Carol",
     timeMs: 63000,
     date: "2026-01-03",
     hasReplay: true,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
-
-  beforeEach(() => {
-    parent = makeParent();
   });
-  afterEach(() => parent.remove());
-
-  function makeLobby(): Lobby {
-    lobby = new Lobby(parent, makeCallbacks());
-    return lobby;
-  }
-
-  function picker(): HTMLSelectElement {
-    return parent.querySelector<HTMLSelectElement>(".pacer-select")!;
-  }
 
   function aiOption(): HTMLOptionElement | undefined {
     return [...picker().options].find((o) => o.value === "ai");
   }
 
-  function pick(value: string): void {
-    picker().value = value;
-    picker().dispatchEvent(new Event("change"));
-  }
-
   it("offers the AI Record with the baked time when eligible", () => {
-    buildReferenceLapMock.mockReturnValue(makeReferenceLap(24680));
-    makeLobby();
-    const opt = aiOption();
-    expect(opt).toBeDefined();
+    buildReferenceLapMock.mockReturnValue(referenceLap(24680));
+    mount();
     // The displayed time is the bake's, never a literal.
-    expect(opt!.textContent).toBe(`⚑ AI Record — ${formatMs(24680)}`);
+    expect(aiOption()!.textContent).toBe(`⚑ AI Record — ${formatMs(24680)}`);
   });
 
   it("is styled to match the Pacer cyan", () => {
-    makeLobby();
+    mount();
     expect(aiOption()!.classList.contains("pacer-opt-ai")).toBe(true);
   });
 
   it("sits at its time-sorted position among the human options", () => {
     // Alice 22.0s < AI 23.8s < Carol 63.0s
-    makeLobby().setLeaderboard([alice, carol]);
-    const texts = [...picker().options].map((o) => o.textContent!);
-    expect(texts).toEqual([
+    mount().setLeaderboard([alice, carol]);
+    expect(optionTexts()).toEqual([
       "No Pacer — race alone",
       `⚑ Alice — ${formatMs(22000)}`,
       `⚑ AI Record — ${formatMs(23800)}`,
@@ -520,32 +394,28 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("is absent on a Track without a trained policy", () => {
-    makeLobby();
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
+    mount();
+    click(track("stormhaven"));
     expect(aiOption()).toBeUndefined();
   });
 
   it("is absent on a non-Medium Difficulty", () => {
-    makeLobby();
-    for (const diff of ["easy", "hard"]) {
-      parent
-        .querySelector<HTMLButtonElement>(`button[data-diff="${diff}"]`)!
-        .click();
+    mount();
+    for (const d of ["easy", "hard"]) {
+      click(diff(d));
       expect(aiOption()).toBeUndefined();
     }
   });
 
   it("a null bake yields no AI option", () => {
     buildReferenceLapMock.mockReturnValue(null);
-    makeLobby();
+    mount();
     expect(aiOption()).toBeUndefined();
   });
 
   it('selecting it arms a kind:"ai" Pacer whose frames are the memoized bake', () => {
-    makeLobby();
-    pick("ai");
+    mount();
+    pickPacer("ai");
     expect(lobby.armedPacer).toEqual({
       kind: "ai",
       name: "AI Record",
@@ -561,61 +431,49 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("selecting a human option replaces an armed AI, and vice versa", () => {
-    makeLobby().setLeaderboard([alice]);
-    pick("ai");
+    mount().setLeaderboard([alice]);
+    pickPacer("ai");
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
-    pick("0");
+    pickPacer("0");
     expect(lobby.armedPacer).toMatchObject({ kind: "replay", entry: alice });
-    pick("ai");
+    pickPacer("ai");
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
   });
 
-  it("switching Track to an ineligible context clears an armed AI Pacer", () => {
-    makeLobby();
-    pick("ai");
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
-    expect(lobby.armedPacer).toBeNull();
-    expect(picker().value).toBe("-1");
-  });
-
-  it("switching Difficulty to an ineligible context clears an armed AI Pacer", () => {
-    makeLobby();
-    pick("ai");
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
-    expect(lobby.armedPacer).toBeNull();
-    expect(picker().value).toBe("-1");
-  });
+  it.each([
+    ["Track", track("stormhaven")],
+    ["Difficulty", diff("hard")],
+  ])(
+    "switching %s to an ineligible context clears an armed AI Pacer",
+    (_, selector) => {
+      mount();
+      pickPacer("ai");
+      click(selector);
+      expect(lobby.armedPacer).toBeNull();
+      expect(picker().value).toBe("-1");
+    },
+  );
 
   it("an armed AI Pacer survives eligible re-renders (leaderboard refreshes)", () => {
-    makeLobby();
-    pick("ai");
+    mount();
+    pickPacer("ai");
     lobby.setLeaderboard([alice, carol]);
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
     expect(picker().value).toBe("ai");
   });
 
   it("bakes at most once across repeated renders", () => {
-    makeLobby();
+    mount();
     lobby.setLeaderboard([alice]);
     lobby.setLeaderboard([alice, carol]);
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="medium"]')!
-      .click();
+    click(diff("hard"));
+    click(diff("medium"));
     expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not bake again for ineligible renders", () => {
-    makeLobby();
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
+    mount();
+    click(track("stormhaven"));
     buildReferenceLapMock.mockClear();
     lobby.setLeaderboard([alice]);
     lobby.setLeaderboard([]);
@@ -624,7 +482,7 @@ describe("Lobby AI Record Pacer option", () => {
 
   it("a null bake is memoized too", () => {
     buildReferenceLapMock.mockReturnValue(null);
-    makeLobby();
+    mount();
     lobby.setLeaderboard([alice]);
     lobby.setLeaderboard([alice, carol]);
     expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
@@ -632,189 +490,121 @@ describe("Lobby AI Record Pacer option", () => {
 });
 
 describe("Lobby AI Record control", () => {
-  let parent: HTMLElement;
-  let cbs: LobbyCallbacks;
-
-  beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    new Lobby(parent, cbs);
-  });
-  afterEach(() => parent.remove());
+  beforeEach(mount);
 
   it("is visible for Sunset Ridge + Medium (default state)", () => {
-    expect(parent.querySelector<HTMLElement>(".lb-ai-record")!.hidden).toBe(
-      false,
-    );
+    expect(q(".lb-ai-record").hidden).toBe(false);
   });
 
-  it("is hidden when Stormhaven is selected (no policy)", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
-    expect(parent.querySelector<HTMLElement>(".lb-ai-record")!.hidden).toBe(
-      true,
-    );
-  });
-
-  it("is hidden when Easy is selected for Sunset Ridge", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="easy"]')!
-      .click();
-    expect(parent.querySelector<HTMLElement>(".lb-ai-record")!.hidden).toBe(
-      true,
-    );
-  });
-
-  it("is hidden when Hard is selected for Sunset Ridge", () => {
-    parent
-      .querySelector<HTMLButtonElement>('button[data-diff="hard"]')!
-      .click();
-    expect(parent.querySelector<HTMLElement>(".lb-ai-record")!.hidden).toBe(
-      true,
-    );
+  it.each([
+    ["Stormhaven is selected (no policy)", track("stormhaven")],
+    ["Easy is selected for Sunset Ridge", diff("easy")],
+    ["Hard is selected for Sunset Ridge", diff("hard")],
+  ])("is hidden when %s", (_, selector) => {
+    click(selector);
+    expect(q(".lb-ai-record").hidden).toBe(true);
   });
 
   it("clicking the AI Record button invokes onReferenceLap", () => {
-    const btn = parent.querySelector<HTMLButtonElement>(
-      "button[data-ai-record]",
-    );
-    expect(btn).not.toBeNull();
-    btn!.click();
+    click("button[data-ai-record]");
     expect(cbs.onReferenceLap).toHaveBeenCalledOnce();
   });
 
   it("onReferenceLap is not triggered by clicks on other leaderboard elements", () => {
-    parent.querySelector<HTMLElement>(".lb-list")!.click();
+    q(".lb-list").click();
     expect(cbs.onReferenceLap).not.toHaveBeenCalled();
   });
 });
 
 describe("Lobby Garage picker", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-  let cbs: LobbyCallbacks;
-
-  beforeEach(() => {
-    localStorage.clear();
-    parent = makeParent();
-  });
-  afterEach(() => {
-    parent.remove();
-    localStorage.clear();
-  });
-
-  function makeLobby(): Lobby {
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-    return lobby;
-  }
-
-  function card(variant: string): HTMLElement {
-    return parent.querySelector<HTMLElement>(
-      `.garage-card[data-variant="${variant}"]`,
-    )!;
-  }
-
   function selectCar(variant: string): void {
-    const next = parent.querySelector<HTMLButtonElement>(
-      '[data-carousel="next"]',
-    )!;
     for (let i = 0; i <= CAR_VARIANTS.length; i++) {
-      if (card(variant).classList.contains("active")) return;
-      next.click();
+      if (active(card(variant))) return;
+      click('[data-carousel="next"]');
     }
     throw new Error(`Could not select ${variant}`);
   }
 
   it("renders a card for each of the 8 Variants plus a Random tile", () => {
-    makeLobby();
+    mount();
     expect(parent.querySelectorAll(".garage-card").length).toBe(
       CAR_VARIANTS.length + 1,
     );
-    for (const v of CAR_VARIANTS) {
-      expect(card(v)).not.toBeNull();
-    }
-    expect(card("random")).not.toBeNull();
+    for (const v of CAR_VARIANTS) expect(q(card(v))).not.toBeNull();
+    expect(q(card("random"))).not.toBeNull();
   });
 
   it("car choices are on the garage screen and settings start inaccessible", () => {
-    makeLobby();
-    expect(parent.querySelector(".garage-screen .garage")).not.toBeNull();
-    expect(
-      parent.querySelector(".settings-screen .diff-picker"),
-    ).not.toBeNull();
-    expect(
-      parent.querySelector(".settings-screen")!.hasAttribute("inert"),
-    ).toBe(true);
-    expect(
-      parent.querySelector(".settings-screen")!.getAttribute("aria-hidden"),
-    ).toBe("true");
+    mount();
+    expect(q(".garage-screen .garage")).not.toBeNull();
+    expect(q(".settings-screen .diff-picker")).not.toBeNull();
+    expect(q(".settings-screen").hasAttribute("inert")).toBe(true);
+    expect(q(".settings-screen").getAttribute("aria-hidden")).toBe("true");
   });
 
   it("cards carry the Variant display name, with no separate selected-state line", () => {
-    makeLobby();
-    expect(card("suv").textContent).toContain("SUV");
-    expect(card("random").textContent).toContain("Random");
+    mount();
+    expect(q(card("suv")).textContent).toContain("SUV");
+    expect(q(card("random")).textContent).toContain("Random");
     expect(parent.querySelector(".garage-selected")).toBeNull();
   });
 
   it("pre-selects Random on first visit", () => {
-    makeLobby();
-    expect(card("random").classList.contains("active")).toBe(true);
+    mount();
+    expect(active(card("random"))).toBe(true);
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
   it("clicking a garage card selects that model directly", () => {
-    makeLobby();
-    card("police").click();
-    expect(card("police").classList.contains("active")).toBe(true);
-    expect(card("police").getAttribute("aria-checked")).toBe("true");
-    expect(card("police").tabIndex).toBe(0);
-    expect(card("random").getAttribute("aria-checked")).toBe("false");
-    expect(card("random").tabIndex).toBe(-1);
+    mount();
+    click(card("police"));
+    expect(active(card("police"))).toBe(true);
+    expect(checked(card("police"))).toBe("true");
+    expect(q(card("police")).tabIndex).toBe(0);
+    expect(checked(card("random"))).toBe("false");
+    expect(q(card("random")).tabIndex).toBe(-1);
     expect(lobby.selectedVariant).toBe("police");
     expect(localStorage.getItem("racer-variant")).toBe("police");
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
   it("cycling to a model stores the choice and moves the highlight", () => {
-    makeLobby();
+    mount();
     selectCar("suv");
     expect(localStorage.getItem("racer-variant")).toBe("suv");
-    expect(card("suv").classList.contains("active")).toBe(true);
-    expect(card("random").classList.contains("active")).toBe(false);
+    expect(active(card("suv"))).toBe(true);
+    expect(active(card("random"))).toBe(false);
     expect(lobby.selectedVariant).toBe("suv");
   });
 
   it("a stored concrete Variant renders as the selected card", () => {
     localStorage.setItem("racer-variant", "taxi");
-    makeLobby();
-    expect(card("taxi").classList.contains("active")).toBe(true);
+    mount();
+    expect(active(card("taxi"))).toBe(true);
     expect(lobby.selectedVariant).toBe("taxi");
   });
 
   it("a stored Random choice stays Random", () => {
     localStorage.setItem("racer-variant", "random");
-    makeLobby();
-    expect(card("random").classList.contains("active")).toBe(true);
+    mount();
+    expect(active(card("random"))).toBe(true);
     expect(localStorage.getItem("racer-variant")).toBe("random");
   });
 
   it("an invalid stored value falls back to Random and overwrites the stored value", () => {
     localStorage.setItem("racer-variant", "batmobile");
-    makeLobby();
-    expect(card("random").classList.contains("active")).toBe(true);
+    mount();
+    expect(active(card("random"))).toBe(true);
     expect(localStorage.getItem("racer-variant")).toBe("random");
   });
 
   it('Random resolves to a concrete member of CAR_VARIANTS, never the wire string "random"', () => {
-    makeLobby();
+    mount();
     expect(CAR_VARIANTS).toContain(lobby.selectedVariant);
   });
 
   it("Random keeps a single roll for the connection", () => {
-    makeLobby();
+    mount();
     const first = lobby.selectedVariant;
     selectCar("suv");
     selectCar("random");
@@ -822,221 +612,143 @@ describe("Lobby Garage picker", () => {
   });
 
   it("a choice change triggers a hello re-send", () => {
-    makeLobby();
-    parent.querySelector<HTMLButtonElement>('[data-carousel="next"]')!.click();
+    mount();
+    click('[data-carousel="next"]');
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
-    parent
-      .querySelector<HTMLButtonElement>('[data-carousel="previous"]')!
-      .click();
+    click('[data-carousel="previous"]');
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
   });
 
   it("clicking model indicators notifies once per change and ignores repeats", () => {
-    makeLobby();
-    card("suv").click();
+    mount();
+    click(card("suv"));
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
-    card("suv").click();
+    click(card("suv"));
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
-    card("random").click();
-    expect(card("random").classList.contains("active")).toBe(true);
+    click(card("random"));
+    expect(active(card("random"))).toBe(true);
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
   });
 
   it("painting thumbnails without WebGL leaves the cards name-only", () => {
-    makeLobby();
+    mount();
     expect(() => lobby.paintGarageThumbnails()).not.toThrow();
-    for (const img of parent.querySelectorAll<HTMLImageElement>(
-      ".garage-card img",
-    )) {
+    for (const img of parent.querySelectorAll(".garage-card img"))
       expect(img.getAttribute("src")).toBeNull();
-    }
   });
 
   it("cycles across every car and Random, wrapping in both directions", () => {
-    makeLobby();
-    const next = parent.querySelector<HTMLButtonElement>(
-      '[data-carousel="next"]',
-    )!;
-    const previous = parent.querySelector<HTMLButtonElement>(
-      '[data-carousel="previous"]',
-    )!;
+    mount();
     for (const variant of CAR_VARIANTS) {
-      next.click();
-      expect(card(variant).getAttribute("aria-checked")).toBe("true");
+      click('[data-carousel="next"]');
+      expect(checked(card(variant))).toBe("true");
       expect(
-        parent
-          .querySelector('.car-slide[data-position="current"]')!
-          .getAttribute("data-slide"),
+        q('.car-slide[data-position="current"]').getAttribute("data-slide"),
       ).toBe(variant);
     }
-    next.click();
-    expect(card("random").getAttribute("aria-checked")).toBe("true");
-    previous.click();
-    expect(card(CAR_VARIANTS.at(-1)!).getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    click('[data-carousel="next"]');
+    expect(checked(card("random"))).toBe("true");
+    click('[data-carousel="previous"]');
+    expect(checked(card(CAR_VARIANTS.at(-1)!))).toBe("true");
   });
 
   it("requires car and track confirmation before entering settings", () => {
-    makeLobby();
+    mount();
     selectCar("police");
-    const settings = parent.querySelector<HTMLElement>(".settings-screen")!;
+    const settings = q(".settings-screen");
     expect(settings.hasAttribute("inert")).toBe(true);
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
+    click("[data-select-car]");
     expect(settings.hasAttribute("inert")).toBe(true);
-    expect(parent.querySelector(".track-screen")!.hasAttribute("inert")).toBe(
-      false,
-    );
-    expect(document.activeElement).toBe(
-      parent.querySelector("[data-select-track]"),
-    );
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
+    expect(q(".track-screen").hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(q("[data-select-track]"));
+    click("[data-select-track]");
     expect(settings.hasAttribute("inert")).toBe(false);
     expect(settings.getAttribute("aria-hidden")).toBe("false");
-    expect(parent.querySelector(".garage-screen")!.hasAttribute("inert")).toBe(
-      true,
-    );
-    expect(parent.querySelector(".track-screen")!.hasAttribute("inert")).toBe(
-      true,
-    );
-    expect(document.activeElement).toBe(
-      parent.querySelector('[data-setup-tab="race"]'),
-    );
+    expect(q(".garage-screen").hasAttribute("inert")).toBe(true);
+    expect(q(".track-screen").hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(q('[data-setup-tab="race"]'));
   });
 
   it("preserves setup values when changing the car", () => {
-    makeLobby();
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-    parent.querySelector<HTMLInputElement>("#driver-name")!.value =
-      "Night Driver";
-    parent.querySelector<HTMLInputElement>(".create-form input")!.value =
-      "Final lap";
-    parent
-      .querySelector<HTMLButtonElement>('[data-track="stormhaven"]')!
-      .click();
-    parent.querySelector<HTMLButtonElement>('[data-diff="hard"]')!.click();
-    parent.querySelector<HTMLButtonElement>("[data-change-car]")!.click();
-    expect(
-      parent.querySelector(".settings-screen")!.hasAttribute("inert"),
-    ).toBe(true);
+    mount();
+    enterSettings();
+    q<HTMLInputElement>("#driver-name").value = "Night Driver";
+    q<HTMLInputElement>(".create-form input").value = "Final lap";
+    click(track("stormhaven"));
+    click(diff("hard"));
+    click("[data-change-car]");
+    expect(q(".settings-screen").hasAttribute("inert")).toBe(true);
     selectCar("van");
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
+    enterSettings();
     expect(lobby.playerName).toBe("Night Driver");
-    expect(
-      parent.querySelector<HTMLInputElement>(".create-form input")!.value,
-    ).toBe("Final lap");
-    expect(
-      parent
-        .querySelector('[data-track="stormhaven"]')!
-        .getAttribute("aria-checked"),
-    ).toBe("true");
-    expect(
-      parent.querySelector('[data-diff="hard"]')!.getAttribute("aria-checked"),
-    ).toBe("true");
+    expect(q<HTMLInputElement>(".create-form input").value).toBe("Final lap");
+    expect(checked(track("stormhaven"))).toBe("true");
+    expect(checked(diff("hard"))).toBe("true");
   });
 
   it("supports arrow navigation from the car stage and does not intercept typing", () => {
-    makeLobby();
-    const stage = parent.querySelector<HTMLElement>(".car-stage")!;
+    mount();
+    const stage = q(".car-stage");
     stage.focus();
-    stage.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "ArrowRight",
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    press(stage, "ArrowRight");
     expect(document.activeElement).toBe(stage);
     expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
     expect(parent.querySelectorAll('.garage-card[tabindex="0"]')).toHaveLength(
       1,
     );
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-    parent
-      .querySelector<HTMLInputElement>("#driver-name")!
-      .dispatchEvent(
-        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-      );
+    enterSettings();
+    press(q("#driver-name"), "ArrowRight");
     expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
   });
 
   it("dragging never changes the selected car", () => {
-    makeLobby();
-    const stage = parent.querySelector(".car-stage")!;
-    stage.dispatchEvent(
-      new MouseEvent("pointerdown", { clientX: 220, clientY: 120 }),
-    );
-    stage.dispatchEvent(
-      new MouseEvent("pointerup", { clientX: 90, clientY: 130 }),
-    );
-    expect(card("random").getAttribute("aria-checked")).toBe("true");
-    stage.dispatchEvent(
-      new MouseEvent("pointerdown", { clientX: 220, clientY: 120 }),
-    );
-    stage.dispatchEvent(
-      new MouseEvent("pointerup", { clientX: 190, clientY: 280 }),
-    );
-    expect(card("random").getAttribute("aria-checked")).toBe("true");
+    mount();
+    const stage = q(".car-stage");
+    const drag = (from: [number, number], to: [number, number]) => {
+      stage.dispatchEvent(
+        new MouseEvent("pointerdown", { clientX: from[0], clientY: from[1] }),
+      );
+      stage.dispatchEvent(
+        new MouseEvent("pointerup", { clientX: to[0], clientY: to[1] }),
+      );
+    };
+    drag([220, 120], [90, 130]);
+    expect(checked(card("random"))).toBe("true");
+    drag([220, 120], [190, 280]);
+    expect(checked(card("random"))).toBe("true");
     expect(cbs.onVariantChange).not.toHaveBeenCalled();
   });
 
   it("cycles full track previews and preserves the circuit when returning from settings", () => {
-    makeLobby();
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent
-      .querySelector<HTMLButtonElement>('[data-track-carousel="next"]')!
-      .click();
-    expect(
-      parent
-        .querySelector(".track-slide.active")!
-        .getAttribute("data-track-slide"),
-    ).toBe("stormhaven");
-    expect(parent.querySelector(".hero-track-name")!.textContent).toBe(
-      "Stormhaven Circuit",
+    mount();
+    click("[data-select-car]");
+    click('[data-track-carousel="next"]');
+    expect(q(".track-slide.active").getAttribute("data-track-slide")).toBe(
+      "stormhaven",
     );
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-change-track]")!.click();
-    expect(
-      parent.querySelector(".lobby-deck")!.getAttribute("data-screen"),
-    ).toBe("track");
-    expect(
-      parent.querySelector(".track-card.active")!.getAttribute("data-track"),
-    ).toBe("stormhaven");
-    parent
-      .querySelector<HTMLButtonElement>('[data-track-carousel="next"]')!
-      .click();
-    expect(
-      parent
-        .querySelector(".track-slide.active")!
-        .getAttribute("data-track-slide"),
-    ).toBe("sunset-ridge");
+    expect(q(".hero-track-name").textContent).toBe("Stormhaven Circuit");
+    click("[data-select-track]");
+    click("[data-change-track]");
+    expect(q(".lobby-deck").getAttribute("data-screen")).toBe("track");
+    expect(q(".track-card.active").getAttribute("data-track")).toBe(
+      "stormhaven",
+    );
+    click('[data-track-carousel="next"]');
+    expect(q(".track-slide.active").getAttribute("data-track-slide")).toBe(
+      "sunset-ridge",
+    );
   });
 
   it("switches setup panels without losing the race form or pacer", () => {
-    makeLobby();
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-    parent.querySelector<HTMLInputElement>(".create-form input")!.value =
-      "Last light";
-    const picker = parent.querySelector<HTMLSelectElement>(".pacer-select")!;
-    picker.value = "ai";
-    picker.dispatchEvent(new Event("change"));
-    parent
-      .querySelector<HTMLButtonElement>('[data-setup-tab="records"]')!
-      .click();
-    expect(
-      parent.querySelector<HTMLElement>('[data-setup-panel="race"]')!.hidden,
-    ).toBe(true);
-    expect(
-      parent.querySelector<HTMLElement>('[data-setup-panel="records"]')!.hidden,
-    ).toBe(false);
-    parent.querySelector<HTMLButtonElement>('[data-setup-tab="race"]')!.click();
-    expect(
-      parent.querySelector<HTMLInputElement>(".create-form input")!.value,
-    ).toBe("Last light");
+    mount();
+    enterSettings();
+    q<HTMLInputElement>(".create-form input").value = "Last light";
+    pickPacer("ai");
+    click('[data-setup-tab="records"]');
+    expect(q('[data-setup-panel="race"]').hidden).toBe(true);
+    expect(q('[data-setup-panel="records"]').hidden).toBe(false);
+    click('[data-setup-tab="race"]');
+    expect(q<HTMLInputElement>(".create-form input").value).toBe("Last light");
     expect(lobby.armedPacer?.kind).toBe("ai");
     expect(
       parent.querySelectorAll('[data-setup-tab][tabindex="0"]'),
@@ -1046,151 +758,73 @@ describe("Lobby Garage picker", () => {
 
 describe("Lobby difficulty keyboard navigation", () => {
   it("uses one tab stop, wraps radios and clears an incompatible pacer", () => {
-    const parent = makeParent();
-    try {
-      const lobby = new Lobby(parent, makeCallbacks());
-      parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-      parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-      const picker = parent.querySelector<HTMLSelectElement>(".pacer-select")!;
-      picker.value = "ai";
-      picker.dispatchEvent(new Event("change"));
-      const medium = parent.querySelector<HTMLButtonElement>(
-        '.diff-opt[data-diff="medium"]',
-      )!;
-      medium.focus();
-      expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(
-        1,
-      );
-      medium.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "ArrowRight",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      const hard = parent.querySelector<HTMLButtonElement>(
-        '.diff-opt[data-diff="hard"]',
-      )!;
-      expect(document.activeElement).toBe(hard);
-      expect(hard.getAttribute("aria-checked")).toBe("true");
-      expect(medium.tabIndex).toBe(-1);
-      expect(lobby.armedPacer).toBeNull();
-      hard.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "ArrowDown",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      expect(document.activeElement).toBe(
-        parent.querySelector('.diff-opt[data-diff="easy"]'),
-      );
-      expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(
-        1,
-      );
-    } finally {
-      parent.remove();
-    }
+    mount();
+    enterSettings();
+    pickPacer("ai");
+    const medium = q(diff("medium"));
+    medium.focus();
+    expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
+    press(medium, "ArrowRight");
+    const hard = q(diff("hard"));
+    expect(document.activeElement).toBe(hard);
+    expect(checked(diff("hard"))).toBe("true");
+    expect(medium.tabIndex).toBe(-1);
+    expect(lobby.armedPacer).toBeNull();
+    press(hard, "ArrowDown");
+    expect(document.activeElement).toBe(q(diff("easy")));
+    expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
   });
 });
 
 describe("Lobby Records board filters", () => {
-  let parent: HTMLElement;
-  let lobby: Lobby;
-  let cbs: LobbyCallbacks;
-
-  const sunsetMedium: LeaderboardEntry = {
-    name: "Alice",
-    timeMs: 60000,
-    date: "2026-01-01",
-    hasReplay: true,
-    difficulty: "medium",
-    track: "sunset-ridge",
-  };
-  const sunsetHard: LeaderboardEntry = {
+  const sunsetMedium = entry({ hasReplay: true });
+  const sunsetHard = entry({
     name: "Bob",
     timeMs: 55000,
     date: "2026-01-02",
-    hasReplay: false,
     difficulty: "hard",
-    track: "sunset-ridge",
-  };
-  const stormMedium: LeaderboardEntry = {
+  });
+  const stormMedium = entry({
     name: "Carol",
     timeMs: 65000,
     date: "2026-01-03",
     hasReplay: true,
-    difficulty: "medium",
     track: "stormhaven",
-  };
+  });
 
   beforeEach(() => {
-    parent = makeParent();
-    cbs = makeCallbacks();
-    lobby = new Lobby(parent, cbs);
-    lobby.setLeaderboard([sunsetMedium, sunsetHard, stormMedium]);
+    mount().setLeaderboard([sunsetMedium, sunsetHard, stormMedium]);
   });
-  afterEach(() => parent.remove());
 
-  function names(): string[] {
-    return [...parent.querySelectorAll(".lb-list .lb-name")].map(
-      (n) => n.textContent!,
-    );
-  }
-  function boardDiff(d: string): HTMLButtonElement {
-    return parent.querySelector<HTMLButtonElement>(
-      `.board-diff-opt[data-board-diff="${d}"]`,
-    )!;
-  }
-  function raceDiff(d: string): HTMLButtonElement {
-    return parent.querySelector<HTMLButtonElement>(
-      `.diff-opt[data-diff="${d}"]`,
-    )!;
-  }
   function boardTrackValue(): string | undefined {
-    return parent.querySelector<HTMLElement>(
-      '.board-track-opt[aria-selected="true"]',
-    )?.dataset.boardTrack;
-  }
-  function pickBoardTrack(slug: string): void {
-    parent
-      .querySelector<HTMLButtonElement>(`[data-board-track="${slug}"]`)!
-      .click();
+    return q('.board-track-opt[aria-selected="true"]').dataset.boardTrack;
   }
   function note(): HTMLElement {
-    return parent.querySelector<HTMLElement>(".board-note")!;
-  }
-  function submitCreate(): void {
-    parent
-      .querySelector<HTMLFormElement>(".create-form")!
-      .dispatchEvent(new Event("submit", { cancelable: true }));
+    return q(".board-note");
   }
 
   it("board filters default to the race selection and follow it", () => {
-    expect(boardDiff("medium").getAttribute("aria-checked")).toBe("true");
+    expect(checked(boardDiff("medium"))).toBe("true");
     expect(boardTrackValue()).toBe("sunset-ridge");
     expect(note().hidden).toBe(true);
-    raceDiff("hard").click();
-    parent
-      .querySelector<HTMLButtonElement>('button[data-track="stormhaven"]')!
-      .click();
-    expect(boardDiff("hard").getAttribute("aria-checked")).toBe("true");
+    click(diff("hard"));
+    click(track("stormhaven"));
+    expect(checked(boardDiff("hard"))).toBe("true");
     expect(boardTrackValue()).toBe("stormhaven");
     expect(note().hidden).toBe(true);
   });
 
   it("changing board difficulty re-filters the list without touching the race", () => {
     expect(names()).toEqual(["Alice"]);
-    boardDiff("hard").click();
+    click(boardDiff("hard"));
     expect(names()).toEqual(["Bob"]);
     // Differing on difficulty alone is enough to show the browsing note.
     expect(note().hidden).toBe(false);
-    expect(boardDiff("hard").classList.contains("active")).toBe(true);
-    expect(boardDiff("medium").getAttribute("aria-checked")).toBe("false");
-    // Race picker is untouched.
-    expect(raceDiff("medium").classList.contains("active")).toBe(true);
-    expect(raceDiff("hard").getAttribute("aria-checked")).toBe("false");
-    submitCreate();
+    expect(active(boardDiff("hard"))).toBe(true);
+    expect(checked(boardDiff("medium"))).toBe("false");
+    expect(active(diff("medium"))).toBe(true);
+    expect(checked(diff("hard"))).toBe("false");
+    submitForm();
     expect(cbs.onCreate).toHaveBeenCalledWith(
       expect.any(String),
       "sunset-ridge",
@@ -1199,50 +833,41 @@ describe("Lobby Records board filters", () => {
   });
 
   it("changing board track re-filters the list and keeps the pacer on the race", () => {
-    const picker = parent.querySelector<HTMLSelectElement>(".pacer-select")!;
-    picker.value = "0";
-    picker.dispatchEvent(new Event("change"));
+    pickPacer("0");
     expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
-    pickBoardTrack("stormhaven");
+    click('[data-board-track="stormhaven"]');
     expect(names()).toEqual(["Carol"]);
     // Differing on track alone is enough to show the browsing note.
     expect(note().hidden).toBe(false);
     // Pacer choices and the armed pacer still belong to the race setup.
     expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
-    const texts = [...picker.options].map((o) => o.textContent!);
-    expect(texts.some((t) => t.includes("Alice"))).toBe(true);
-    expect(texts.some((t) => t.includes("Carol"))).toBe(false);
-    expect(parent.querySelector(".selected-track-name")!.textContent).toContain(
-      "Sunset Ridge",
-    );
+    const texts = optionTexts().join("\n");
+    expect(texts).toContain("Alice");
+    expect(texts).not.toContain("Carol");
+    expect(q(".selected-track-name").textContent).toContain("Sunset Ridge");
   });
 
   it("replay buttons carry the browsed entry's track and difficulty", () => {
-    pickBoardTrack("stormhaven");
-    parent.querySelector<HTMLButtonElement>(".lb-replay")!.click();
+    click('[data-board-track="stormhaven"]');
+    click(".lb-replay");
     expect(cbs.onReplay).toHaveBeenCalledWith("Carol", "stormhaven", "medium");
   });
 
   it("shows the browsing note when filters differ; Use these settings syncs the race", () => {
-    boardDiff("hard").click();
-    pickBoardTrack("stormhaven");
+    click(boardDiff("hard"));
+    click('[data-board-track="stormhaven"]');
     expect(note().hidden).toBe(false);
     expect(note().textContent).toContain(
       "Browsing only. Your race is still Sunset Ridge Circuit, Medium.",
     );
-    const use = parent.querySelector<HTMLButtonElement>(".board-use-settings")!;
-    use.focus();
-    use.click();
+    q(".board-use-settings").focus();
+    click(".board-use-settings");
     expect(note().hidden).toBe(true);
     // Focus moves off the now-hidden note rather than dropping to <body>.
-    expect(document.activeElement).toBe(boardDiff("hard"));
-    expect(raceDiff("hard").classList.contains("active")).toBe(true);
-    expect(
-      parent
-        .querySelector('.track-card[data-track="stormhaven"]')!
-        .getAttribute("aria-checked"),
-    ).toBe("true");
-    submitCreate();
+    expect(document.activeElement).toBe(q(boardDiff("hard")));
+    expect(active(diff("hard"))).toBe(true);
+    expect(checked(track("stormhaven"))).toBe("true");
+    submitForm();
     expect(cbs.onCreate).toHaveBeenCalledWith(
       expect.any(String),
       "stormhaven",
@@ -1251,9 +876,9 @@ describe("Lobby Records board filters", () => {
   });
 
   it("the empty state names the browsed track and difficulty", () => {
-    boardDiff("easy").click();
-    pickBoardTrack("stormhaven");
-    const empty = parent.querySelector<HTMLElement>(".lb-empty")!;
+    click(boardDiff("easy"));
+    click('[data-board-track="stormhaven"]');
+    const empty = q(".lb-empty");
     expect(empty.hidden).toBe(false);
     expect(empty.querySelector(".empty-timer")).not.toBeNull();
     expect(empty.textContent).toContain(
@@ -1262,92 +887,76 @@ describe("Lobby Records board filters", () => {
   });
 
   it("the AI Record button follows the board, not the race", () => {
-    const ai = parent.querySelector<HTMLElement>(".lb-ai-record")!;
+    const ai = q(".lb-ai-record");
     expect(ai.hidden).toBe(false);
-    boardDiff("hard").click();
+    click(boardDiff("hard"));
     expect(ai.hidden).toBe(true);
-    boardDiff("medium").click();
-    raceDiff("hard").click(); // syncs board to hard too
+    click(boardDiff("medium"));
+    click(diff("hard")); // syncs board to hard too
     expect(ai.hidden).toBe(true);
-    boardDiff("medium").click();
+    click(boardDiff("medium"));
     expect(ai.hidden).toBe(false);
   });
 
   it("supports roving tabindex and arrow/Home/End keys on the board radiogroup", () => {
-    parent.querySelector<HTMLButtonElement>("[data-select-car]")!.click();
-    parent.querySelector<HTMLButtonElement>("[data-select-track]")!.click();
-    const key = (el: HTMLElement, k: string) =>
-      el.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: k,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
+    enterSettings();
     expect(
       parent.querySelectorAll('.board-diff-opt[tabindex="0"]'),
     ).toHaveLength(1);
-    boardDiff("medium").focus();
-    key(boardDiff("medium"), "ArrowRight");
-    expect(document.activeElement).toBe(boardDiff("hard"));
-    expect(boardDiff("hard").getAttribute("aria-checked")).toBe("true");
-    expect(boardDiff("medium").tabIndex).toBe(-1);
+    q(boardDiff("medium")).focus();
+    press(q(boardDiff("medium")), "ArrowRight");
+    expect(document.activeElement).toBe(q(boardDiff("hard")));
+    expect(checked(boardDiff("hard"))).toBe("true");
+    expect(q(boardDiff("medium")).tabIndex).toBe(-1);
     expect(names()).toEqual(["Bob"]);
-    key(boardDiff("hard"), "ArrowRight"); // wraps
-    expect(document.activeElement).toBe(boardDiff("easy"));
-    key(boardDiff("easy"), "ArrowLeft"); // wraps back
-    expect(document.activeElement).toBe(boardDiff("hard"));
-    key(boardDiff("hard"), "Home");
-    expect(document.activeElement).toBe(boardDiff("easy"));
-    key(boardDiff("easy"), "End");
-    expect(document.activeElement).toBe(boardDiff("hard"));
+    press(q(boardDiff("hard")), "ArrowRight"); // wraps
+    expect(document.activeElement).toBe(q(boardDiff("easy")));
+    press(q(boardDiff("easy")), "ArrowLeft"); // wraps back
+    expect(document.activeElement).toBe(q(boardDiff("hard")));
+    press(q(boardDiff("hard")), "Home");
+    expect(document.activeElement).toBe(q(boardDiff("easy")));
+    press(q(boardDiff("easy")), "End");
+    expect(document.activeElement).toBe(q(boardDiff("hard")));
     // The race difficulty never moved.
-    expect(raceDiff("medium").getAttribute("aria-checked")).toBe("true");
+    expect(checked(diff("medium"))).toBe("true");
     expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
   });
 });
 
+function installDesktop(bridge: object): void {
+  Object.defineProperty(window, "desktop", {
+    value: { serverUrl: "wss://play.example.com", ...bridge },
+    configurable: true,
+  });
+}
+
 describe("Lobby desktop download notice", () => {
-  let parent: HTMLElement;
-
-  beforeEach(() => {
-    parent = makeParent();
-  });
-  afterEach(() => {
-    parent.remove();
-    Reflect.deleteProperty(window, "desktop");
-  });
-
   it("links to the GitHub releases page in the browser build", () => {
-    new Lobby(parent, makeCallbacks());
-    const link = parent.querySelector<HTMLAnchorElement>(
-      ".lobby-nav .desktop-notice",
-    );
+    mount();
+    const link = q<HTMLAnchorElement>(".lobby-nav .desktop-notice");
     expect(link).not.toBeNull();
-    expect(link!.href).toBe(DESKTOP_DOWNLOAD_URL);
-    expect(link!.target).toBe("_blank");
-    expect(link!.rel).toBe("noopener noreferrer");
-    expect(link!.textContent).toContain("Download for macOS, Windows & Linux");
-    expect(link!.getAttribute("aria-label")).toMatch(/macOS, Windows and Linux/);
+    expect(link.href).toBe(DESKTOP_DOWNLOAD_URL);
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    expect(link.textContent).toContain("Download for macOS, Windows & Linux");
+    expect(link.getAttribute("aria-label")).toMatch(/macOS, Windows and Linux/);
   });
 
   it("is absent inside the desktop app (window.desktop defined)", () => {
-    Object.defineProperty(window, "desktop", {
-      value: { serverUrl: "wss://play.example.com" },
-      configurable: true,
-    });
-    new Lobby(parent, makeCallbacks());
+    installDesktop({});
+    mount();
     expect(parent.querySelector(".desktop-notice")).toBeNull();
-    expect(parent.querySelector(".connection-status")).not.toBeNull();
+    expect(q(".connection-status")).not.toBeNull();
   });
 });
 
 describe("Lobby desktop update notice", () => {
-  let parent: HTMLElement;
   let onStateCb: ((state: DesktopUpdateState) => void) | undefined;
   let updates: DesktopUpdates;
 
-  function installBridge(initial: DesktopUpdateState = { status: "idle" }): void {
+  function installBridge(
+    initial: DesktopUpdateState = { status: "idle" },
+  ): void {
     onStateCb = undefined;
     updates = {
       getState: vi.fn(async () => initial),
@@ -1360,39 +969,25 @@ describe("Lobby desktop update notice", () => {
         };
       }),
     };
-    Object.defineProperty(window, "desktop", {
-      value: { serverUrl: "wss://play.example.com", version: "0.1.0", updates },
-      configurable: true,
-    });
+    installDesktop({ version: "0.1.0", updates });
+    mount();
   }
   const button = () =>
     parent.querySelector<HTMLButtonElement>(".lobby-nav-aside .update-notice");
 
-  beforeEach(() => {
-    parent = makeParent();
-  });
-  afterEach(() => {
-    parent.remove();
-    Reflect.deleteProperty(window, "desktop");
-  });
-
   it("is absent in the browser build", () => {
-    new Lobby(parent, makeCallbacks());
+    mount();
     expect(button()).toBeNull();
   });
 
   it("is absent when the desktop preload predates updates", () => {
-    Object.defineProperty(window, "desktop", {
-      value: { serverUrl: "wss://play.example.com" },
-      configurable: true,
-    });
-    new Lobby(parent, makeCallbacks());
+    installDesktop({});
+    mount();
     expect(button()).toBeNull();
   });
 
   it("is visible with the installed version while the updater is idle", async () => {
     installBridge();
-    new Lobby(parent, makeCallbacks());
     await Promise.resolve();
     expect(button()).not.toBeNull();
     expect(button()!.hidden).toBe(false);
@@ -1402,66 +997,52 @@ describe("Lobby desktop update notice", () => {
     expect(button()!.getAttribute("aria-live")).toBe("polite");
     expect(updates.onState).toHaveBeenCalledTimes(1);
     expect(updates.getState).toHaveBeenCalledTimes(1);
-    expect(button()!.compareDocumentPosition(parent.querySelector(".connection-status")!))
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(button()!.compareDocumentPosition(q(".connection-status"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("catches up from getState when the check already finished", async () => {
     installBridge({ status: "downloaded", version: "0.2.0" });
-    new Lobby(parent, makeCallbacks());
     await Promise.resolve();
     expect(button()!.textContent).toContain("Restart to update");
     expect(button()!.dataset.status).toBe("downloaded");
   });
 
-  it("reports a check in progress and disables itself", () => {
+  it.each<[DesktopUpdateState, string, boolean]>([
+    [{ status: "checking" }, "Checking for updates…", true],
+    [
+      { status: "available", version: "0.2.0", canInstall: true },
+      "Update to v0.2.0",
+      false,
+    ],
+    [
+      { status: "available", version: "0.2.0", canInstall: false },
+      "Download v0.2.0",
+      false,
+    ],
+    [
+      { status: "downloading", version: "0.2.0", percent: 42 },
+      "Updating… 42%",
+      true,
+    ],
+    [
+      { status: "error", message: "offline" },
+      "Update check failed · Retry",
+      false,
+    ],
+  ])("reports %o as '%s'", (state, text, busy) => {
     installBridge();
-    new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "checking" });
-    expect(button()!.disabled).toBe(true);
-    expect(button()!.textContent).toContain("Checking for updates…");
-    expect(button()!.dataset.status).toBe("checking");
-  });
-
-  it("shows the version once onState reports an update", () => {
-    installBridge();
-    new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
-    expect(button()!.disabled).toBe(false);
-    expect(button()!.textContent).toContain("Update to v0.2.0");
-    expect(button()!.getAttribute("aria-label")).toBe("Update to v0.2.0");
-    expect(button()!.dataset.status).toBe("available");
-  });
-
-  it("offers a download instead when the update cannot be installed in place", () => {
-    installBridge();
-    new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "available", version: "0.2.0", canInstall: false });
-    expect(button()!.textContent).toContain("Download v0.2.0");
-  });
-
-  it("reports progress and disables itself while downloading", () => {
-    installBridge();
-    new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "downloading", version: "0.2.0", percent: 42 });
-    expect(button()!.disabled).toBe(true);
-    expect(button()!.textContent).toContain("Updating… 42%");
-    expect(button()!.dataset.status).toBe("downloading");
-  });
-
-  it("offers a retry on error", () => {
-    installBridge();
-    new Lobby(parent, makeCallbacks());
-    onStateCb!({ status: "error", message: "offline" });
+    onStateCb!(state);
     expect(button()!.hidden).toBe(false);
-    expect(button()!.disabled).toBe(false);
-    expect(button()!.textContent).toContain("Update check failed · Retry");
-    expect(button()!.dataset.status).toBe("error");
+    expect(button()!.disabled).toBe(busy);
+    expect(button()!.textContent).toContain(text);
+    expect(button()!.getAttribute("aria-label")).toBe(text);
+    expect(button()!.dataset.status).toBe(state.status);
   });
 
   it("triggers a manual check when clicked while idle", () => {
     installBridge();
-    new Lobby(parent, makeCallbacks());
     button()!.click();
     expect(updates.check).toHaveBeenCalledTimes(1);
     expect(updates.install).not.toHaveBeenCalled();
@@ -1469,7 +1050,6 @@ describe("Lobby desktop update notice", () => {
 
   it("calls install when clicked with an update available", () => {
     installBridge();
-    new Lobby(parent, makeCallbacks());
     onStateCb!({ status: "available", version: "0.2.0", canInstall: true });
     button()!.click();
     expect(updates.install).toHaveBeenCalledTimes(1);
@@ -1478,7 +1058,6 @@ describe("Lobby desktop update notice", () => {
 
   it("re-checks when clicked after an error", () => {
     installBridge();
-    new Lobby(parent, makeCallbacks());
     onStateCb!({ status: "error", message: "offline" });
     button()!.click();
     expect(updates.check).toHaveBeenCalledTimes(1);

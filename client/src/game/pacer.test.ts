@@ -32,48 +32,17 @@ describe("pacerPoseAt", () => {
   });
 
   it("returns null when elapsed exceeds the last frame time (recording ended)", () => {
-    // last frame t=200; elapsed 201 > 200 → pacer should despawn
     expect(pacerPoseAt(frames, 0, 201)).toBeNull();
   });
 
-  it("returns a pose at elapsed 0 (first frame)", () => {
-    const pose = pacerPoseAt(frames, 1000, 1000)!;
-    expect(pose).not.toBeNull();
-    expect(pose.x).toBe(0);
-    expect(pose.z).toBe(0);
-    expect(pose.heading).toBe(0);
-    expect(pose.speed).toBe(0);
-  });
-
-  it("returns the final pose at exactly the last frame time", () => {
-    const pose = pacerPoseAt(frames, 0, 200)!;
-    expect(pose).not.toBeNull();
-    expect(pose.x).toBe(30);
-    expect(pose.z).toBe(40);
-    expect(pose.speed).toBe(10);
-  });
-
-  it("returns interpolated pose mid-recording", () => {
-    // elapsed = 150 → halfway between t=100 and t=200
-    const pose = pacerPoseAt(frames, 0, 150)!;
-    expect(pose).not.toBeNull();
-    expect(pose.x).toBe(20);   // lerp(10, 30, 0.5)
-    expect(pose.z).toBe(30);   // lerp(20, 40, 0.5)
-    expect(pose.speed).toBe(7.5); // lerp(5, 10, 0.5)
-  });
-
-  it("startMs offsets the clock correctly", () => {
-    // startMs=1000, nowMs=1100 → elapsed=100 → exact second frame
-    const pose = pacerPoseAt(frames, 1000, 1100)!;
-    expect(pose).not.toBeNull();
-    expect(pose.x).toBe(10);
-    expect(pose.z).toBe(20);
+  it("returns the first, last and interpolated poses relative to startMs", () => {
+    expect(pacerPoseAt(frames, 1000, 1000)).toEqual({ x: 0, z: 0, heading: 0, speed: 0 });
+    expect(pacerPoseAt(frames, 0, 200)).toMatchObject({ x: 30, z: 40, speed: 10 });
+    expect(pacerPoseAt(frames, 0, 150)).toMatchObject({ x: 20, z: 30, speed: 7.5 });
+    expect(pacerPoseAt(frames, 1000, 1100)).toMatchObject({ x: 10, z: 20 });
   });
 });
 
-// ---------------------------------------------------------------------------
-// pacerCheckpointTimes
-// ---------------------------------------------------------------------------
 
 describe("pacerCheckpointTimes", () => {
   it("returns an array of nulls when frames are empty", () => {
@@ -91,8 +60,6 @@ describe("pacerCheckpointTimes", () => {
   });
 
   it("returns the first frame's time when the scan starts inside the radius", () => {
-    // First frame is already at the checkpoint center (dist = 0 < radius).
-    // No prior frame to interpolate from, so the function returns that frame's time.
     const f: ReplayFrame[] = [
       [0,   0, 0, 0, 5],
       [100, 20, 0, 0, 5],
@@ -102,9 +69,7 @@ describe("pacerCheckpointTimes", () => {
   });
 
   it("interpolates the entry time when the Pacer crosses the radius boundary between frames", () => {
-    // Pacer moves from (−20, 0) to (4, 0) over 200 ms.
-    // Checkpoint at (0, 0), default radius 8.
-    // Exact crossing (via quadratic): fraction = 0.5 → time = 100 ms.
+    // (-20,0) → (4,0) over 200 ms enters the default radius 8 at x=-8: half way.
     const f: ReplayFrame[] = [
       [0,  -20, 0, 0, 5],
       [200,  4, 0, 0, 5],
@@ -115,7 +80,6 @@ describe("pacerCheckpointTimes", () => {
   });
 
   it("returns monotonically non-decreasing times for checkpoints in lap order", () => {
-    // Pacer passes through each checkpoint exactly (dist = 0 < radius).
     const f: ReplayFrame[] = [
       [0,   0,   0, 0, 5],
       [500, 50,  0, 0, 5],
@@ -131,59 +95,49 @@ describe("pacerCheckpointTimes", () => {
     }
   });
 
-  it("uses only frames starting from the previous checkpoint (scan is forward-only)", () => {
-    // Two checkpoints: both at the same x=0 position but in scan order.
-    // We want to ensure the second checkpoint scan starts after the first found frame,
-    // producing a later time. Here CP0 is at x=0 (frame 0) and CP1 also at x=0
-    // but would only be re-scanned from frame 0 onward; we make CP1 far away so null.
+  it("scans forward only: a checkpoint reached before the previous one is never found", () => {
     const f: ReplayFrame[] = [
-      [0,  0, 0, 0, 5],
+      [0, 0, 0, 0, 5],
       [500, 100, 0, 0, 5],
+      [1000, 200, 0, 0, 5],
     ];
-    const cps = [{ x: 0, z: 0 }, { x: 300, z: 0 }]; // CP1 far out of reach
-    const times = pacerCheckpointTimes(f, cps);
-    expect(times[0]).not.toBeNull();
-    expect(times[1]).toBeNull();
+    const cps = [{ x: 100, z: 0 }, { x: 0, z: 0 }];
+    // Enters radius 8 around x=100 at x=92: 92% of the first segment.
+    expect(pacerCheckpointTimes(f, cps)).toEqual([460, null]);
+  });
+
+  it("takes the raw frame time when the scan resumes on a frame already inside the next radius", () => {
+    // Both checkpoints contain frame 1; the second scan starts there and must
+    // not interpolate back from frame 0.
+    const f: ReplayFrame[] = [
+      [0, -50, 0, 0, 5],
+      [500, 0, 0, 0, 5],
+    ];
+    const cps = [{ x: 0, z: 0 }, { x: 3, z: 0 }];
+    expect(pacerCheckpointTimes(f, cps)).toEqual([
+      expect.any(Number),
+      500,
+    ]);
   });
 });
 
-// ---------------------------------------------------------------------------
-// pacerDelta
-// ---------------------------------------------------------------------------
 
 describe("pacerDelta", () => {
   const pacerTimes: (number | null)[] = [0, 500, 1000, null];
 
-  it("returns negative when driver arrives before the Pacer (driver ahead)", () => {
-    // Driver at CP1 in 400 ms, Pacer crossed it at 500 ms. Delta = 400 − 500 = −100.
+  it("is negative when the driver is ahead, positive when behind", () => {
     expect(pacerDelta(pacerTimes, 1, 400)).toBe(-100);
-  });
-
-  it("returns positive when driver arrives after the Pacer (driver behind)", () => {
-    // Driver at CP1 in 600 ms, Pacer crossed it at 500 ms. Delta = 600 − 500 = 100.
     expect(pacerDelta(pacerTimes, 1, 600)).toBe(100);
-  });
-
-  it("returns zero when driver and Pacer cross at the same time", () => {
     expect(pacerDelta(pacerTimes, 1, 500)).toBe(0);
   });
 
-  it("returns null when the Pacer never crossed that checkpoint", () => {
+  it("is null when the Pacer never crossed that checkpoint or the index is out of range", () => {
     expect(pacerDelta(pacerTimes, 3, 1000)).toBeNull();
-  });
-
-  it("returns null for a negative checkpoint index", () => {
     expect(pacerDelta(pacerTimes, -1, 1000)).toBeNull();
-  });
-
-  it("returns null for an out-of-range checkpoint index", () => {
     expect(pacerDelta(pacerTimes, 99, 1000)).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// PacerOverlay Variant (#127)
-// ---------------------------------------------------------------------------
 
 function makeCarGroup(): THREE.Group {
   const g = new THREE.Group();
@@ -238,7 +192,6 @@ describe("PacerOverlay Variant", () => {
     const overlay = new PacerOverlay(makeScene(), DRIVER);
     overlay.setFrames(FRAMES);
     expect(overlay.resolvedVariant()).toBe(resolveVariant(DRIVER));
-    // The constructor's mesh already renders the fallback; no rebuild happens.
     expect(createCarMesh).toHaveBeenCalledTimes(1);
     expect(createCarMesh).toHaveBeenCalledWith(DRIVER, undefined, resolveVariant(DRIVER));
   });
@@ -293,7 +246,6 @@ describe("PacerOverlay Variant", () => {
     const overlay = new PacerOverlay(makeScene(), DRIVER);
     overlay.setFrames(FRAMES, "taxi");
     overlay.setFrames(FRAMES, "taxi");
-    // Constructor + the one taxi rebuild.
     expect(createCarMesh).toHaveBeenCalledTimes(2);
   });
 });

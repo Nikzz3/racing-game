@@ -5,12 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_SERVER_URL = "ws://localhost:8080";
 const RELEASES_URL = "https://github.com/Nikzz3/racing-game/releases";
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const APP_SCHEME = "app";
-const APP_HOST = "bundle";
-const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
+const APP_ORIGIN = `${APP_SCHEME}://bundle`;
 
 const CSP = [
   "default-src 'self'",
@@ -23,37 +21,23 @@ const CSP = [
   "worker-src 'self' blob:",
 ].join("; ");
 
-// --- server URL: CLI flag > env > baked dist/config.json > default ----------
-
-function readBakedServerUrl(): string | undefined {
+// Server URL precedence: CLI flag > env > dist/config.json baked by scripts/build.mjs > default.
+function bakedServerUrl(): string | undefined {
   const configPath = path.join(import.meta.dirname, "config.json");
   if (!existsSync(configPath)) return undefined;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(configPath, "utf8"));
-    if (typeof parsed === "object" && parsed !== null && "serverUrl" in parsed) {
-      const url = (parsed as { serverUrl: unknown }).serverUrl;
-      if (typeof url === "string" && url.length > 0) return url;
-    }
+    return (JSON.parse(readFileSync(configPath, "utf8")) as { serverUrl?: string }).serverUrl || undefined;
   } catch (err) {
     console.warn(`desktop: could not parse ${configPath}:`, err);
+    return undefined;
   }
-  return undefined;
 }
 
-function resolveServerUrl(): string {
-  const prefix = "--server-url=";
-  const fromArg = process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length);
-  return (
-    fromArg?.trim() ||
-    process.env.RACING_SERVER_URL?.trim() ||
-    readBakedServerUrl() ||
-    DEFAULT_SERVER_URL
-  );
-}
-
-const serverUrl = resolveServerUrl();
-
-// --- client bundle location -------------------------------------------------
+const serverUrl =
+  process.argv.find((a) => a.startsWith("--server-url="))?.slice("--server-url=".length).trim() ||
+  process.env.RACING_SERVER_URL?.trim() ||
+  bakedServerUrl() ||
+  "ws://localhost:8080";
 
 const clientDir = app.isPackaged
   ? path.join(process.resourcesPath, "client")
@@ -84,52 +68,41 @@ const MIME_TYPES: Record<string, string> = {
   ".webmanifest": "application/manifest+json",
 };
 
-/** Map an app:// request to a file inside clientDir, or null if it escapes / is missing. */
+/** Map an app:// request to a file inside clientDir, or null if it escapes or is missing. */
 function resolveBundleFile(requestUrl: string): string | null {
-  const { pathname } = new URL(requestUrl);
-  let decoded: string;
+  let pathname: string;
   try {
-    decoded = decodeURIComponent(pathname);
+    pathname = decodeURIComponent(new URL(requestUrl).pathname);
   } catch {
     return null;
   }
-  const relative = decoded === "/" || decoded === "" ? "index.html" : decoded.replace(/^\/+/, "");
-  const file = path.resolve(clientDir, relative);
+  const file = path.resolve(clientDir, pathname.replace(/^\/+/, "") || "index.html");
   const rel = path.relative(clientDir, file);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) return null; // traversal guard
-  if (!existsSync(file)) return null;
+  if (rel.startsWith("..") || path.isAbsolute(rel) || !existsSync(file)) return null;
   return file;
 }
 
 async function handleAppRequest(request: Request): Promise<Response> {
   const file = resolveBundleFile(request.url);
-  if (!file) {
-    return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
-  }
+  if (!file) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
   const upstream = await net.fetch(pathToFileURL(file).href);
   const headers = new Headers(upstream.headers);
   const ext = path.extname(file).toLowerCase();
-  const mime = MIME_TYPES[ext];
-  if (mime) headers.set("Content-Type", mime);
+  if (MIME_TYPES[ext]) headers.set("Content-Type", MIME_TYPES[ext]);
   if (ext === ".html") headers.set("Content-Security-Policy", CSP);
   return new Response(upstream.body, { status: upstream.status, headers });
 }
 
-// Must run before app is ready (top-level, before whenReady).
+// Must run before app is ready.
 protocol.registerSchemesAsPrivileged([
-  {
-    scheme: APP_SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-  },
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
-// --- window -----------------------------------------------------------------
-
-function isExternalHttp(url: string): boolean {
-  return /^https?:\/\//i.test(url);
+function openExternally(url: string): void {
+  if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
     height: 720,
@@ -150,47 +123,37 @@ function createWindow(): BrowserWindow {
   });
 
   win.once("ready-to-show", () => win.show());
-
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttp(url)) void shell.openExternal(url);
+    openExternally(url);
     return { action: "deny" };
   });
-
   win.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(`${APP_ORIGIN}/`)) {
-      event.preventDefault();
-      if (isExternalHttp(url)) void shell.openExternal(url);
-    }
+    if (url.startsWith(`${APP_ORIGIN}/`)) return;
+    event.preventDefault();
+    openExternally(url);
   });
 
   void win.loadURL(`${APP_ORIGIN}/index.html`);
-
-  if (process.env.RACING_DEVTOOLS === "1") {
-    win.webContents.openDevTools({ mode: "detach" });
-  }
-
-  return win;
+  if (process.env.RACING_DEVTOOLS === "1") win.webContents.openDevTools({ mode: "detach" });
 }
 
 function installMenu(): void {
-  if (process.platform !== "darwin") {
-    Menu.setApplicationMenu(null);
-    return;
-  }
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      { role: "appMenu" },
-      { role: "editMenu" },
-      { role: "viewMenu" },
-      { role: "windowMenu" },
-    ]),
+    process.platform === "darwin"
+      ? Menu.buildFromTemplate([
+          { role: "appMenu" },
+          { role: "editMenu" },
+          { role: "viewMenu" },
+          { role: "windowMenu" },
+        ])
+      : null,
   );
 }
 
 // --- in-app updates ---------------------------------------------------------
 //
-// Mirrors the `UpdateState` union in client/src/desktop.d.ts. The renderer only
-// ever sees this snapshot; electron-updater's own events stay in the main process.
+// Mirrors `DesktopUpdateState` in client/src/desktop.d.ts. The renderer only ever
+// sees this snapshot; electron-updater's own events stay in the main process.
 type UpdateState =
   | { status: "idle" }
   | { status: "checking" }
@@ -208,11 +171,16 @@ function publishUpdateState(next: UpdateState): void {
   }
 }
 
+function updateBusy(): boolean {
+  return updateState.status === "downloading" || updateState.status === "downloaded";
+}
+
 /**
  * Wire electron-updater to the renderer. Only meaningful in a packaged build:
  * unpackaged runs have no app-update.yml, so `checkForUpdates` would just log an
- * error. Every updater call is wrapped so a flaky network, a missing release or a
- * signature failure degrades to an `error` state on the control, never to a crashed app.
+ * error; they keep the IPC surface so the always-visible lobby control still works.
+ * Updater failures (flaky network, missing release, signature failure) degrade to an
+ * `error` state on the control, never to a crashed app.
  *
  * macOS: Squirrel.Mac refuses to install an update into an app that is not
  * code-signed, and electron-updater surfaces that as an `error` after the zip has
@@ -226,31 +194,24 @@ function publishUpdateState(next: UpdateState): void {
  * in place like Windows and Linux.
  */
 function setupAutoUpdater(): void {
+  ipcMain.handle("desktop:update:state", () => updateState);
   if (!app.isPackaged) {
-    // Keep the IPC surface so the always-visible lobby control works in dev runs.
-    ipcMain.handle("desktop:update:state", () => updateState);
     ipcMain.handle("desktop:update:check", () => {});
     ipcMain.handle("desktop:update:install", () => {});
     return;
   }
-  let updater: typeof electronUpdater.autoUpdater;
-  try {
-    updater = electronUpdater.autoUpdater;
-    updater.autoDownload = false;
-    updater.autoInstallOnAppQuit = true;
-    updater.logger = console;
-  } catch (err) {
-    console.warn("desktop: auto-updater unavailable:", err);
-    return;
-  }
+
+  const updater = electronUpdater.autoUpdater;
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = true;
+  updater.logger = console;
 
   // Version of the release we are currently offering, so error/progress events can
   // be attributed to it even after electron-updater has moved on.
   let offered: string | null = null;
 
   updater.on("checking-for-update", () => {
-    if (updateState.status === "downloading" || updateState.status === "downloaded") return;
-    publishUpdateState({ status: "checking" });
+    if (!updateBusy()) publishUpdateState({ status: "checking" });
   });
   updater.on("update-available", (info) => {
     offered = info.version;
@@ -280,47 +241,29 @@ function setupAutoUpdater(): void {
     // installation over to the browser.
     if (process.platform === "darwin" && offered !== null && updateState.status !== "idle") {
       publishUpdateState({ status: "available", version: offered, canInstall: false });
-      return;
+    } else {
+      publishUpdateState({ status: "error", message });
     }
-    publishUpdateState({ status: "error", message });
   });
 
   const check = (): void => {
     // Never overwrite an in-flight download or a ready-to-install state with the
     // result of a routine re-check.
-    if (updateState.status === "downloading" || updateState.status === "downloaded") return;
-    updater.checkForUpdates().catch((err: unknown) => {
-      console.warn("desktop: update check failed:", err);
-    });
+    if (updateBusy()) return;
+    updater.checkForUpdates().catch((err: unknown) => console.warn("desktop: update check failed:", err));
   };
 
-  ipcMain.handle("desktop:update:state", () => updateState);
-  ipcMain.handle("desktop:update:check", () => check());
+  ipcMain.handle("desktop:update:check", check);
   ipcMain.handle("desktop:update:install", async () => {
-    try {
-      switch (updateState.status) {
-        case "downloaded":
-          updater.quitAndInstall();
-          return;
-        case "available":
-          if (!updateState.canInstall) {
-            await shell.openExternal(RELEASES_URL);
-            return;
-          }
-          publishUpdateState({
-            status: "downloading",
-            version: updateState.version,
-            percent: 0,
-          });
-          await updater.downloadUpdate();
-          return;
-        default:
-          return;
-      }
-    } catch (err) {
-      // The `error` listener above has already translated this into renderer state
-      // (including the macOS fallback); nothing more to do than keep the app alive.
-      console.warn("desktop: update install failed:", err);
+    if (updateState.status === "downloaded") {
+      updater.quitAndInstall();
+    } else if (updateState.status === "available" && !updateState.canInstall) {
+      await shell.openExternal(RELEASES_URL);
+    } else if (updateState.status === "available") {
+      publishUpdateState({ status: "downloading", version: updateState.version, percent: 0 });
+      // The `error` listener above has already translated a rejection into renderer
+      // state (including the macOS fallback); nothing more to do than keep the app alive.
+      await updater.downloadUpdate().catch((err: unknown) => console.warn("desktop: update install failed:", err));
     }
   });
 
@@ -346,13 +289,8 @@ void app.whenReady().then(() => {
       `desktop: client bundle not found at ${clientDir}. Run \`npm run desktop:build\` from the repo root first.`,
     );
   }
-
   protocol.handle(APP_SCHEME, handleAppRequest);
   installMenu();
   createWindow();
-  try {
-    setupAutoUpdater();
-  } catch (err) {
-    console.warn("desktop: could not set up auto-updater:", err);
-  }
+  setupAutoUpdater();
 });

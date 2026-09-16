@@ -49,9 +49,7 @@ describe("room lifecycle", () => {
     expect(manager.list()).toEqual([]);
     finishInsert({ rows: [] } as never);
     await vi.waitFor(() => expect(pool.query).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(pool.query).mock.calls[1][0]).toContain(
-      "DELETE FROM rooms",
-    );
+    expect(vi.mocked(pool.query).mock.calls[1][0]).toContain("DELETE FROM rooms");
   });
 
   it("expires after one hour and detaches every driver when closed", () => {
@@ -63,9 +61,10 @@ describe("room lifecycle", () => {
     manager.join(second, room.id);
     expect(room.expired(room.createdAt + ROOM_TTL_MS - 1)).toBe(false);
     expect(room.expired(room.createdAt + ROOM_TTL_MS)).toBe(true);
-    expect(manager.close(room)).toEqual([first, second]);
+    manager.close(room);
     expect(first.room).toBeNull();
     expect(second.room).toBeNull();
+    expect(room.players.size).toBe(0);
     expect(manager.list()).toEqual([]);
   });
 });

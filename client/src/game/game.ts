@@ -38,9 +38,17 @@ import {
 import { buildTrack } from "./trackMesh";
 import { checkpointMissed } from "./checkpoint-miss";
 import { E2eSeam } from "./e2e-seam";
+import { autopilotInput } from "./harness";
 
 const SEND_MS = 50;
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0 };
+
+declare global {
+  interface Window {
+    __autopilot?: (enabled: boolean) => void;
+  }
+}
+
 export class Game {
   private readonly track: Track;
   private readonly car: CarPhysics;
@@ -84,7 +92,7 @@ export class Game {
     this.container.className = "race-viewport";
     parent.append(this.container);
     this.bundle = createScene(this.container, this.track.samples);
-    buildTrack(this.bundle.scene, this.track.samples);
+    buildTrack(this.bundle.scene, this.track);
     this.remote = new RemotePlayers(this.bundle.scene, myId);
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
@@ -111,9 +119,8 @@ export class Game {
     }, SEND_MS);
     window.addEventListener("resize", this.resize);
     document.addEventListener("visibilitychange", this.visibility);
-    (window as unknown as Record<string, unknown>).__autopilot = (
-      enabled: boolean,
-    ) => {
+    // Dev-console hook: window.__autopilot(true) hands the wheel to the follower.
+    window.__autopilot = (enabled) => {
       this.autopilot = enabled;
     };
     this.animation = requestAnimationFrame(this.frame);
@@ -238,7 +245,9 @@ export class Game {
       dt = this.seam.advance(elapsed, 3);
       injecting = true;
     } else {
-      input = this.autopilot ? this.autoInput() : this.input.read(dt);
+      input = this.autopilot
+        ? autopilotInput(this.car, this.track.samples, 12)
+        : this.input.read(dt);
       this.car.advance(elapsed, input);
     }
     this.carMesh.position.set(this.car.x, 0, this.car.z);
@@ -278,21 +287,6 @@ export class Game {
       this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animation = requestAnimationFrame(this.frame);
   };
-  private autoInput(): CarInput {
-    const target =
-      this.track.samples[
-        (this.car.centerIndex + 12) % this.track.samples.length
-      ];
-    const angle =
-      Math.atan2(target.x - this.car.x, target.z - this.car.z) -
-      this.car.heading;
-    const turn = Math.atan2(Math.sin(angle), Math.cos(angle));
-    return {
-      steer: Math.max(-1, Math.min(1, turn * 2.5)),
-      throttle: Math.abs(turn) > 0.5 && this.car.speed > 18 ? 0 : 1,
-      brake: Math.abs(turn) > 0.9 && this.car.speed > 12 ? 1 : 0,
-    };
-  }
   private installSeam(): void {
     if (!import.meta.env.VITE_E2E) return;
     this.seam = new E2eSeam(
@@ -339,6 +333,6 @@ export class Game {
     disposeCarMesh(this.carMesh);
     disposeWorld(this.bundle);
     this.container.remove();
-    delete (window as unknown as Record<string, unknown>).__autopilot;
+    delete window.__autopilot;
   }
 }

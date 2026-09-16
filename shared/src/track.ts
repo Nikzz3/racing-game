@@ -1,8 +1,6 @@
-// Sunset Ridge Circuit: a closed Catmull-Rom spline in the XZ plane (y = 0, flat track).
-// Both client (mesh generation, off-track checks) and server (checkpoint validation)
-// derive everything from this single definition.
-
-// ---- Global constants (shared by all Tracks) --------------------------------
+// Tracks are closed Catmull-Rom splines in the XZ plane (y = 0). Client mesh
+// generation, off-track checks and server checkpoint validation all derive from
+// the sampled centerline defined here.
 
 export const ROAD_HALF_WIDTH = 7;
 /** Distance from road edge to the physical barrier wall. */
@@ -10,8 +8,6 @@ export const BARRIER_OFFSET = 6;
 export const NUM_CHECKPOINTS = 12;
 export const CHECKPOINT_RADIUS = 8;
 export const TRACK_DIVISIONS = 512;
-
-// ---- Core types -------------------------------------------------------------
 
 export type TrackSlug = string;
 export const DEFAULT_TRACK_SLUG: TrackSlug = "sunset-ridge";
@@ -24,7 +20,6 @@ export interface TrackSample {
   dirZ: number;
 }
 
-/** A named racing circuit: closed loop of control points with pre-derived samples/checkpoints. */
 export interface Track {
   id: TrackSlug;
   name: string;
@@ -32,8 +27,6 @@ export interface Track {
   samples: TrackSample[];
   checkpoints: { x: number; z: number }[];
 }
-
-// ---- Geometry helpers -------------------------------------------------------
 
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t;
@@ -47,14 +40,11 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): 
   );
 }
 
-export function sampleTrack(
-  controlPoints: readonly [number, number][],
-  divisions: number = TRACK_DIVISIONS
-): TrackSample[] {
+function sampleTrack(controlPoints: readonly [number, number][]): TrackSample[] {
   const n = controlPoints.length;
   const pts: { x: number; z: number }[] = [];
-  for (let s = 0; s < divisions; s++) {
-    const u = (s / divisions) * n;
+  for (let s = 0; s < TRACK_DIVISIONS; s++) {
+    const u = (s / TRACK_DIVISIONS) * n;
     const i = Math.floor(u);
     const t = u - i;
     const p0 = controlPoints[(i - 1 + n) % n];
@@ -67,7 +57,7 @@ export function sampleTrack(
     });
   }
   return pts.map((p, idx) => {
-    const next = pts[(idx + 1) % divisions];
+    const next = pts[(idx + 1) % TRACK_DIVISIONS];
     const dx = next.x - p.x;
     const dz = next.z - p.z;
     const len = Math.hypot(dx, dz) || 1;
@@ -75,33 +65,7 @@ export function sampleTrack(
   });
 }
 
-function deriveCheckpoints(
-  samples: TrackSample[],
-  numCheckpoints: number,
-  divisions: number
-): { x: number; z: number }[] {
-  return Array.from({ length: numCheckpoints }, (_, k) => {
-    const s = samples[Math.floor((k * divisions) / numCheckpoints)];
-    return { x: s.x, z: s.z };
-  });
-}
-
-/**
- * Derives one Checkpoint per control point by mapping each control point to its
- * nearest centerline sample. Preserves travel order (control points are already
- * in lap order) so Checkpoint 0 lands at the start/finish.
- */
-function deriveCheckpointsFromControlPoints(
-  controlPoints: readonly [number, number][],
-  samples: TrackSample[]
-): { x: number; z: number }[] {
-  return controlPoints.map(([cx, cz]) => {
-    const { index } = nearestCenterline(cx, cz, samples);
-    return { x: samples[index].x, z: samples[index].z };
-  });
-}
-
-/** Nearest centerline sample to a world position (full scan; 512 points is cheap). */
+/** Nearest centerline sample to a world position (full scan; 512 points is ~1 µs). */
 export function nearestCenterline(
   x: number,
   z: number,
@@ -122,14 +86,12 @@ export function nearestCenterline(
   return { index: best, dist: Math.sqrt(bestD2) };
 }
 
-// ---- Sunset Ridge Circuit ---------------------------------------------------
-
 /**
- * Control points [x, z] of the centerline, in order of travel.
- * Layout: start straight along the bottom, a fast right sweeper onto the right
- * side, a left-right chicane, a blast up to the top-right corner, esses across
- * the top, a downhill-style dive on the left into a double-apex sweep, and a
- * bottom-left corner back onto the start straight.
+ * Sunset Ridge Circuit centerline [x, z], in order of travel: start straight
+ * along the bottom, a fast right sweeper onto the right side, a left-right
+ * chicane, a blast up to the top-right corner, esses across the top, a dive on
+ * the left into a double-apex sweep, and a bottom-left corner back onto the
+ * start straight.
  */
 const SUNSET_RIDGE_CONTROL_POINTS: [number, number][] = [
   [-40, -210],
@@ -167,35 +129,28 @@ const SUNSET_RIDGE_CONTROL_POINTS: [number, number][] = [
   [-130, -195],
 ];
 
-const _sunsetRidgeSamples = sampleTrack(SUNSET_RIDGE_CONTROL_POINTS);
-const _sunsetRidgeCheckpoints = deriveCheckpoints(
-  _sunsetRidgeSamples,
-  NUM_CHECKPOINTS,
-  TRACK_DIVISIONS
-);
+const sunsetRidgeSamples = sampleTrack(SUNSET_RIDGE_CONTROL_POINTS);
 
-/** The one Track currently in the game. */
+// Sunset Ridge spaces NUM_CHECKPOINTS gates evenly along the centerline.
 export const SUNSET_RIDGE: Track = {
   id: "sunset-ridge",
   name: "Sunset Ridge Circuit",
   controlPoints: SUNSET_RIDGE_CONTROL_POINTS,
-  samples: _sunsetRidgeSamples,
-  checkpoints: _sunsetRidgeCheckpoints,
+  samples: sunsetRidgeSamples,
+  checkpoints: Array.from({ length: NUM_CHECKPOINTS }, (_, k) => {
+    const s = sunsetRidgeSamples[Math.floor((k * TRACK_DIVISIONS) / NUM_CHECKPOINTS)];
+    return { x: s.x, z: s.z };
+  }),
 };
 
-// ---- Stormhaven Circuit -----------------------------------------------------
-
 /**
- * Control points [x, z] of the Stormhaven Circuit centerline.
- * "Serpent's Coil" layout inspired by Circuit of the Americas / Interlagos:
- * a fast, open outer loop wrapped around a tight, knotted infield — deliberately
- * asymmetric, with all the technical corners clustered on one side.
- * Original layout: not a 1:1 trace of any trademarked circuit.
+ * Stormhaven Circuit centerline [x, z]. "Serpent's Coil": a fast, open outer
+ * loop wrapped around a tight, knotted infield, with the technical corners
+ * clustered on one side. Original layout, not a trace of any real circuit.
  *
- * Sectors:
  *   S1: Start/finish on the long right-hand main straight → sweeps down to the bottom
  *   S2: Long curving back straight (bottom) → heavy-braking hairpin at the far corner
- *   S3: Maggotts-Becketts-style high-speed esse snake → triple-apex tightening spiral
+ *   S3: High-speed esse snake → triple-apex tightening spiral
  *   S4: Long curving top straight → fast top-right sweep back onto the main straight
  */
 const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
@@ -210,7 +165,7 @@ const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
   [-198, -150],  // T2 – heavy-braking hairpin apex (far bottom-left, eased open)
   [-190, -102],  // hairpin exit
   [-150, -72],   // into the infield
-  [-110, -100],  // T3 – Maggotts-Becketts esse snake (swing 1, amplitude eased)
+  [-110, -100],  // T3 – esse snake (swing 1, amplitude eased)
   [-70, -73],    // esse swing 2
   [-30, -100],   // esse swing 3
   [10, -70],     // esse swing 4
@@ -230,39 +185,36 @@ const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
   [225, 90],     // sweep exit → loop closes back to T0
 ];
 
-const _stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
-const _stormhavenCheckpoints = deriveCheckpointsFromControlPoints(
-  STORMHAVEN_CONTROL_POINTS,
-  _stormhavenSamples
-);
+const stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
 
-/** Second circuit: Stormhaven Circuit. */
+// Stormhaven folds back on itself, so it places one gate per control point (at
+// the nearest centerline sample) to make the apex-to-apex path the racing line.
+// Control points are already in lap order, so gate 0 is the start/finish.
 export const STORMHAVEN: Track = {
   id: "stormhaven",
   name: "Stormhaven Circuit",
   controlPoints: STORMHAVEN_CONTROL_POINTS,
-  samples: _stormhavenSamples,
-  checkpoints: _stormhavenCheckpoints,
+  samples: stormhavenSamples,
+  checkpoints: STORMHAVEN_CONTROL_POINTS.map(([cx, cz]) => {
+    const s = stormhavenSamples[nearestCenterline(cx, cz, stormhavenSamples).index];
+    return { x: s.x, z: s.z };
+  }),
 };
 
-// ---- Registry ---------------------------------------------------------------
-
-/** All registered Tracks; add future circuits here. */
 export const TRACKS: Track[] = [SUNSET_RIDGE, STORMHAVEN];
 
 export function getTrack(slug: string): Track | undefined {
   return TRACKS.find((t) => t.id === slug);
 }
 
-/** Sum of straight-line segment lengths between consecutive centerline samples (meters). */
-export function trackLength(track: Track): number {
-  const s = track.samples;
-  let len = 0;
-  for (let i = 0; i < s.length; i++) {
-    const next = s[(i + 1) % s.length];
-    len += Math.hypot(next.x - s[i].x, next.z - s[i].z);
-  }
-  return len;
+/** Resolve arbitrary input to a registered Track, falling back to the default. */
+export function resolveTrack(value: unknown): Track {
+  return TRACKS.find((t) => t.id === value) ?? SUNSET_RIDGE;
+}
+
+/** Coerce arbitrary input to a valid track slug, falling back to the default. */
+export function asTrackSlug(value: unknown): TrackSlug {
+  return resolveTrack(value).id;
 }
 
 /**
@@ -270,39 +222,31 @@ export function trackLength(track: Track): number {
  * implausibly fast (ADR-0005). Below 1.0 because the centerline underestimates
  * the real racing line, so an honest lap can slightly beat the naive floor.
  */
-export const MIN_LAP_FRACTION = 0.85;
+const MIN_LAP_FRACTION = 0.85;
 
 /**
  * Lower bound (ms) on a plausible lap time for `track` at `maxSpeedMs`:
- * `MIN_LAP_FRACTION × centerline length / max speed`. A lap faster than this
- * could not have been driven within the difficulty's speed cap (ADR-0005).
+ * `MIN_LAP_FRACTION × centerline length / max speed` (ADR-0005).
  */
 export function minPlausibleLapMs(track: Track, maxSpeedMs: number): number {
-  return Math.floor((MIN_LAP_FRACTION * trackLength(track)) / maxSpeedMs * 1000);
-}
-
-/** Coerce arbitrary input to a valid track slug, falling back to the default. */
-export function asTrackSlug(value: unknown): TrackSlug {
-  if (typeof value === "string" && TRACKS.some((t) => t.id === value)) return value;
-  return DEFAULT_TRACK_SLUG;
-}
-
-/** Resolve arbitrary input to a registered Track, falling back to the default. */
-export function resolveTrack(value: unknown): Track {
-  return getTrack(asTrackSlug(value)) ?? SUNSET_RIDGE;
+  const s = track.samples;
+  let len = 0;
+  for (let i = 0; i < s.length; i++) {
+    const next = s[(i + 1) % s.length];
+    len += Math.hypot(next.x - s[i].x, next.z - s[i].z);
+  }
+  return Math.floor((MIN_LAP_FRACTION * len) / maxSpeedMs * 1000);
 }
 
 /**
- * Convert a Track's centerline samples into a closed 2D SVG path string.
- * World x maps to SVG x; world z maps to SVG y (top-down view, z+ is up in world).
- * Returns the outline path followed by a short start/finish tick marker at sample 0.
+ * A Track's centerline as a closed SVG path (world x → SVG x, world z → SVG y),
+ * followed by a short perpendicular start/finish tick at sample 0.
  */
 export function trackPath(track: Track): string {
   const { samples } = track;
   const outline = samples
     .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.z.toFixed(1)}`)
     .join(" ");
-  // Perpendicular tick at sample 0 = start/finish marker
   const s0 = samples[0];
   const tickLen = 12;
   const mx1 = (s0.x - s0.dirZ * tickLen).toFixed(1);

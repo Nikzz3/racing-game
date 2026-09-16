@@ -35,6 +35,25 @@ const FRAMES: ReplayFrame[] = [
   [1000, 5, 5, 0, 10],
 ];
 
+/** Pins the clock at 0 and hands each requested animation frame to the test. */
+function captureFrames(handle: number): (now: number) => void {
+  let callback: FrameRequestCallback;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(performance, "now").mockReturnValue(0);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((next) => {
+      callback = next;
+      return handle;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.replaceChildren();
+  });
+  return (now) => callback(now);
+}
+
 function makeViewer(variant: Variant | undefined): ReplayViewer {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
@@ -62,40 +81,25 @@ describe("ReplayViewer variant", () => {
 
   it("falls back to the name-hash path when the recorded Variant is absent", () => {
     const viewer = makeViewer(undefined);
-    // createCarMesh resolves an absent Variant via the stable name hash, so
-    // legacy replays (NULL column) render exactly as they did before #126.
     expect(createCarMesh).toHaveBeenCalledWith("Ava", "Ava", undefined);
     viewer.dispose();
   });
 });
 
 describe("ReplayViewer lifecycle", () => {
-  let callback: FrameRequestCallback;
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(performance, "now").mockReturnValue(0);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((next) => {
-      callback = next;
-      return 7;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-    document.body.replaceChildren();
-  });
+  const frame = captureFrames(7);
 
   it("holds the last pose and restarts after the finish pause", () => {
     const viewer = makeViewer("taxi");
     const mesh = vi.mocked(createCarMesh).mock.results[0].value;
-    callback(1000);
+    frame(1000);
     expect(mesh.position.x).toBe(5);
     expect(
       document.querySelector<HTMLElement>(".replay-finished")!.hidden,
     ).toBe(false);
-    callback(2499);
+    frame(2499);
     expect(mesh.position.x).toBe(5);
-    callback(2500);
+    frame(2500);
     expect(mesh.position.x).toBe(0);
     expect(
       document.querySelector<HTMLElement>(".replay-finished")!.hidden,
@@ -133,20 +137,7 @@ describe("ReplayViewer lifecycle", () => {
 });
 
 describe("pre-rework recording compatibility", () => {
-  let callback: FrameRequestCallback;
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(performance, "now").mockReturnValue(0);
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((next) => {
-      callback = next;
-      return 1;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-    document.body.replaceChildren();
-  });
+  const frame = captureFrames(1);
 
   it.each([undefined, "taxi"] as const)(
     "plays the old writer's frames unchanged with variant %s",
@@ -167,7 +158,7 @@ describe("pre-rework recording compatibility", () => {
         variant,
       );
       const mesh = vi.mocked(createCarMesh).mock.results[0].value;
-      callback(25);
+      frame(25);
       expect(mesh.position.x).toBeCloseTo(-142.075, 6);
       expect(mesh.position.z).toBeCloseTo(38.49, 6);
       expect(mesh.rotation.y).toBeCloseTo(3.141092653589793, 10);
@@ -178,12 +169,12 @@ describe("pre-rework recording compatibility", () => {
         0,
         0.025,
       );
-      callback(LEGACY_RECORD.time_ms);
+      frame(LEGACY_RECORD.time_ms);
       expect(mesh.position.x).toBe(-144.14);
       expect(document.querySelector(".replay-time")?.textContent).toBe(
         "1:01.234 / 1:01.234",
       );
-      callback(LEGACY_RECORD.time_ms + 1500);
+      frame(LEGACY_RECORD.time_ms + 1500);
       expect(mesh.position.x).toBe(-144.13);
       expect(LEGACY_RECORD.frames).toEqual(originalFrames);
       viewer.dispose();

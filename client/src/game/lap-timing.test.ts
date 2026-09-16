@@ -1,248 +1,122 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import {
   CheckpointTracker,
   runAutopilotLap,
   replayInputs,
-  autopilotInput,
-} from './harness';
-import { CHECKPOINT_RADIUS, NUM_CHECKPOINTS, STORMHAVEN, SUNSET_RIDGE } from '@racing/shared';
+} from "./harness";
+import { NUM_CHECKPOINTS, STORMHAVEN, SUNSET_RIDGE } from "@racing/shared";
 
-const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
+const TRACKS = [
+  { track: SUNSET_RIDGE, maxSteps: 36_000, maxLapMs: 300_000 },
+  { track: STORMHAVEN, maxSteps: 72_000, maxLapMs: 600_000 },
+];
 
-// Place the car exactly at a checkpoint's position.
-function atCheckpoint(k: number): { x: number; z: number } {
-  return { x: CHECKPOINTS[k].x, z: CHECKPOINTS[k].z };
-}
+describe.each(TRACKS)("CheckpointTracker on $track.id", ({ track }) => {
+  const cps = track.checkpoints;
+  const at = (tracker: CheckpointTracker, k: number, step: number) =>
+    tracker.update(cps[k].x, cps[k].z, step);
 
-describe('CheckpointTracker', () => {
-  it('records a lap time when all checkpoints are passed in order', () => {
-    const tracker = new CheckpointTracker(CHECKPOINTS);
-
-    // First pass over CP0 starts the timer (returns null).
-    const { x: x0, z: z0 } = atCheckpoint(0);
-    expect(tracker.update(x0, z0, 0)).toBeNull();
-
-    // Pass CPs 1 through NUM_CHECKPOINTS-1.
-    for (let k = 1; k < NUM_CHECKPOINTS; k++) {
-      const { x, z } = atCheckpoint(k);
-      expect(tracker.update(x, z, k * 60)).toBeNull();
-    }
-
-    // Second pass over CP0 completes the lap.
-    const lapMs = tracker.update(x0, z0, NUM_CHECKPOINTS * 60);
-    expect(lapMs).not.toBeNull();
-    expect(lapMs).toBeGreaterThan(0);
-    // Each CP took 60 steps = 1 second; NUM_CHECKPOINTS seconds total.
-    expect(lapMs).toBeCloseTo(NUM_CHECKPOINTS * 1000, 0);
+  it("records a lap time when all checkpoints are passed in order", () => {
+    const tracker = new CheckpointTracker(cps);
+    expect(at(tracker, 0, 0)).toBeNull();
+    for (let k = 1; k < cps.length; k++)
+      expect(at(tracker, k, k * 60)).toBeNull();
+    // One second (60 steps) per checkpoint.
+    expect(at(tracker, 0, cps.length * 60)).toBeCloseTo(cps.length * 1000, 0);
   });
 
-  it('does not count a lap when a checkpoint is skipped', () => {
-    const tracker = new CheckpointTracker(CHECKPOINTS);
-
-    const { x: x0, z: z0 } = atCheckpoint(0);
-    tracker.update(x0, z0, 0); // start timer
-
-    // Pass CPs 1–4 in order.
-    for (let k = 1; k <= 4; k++) {
-      const { x, z } = atCheckpoint(k);
-      tracker.update(x, z, k * 60);
-    }
-
-    // Skip CP5 and jump to CP6.
-    const { x: x6, z: z6 } = atCheckpoint(6);
-    expect(tracker.update(x6, z6, 5 * 60)).toBeNull();
-
-    // CP0 again: tracker is still waiting for CP5, so lap is NOT completed.
-    const result = tracker.update(x0, z0, 12 * 60);
-    expect(result).toBeNull();
+  it("does not count a lap when a checkpoint is skipped", () => {
+    const tracker = new CheckpointTracker(cps);
+    at(tracker, 0, 0);
+    for (let k = 1; k <= 4; k++) at(tracker, k, k * 60);
+    expect(at(tracker, 6, 5 * 60)).toBeNull();
+    expect(at(tracker, 0, 12 * 60)).toBeNull();
   });
 
-  it('does not count the very first crossing of CP0 as a lap', () => {
-    const tracker = new CheckpointTracker(CHECKPOINTS);
-    const { x, z } = atCheckpoint(0);
-    // Fresh tracker — no lapStartStep yet, so crossing CP0 just starts the timer.
-    expect(tracker.update(x, z, 0)).toBeNull();
-  });
-
-  it('ignores a position that is outside checkpoint radius', () => {
-    const tracker = new CheckpointTracker(CHECKPOINTS);
-    // Far from any checkpoint.
+  it("ignores a position outside the checkpoint radius", () => {
+    const tracker = new CheckpointTracker(cps);
     expect(tracker.update(9999, 9999, 0)).toBeNull();
-    // Tracker's next pointer must not have advanced.
-    const { x, z } = atCheckpoint(0);
-    expect(tracker.update(x, z, 1)).toBeNull(); // starts timer, next → 1
+    expect(at(tracker, 0, 1)).toBeNull();
     expect(tracker.next).toBe(1);
   });
 });
 
-describe('autopilot baseline lap', () => {
-  it('completes a valid lap from the fixed spawn within a generous step budget', () => {
-    const result = runAutopilotLap({ maxSteps: 36000 }); // 10 min at 60 fps
-    expect(result).not.toBeNull();
-    if (result === null) return;
+describe("CheckpointTracker track isolation", () => {
+  const sr = SUNSET_RIDGE.checkpoints;
+  const sh = STORMHAVEN.checkpoints;
 
-    expect(result.lapTimeMs).toBeGreaterThan(0);
-    // Sanity bounds: the autopilot should not be faster than ~20 s or slower than 5 min.
-    expect(result.lapTimeMs).toBeGreaterThan(20_000);
-    expect(result.lapTimeMs).toBeLessThan(300_000);
-
-    // Trajectory must contain at least one step.
-    expect(result.trajectory.length).toBeGreaterThan(0);
-
-    // Print the baseline so the number is visible in CI logs.
-    console.log(`Autopilot baseline lap time: ${(result.lapTimeMs / 1000).toFixed(2)} s`);
-  }, 30_000); // allow up to 30 seconds of wall-clock time
-});
-
-describe('replayInputs', () => {
-  it('emits one state per input step', () => {
-    const N = 120;
-    const inputs = Array.from({ length: N }, () => ({ throttle: 1, brake: 0, steer: 0 }));
-    const { trajectory } = replayInputs(inputs);
-    expect(trajectory).toHaveLength(N);
+  it("the two tracks have geometrically distinct checkpoints", () => {
+    const same = sh.every(
+      (cp, i) => Math.abs(cp.x - sr[i].x) < 1 && Math.abs(cp.z - sr[i].z) < 1,
+    );
+    expect(same).toBe(false);
   });
 
-  it('trajectory starts near the fixed spawn position', () => {
-    const { trajectory } = replayInputs([{ throttle: 0, brake: 0, steer: 0 }]);
-    // SPAWN_SAMPLE is near the start/finish straight (around x≈-45, z≈-210 area)
-    const first = trajectory[0];
-    expect(first.x).not.toBeNaN();
-    expect(first.z).not.toBeNaN();
-    // Speed should be ~0 after a single coasting step from rest.
-    expect(first.speed).toBeCloseTo(0, 1);
+  it("Sunset Ridge checkpoint positions do not complete a Stormhaven lap", () => {
+    const tracker = new CheckpointTracker(sh);
+    for (let k = 0; k < NUM_CHECKPOINTS; k++)
+      tracker.update(sr[k].x, sr[k].z, k * 60);
+    expect(tracker.update(sr[0].x, sr[0].z, NUM_CHECKPOINTS * 60)).toBeNull();
   });
 
-  it('returns lapTimeMs when the input trace completes a valid lap', () => {
-    // Run the autopilot to get the recorded inputs, then replay them.
-    const lapResult = runAutopilotLap({ maxSteps: 36000 });
-    expect(lapResult).not.toBeNull();
-    if (lapResult === null) return;
-
-    const { trajectory, lapTimeMs } = replayInputs(lapResult.inputs);
-    expect(trajectory).toHaveLength(lapResult.inputs.length);
-    expect(lapTimeMs).not.toBeNull();
-    // Replay must reproduce the same lap time (deterministic simulation).
-    expect(lapTimeMs).toBeCloseTo(lapResult.lapTimeMs, 0);
-  });
-
-  it('returns null lapTimeMs when no lap is completed', () => {
-    const inputs = Array.from({ length: 60 }, () => ({ throttle: 0, brake: 0, steer: 0 }));
-    const { lapTimeMs } = replayInputs(inputs);
-    expect(lapTimeMs).toBeNull();
-  });
-});
-
-describe('CheckpointTracker on Stormhaven (non-default track)', () => {
-  const SH_CHECKPOINTS = STORMHAVEN.checkpoints;
-
-  function atStormhavenCheckpoint(k: number): { x: number; z: number } {
-    return { x: SH_CHECKPOINTS[k].x, z: SH_CHECKPOINTS[k].z };
-  }
-
-  it('Stormhaven and Sunset Ridge checkpoints are at different positions', () => {
-    // The two tracks must have geometrically distinct checkpoints so the
-    // isolation tests below are meaningful.
-    const sameAtEveryIndex = STORMHAVEN.checkpoints.every((cp, i) => {
-      const sr = SUNSET_RIDGE.checkpoints[i];
-      return Math.abs(cp.x - sr.x) < 1 && Math.abs(cp.z - sr.z) < 1;
-    });
-    expect(sameAtEveryIndex).toBe(false);
-  });
-
-  it('records a lap time when all Stormhaven checkpoints are passed in order', () => {
-    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
-    const n = SH_CHECKPOINTS.length; // 24 (one per control point)
-
-    const { x: x0, z: z0 } = atStormhavenCheckpoint(0);
-    expect(tracker.update(x0, z0, 0)).toBeNull(); // starts timer
-
-    for (let k = 1; k < n; k++) {
-      const { x, z } = atStormhavenCheckpoint(k);
-      expect(tracker.update(x, z, k * 60)).toBeNull();
-    }
-
-    // Second pass over CP0 completes the lap.
-    const lapMs = tracker.update(x0, z0, n * 60);
-    expect(lapMs).not.toBeNull();
-    expect(lapMs).toBeGreaterThan(0);
-    expect(lapMs).toBeCloseTo(n * 1000, 0);
-  });
-
-  it('does not complete a lap when Sunset Ridge checkpoint positions are fed to a Stormhaven tracker', () => {
-    // A tracker keyed to Stormhaven must not fire on Sunset Ridge geometry.
-    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
-
-    // Walk through all of Sunset Ridge's checkpoint positions.
-    for (let k = 0; k < NUM_CHECKPOINTS; k++) {
-      const { x, z } = atCheckpoint(k);
-      tracker.update(x, z, k * 60);
-    }
-    // Pass CP0 of Sunset Ridge a second time — must NOT record a Stormhaven lap.
-    const { x: x0, z: z0 } = atCheckpoint(0);
-    const result = tracker.update(x0, z0, NUM_CHECKPOINTS * 60);
-    expect(result).toBeNull();
-  });
-
-  it('does not complete a lap when a Stormhaven checkpoint is skipped', () => {
-    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
-    const { x: x0, z: z0 } = atStormhavenCheckpoint(0);
-    tracker.update(x0, z0, 0); // start timer
-
-    for (let k = 1; k <= 4; k++) {
-      const { x, z } = atStormhavenCheckpoint(k);
-      tracker.update(x, z, k * 60);
-    }
-    // Skip CP5, jump to CP6.
-    const { x: x6, z: z6 } = atStormhavenCheckpoint(6);
-    expect(tracker.update(x6, z6, 5 * 60)).toBeNull();
-    // CP0 again with CP5 not yet cleared — lap must NOT complete.
-    expect(tracker.update(x0, z0, 12 * 60)).toBeNull();
-  });
-
-  it('straight grass-cut bypassing the technical section does not complete a valid lap', () => {
-    // Simulates a driver who cuts directly from the S/F area to CP20 (hairpin exit)
-    // across the infield, bypassing CPs 1-19 which arc up through positive-z territory.
-    // Because those CPs are never cleared, the lap must not count.
-    const tracker = new CheckpointTracker(SH_CHECKPOINTS);
-    const n = SH_CHECKPOINTS.length;
-
-    tracker.update(SH_CHECKPOINTS[0].x, SH_CHECKPOINTS[0].z, 0); // start timer
-
-    // Feed 10 positions interpolating from just past CP0 straight to CP20,
-    // none of which land within CHECKPOINT_RADIUS of CPs 1-19 (they go the
-    // wrong way through the infield rather than around the circuit).
-    const fromX = SH_CHECKPOINTS[1].x;
-    const fromZ = SH_CHECKPOINTS[1].z;
-    const toX = SH_CHECKPOINTS[20].x;
-    const toZ = SH_CHECKPOINTS[20].z;
+  it("a straight grass-cut across the Stormhaven infield does not complete a lap", () => {
+    // From just past CP0 straight to CP20, bypassing CPs 1-19.
+    const tracker = new CheckpointTracker(sh);
+    tracker.update(sh[0].x, sh[0].z, 0);
     for (let i = 1; i <= 10; i++) {
       const frac = i / 11;
-      tracker.update(fromX + (toX - fromX) * frac, fromZ + (toZ - fromZ) * frac, i * 60);
+      tracker.update(
+        sh[1].x + (sh[20].x - sh[1].x) * frac,
+        sh[1].z + (sh[20].z - sh[1].z) * frac,
+        i * 60,
+      );
     }
-
-    // Continue from CP20 to the end to rule out timing as a factor.
-    for (let k = 20; k < n; k++) {
-      tracker.update(SH_CHECKPOINTS[k].x, SH_CHECKPOINTS[k].z, (11 + k - 20) * 60);
-    }
-
-    // Return to CP0 — must NOT record a lap (CP1-19 were never cleared).
-    const result = tracker.update(SH_CHECKPOINTS[0].x, SH_CHECKPOINTS[0].z, (n + 11) * 60);
-    expect(result).toBeNull();
+    for (let k = 20; k < sh.length; k++)
+      tracker.update(sh[k].x, sh[k].z, (11 + k - 20) * 60);
+    expect(tracker.update(sh[0].x, sh[0].z, (sh.length + 11) * 60)).toBeNull();
   });
 });
 
-describe('autopilot baseline lap on Stormhaven', () => {
-  it('completes a valid lap on Stormhaven from the fixed spawn within a generous step budget', () => {
-    const result = runAutopilotLap({ track: STORMHAVEN, maxSteps: 72000 }); // 20 min at 60 fps
-    expect(result).not.toBeNull();
-    if (result === null) return;
+describe.each(TRACKS)(
+  "autopilot baseline lap on $track.id",
+  ({ track, maxSteps, maxLapMs }) => {
+    it(
+      "completes a valid lap from the fixed spawn",
+      () => {
+        const result = runAutopilotLap({ track, maxSteps });
+        expect(result).not.toBeNull();
+        expect(result!.lapTimeMs).toBeGreaterThan(20_000);
+        expect(result!.lapTimeMs).toBeLessThan(maxLapMs);
+        expect(result!.trajectory.length).toBeGreaterThan(0);
+        console.log(
+          `Autopilot ${track.id} lap time: ${(result!.lapTimeMs / 1000).toFixed(2)} s`,
+        );
+      },
+      60_000,
+    );
+  },
+);
 
-    expect(result.lapTimeMs).toBeGreaterThan(0);
-    // Generous sanity bounds — a new track may be slower than Sunset Ridge.
-    expect(result.lapTimeMs).toBeGreaterThan(20_000);
-    expect(result.lapTimeMs).toBeLessThan(600_000);
+describe("replayInputs", () => {
+  const coast = { throttle: 0, brake: 0, steer: 0 };
 
-    expect(result.trajectory.length).toBeGreaterThan(0);
-    console.log(`Autopilot Stormhaven lap time: ${(result.lapTimeMs / 1000).toFixed(2)} s`);
-  }, 60_000); // 60 s wall-clock budget
+  it("emits one state per input step, starting at rest near the spawn", () => {
+    const { trajectory } = replayInputs(Array.from({ length: 120 }, () => coast));
+    expect(trajectory).toHaveLength(120);
+    expect(trajectory[0].x).not.toBeNaN();
+    expect(trajectory[0].z).not.toBeNaN();
+    expect(trajectory[0].speed).toBeCloseTo(0, 1);
+  });
+
+  it("reproduces the autopilot's lap time from its recorded inputs", () => {
+    const lap = runAutopilotLap()!;
+    expect(lap).not.toBeNull();
+    const { trajectory, lapTimeMs } = replayInputs(lap.inputs);
+    expect(trajectory).toHaveLength(lap.inputs.length);
+    expect(lapTimeMs).toBeCloseTo(lap.lapTimeMs, 0);
+  });
+
+  it("returns null lapTimeMs when no lap is completed", () => {
+    expect(replayInputs(Array(60).fill(coast)).lapTimeMs).toBeNull();
+  });
 });

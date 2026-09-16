@@ -7,9 +7,9 @@ import {
   type Difficulty,
   type Track,
   type TrackSample,
-} from '@racing/shared';
-import type { CarInput } from './input';
-import { CarPhysics } from './physics';
+} from "@racing/shared";
+import type { CarInput } from "./input";
+import { CarPhysics } from "./physics";
 
 const DT = 1 / 60;
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
@@ -29,11 +29,6 @@ export interface StepState {
   speed: number;
 }
 
-/** Capture the car's current pose as a trajectory step. */
-function snapshot(car: CarPhysics): StepState {
-  return { x: car.x, z: car.z, heading: car.heading, speed: car.speed };
-}
-
 export interface RunResult {
   lapTimeMs: number;
   steps: number;
@@ -42,20 +37,23 @@ export interface RunResult {
   inputs: CarInput[];
 }
 
+interface RunOptions {
+  difficulty?: Difficulty;
+  maxSteps?: number;
+  track?: Track;
+}
+
 /**
- * Tracks checkpoint progress and detects completed valid laps.
- * Mirrors the server's timing.ts logic but operates in simulation step counts
- * rather than wall-clock time, so tests are fully deterministic.
+ * Mirrors the server's timing.ts checkpoint logic in simulation step counts
+ * rather than wall-clock time, so runs are fully deterministic.
  */
 export class CheckpointTracker {
   next = 0;
   private lapStartStep: number | null = null;
-  private readonly checkpoints: { x: number; z: number }[];
 
-  constructor(checkpoints: { x: number; z: number }[]) {
-    this.checkpoints = checkpoints;
-  }
+  constructor(private readonly checkpoints: { x: number; z: number }[]) {}
 
+  /** Returns the lap time when this crossing completes a lap. */
   update(x: number, z: number, step: number): number | null {
     const cp = this.checkpoints[this.next];
     const dx = x - cp.x;
@@ -64,9 +62,8 @@ export class CheckpointTracker {
 
     let lapMs: number | null = null;
     if (this.next === 0) {
-      if (this.lapStartStep !== null) {
-        lapMs = ((step - this.lapStartStep) * DT) * 1000;
-      }
+      if (this.lapStartStep !== null)
+        lapMs = (step - this.lapStartStep) * DT * 1000;
       this.lapStartStep = step;
     }
     this.next = (this.next + 1) % this.checkpoints.length;
@@ -74,10 +71,13 @@ export class CheckpointTracker {
   }
 }
 
-/** Rule-based autopilot: centerline follower with a fixed lookahead. */
-export function autopilotInput(car: CarPhysics, samples: TrackSample[]): CarInput {
-  const n = samples.length;
-  const target = samples[(car.centerIndex + AUTOPILOT_LOOKAHEAD) % n];
+/** Rule-based centerline follower. */
+export function autopilotInput(
+  car: CarPhysics,
+  samples: TrackSample[],
+  lookahead = AUTOPILOT_LOOKAHEAD,
+): CarInput {
+  const target = samples[(car.centerIndex + lookahead) % samples.length];
   const desired = Math.atan2(target.x - car.x, target.z - car.z);
   let diff = (desired - car.heading) % (Math.PI * 2);
   if (diff > Math.PI) diff -= Math.PI * 2;
@@ -89,63 +89,61 @@ export function autopilotInput(car: CarPhysics, samples: TrackSample[]): CarInpu
   };
 }
 
-/**
- * Drive the autopilot from the fixed spawn until a valid lap completes.
- * Returns null if the lap is not completed within maxSteps.
- */
-export function runAutopilotLap(
-  options: { difficulty?: Difficulty; maxSteps?: number; track?: Track } = {}
+/** Drives from the fixed spawn until a valid lap completes, or null within maxSteps. */
+function runLap(
+  { difficulty = "medium", maxSteps = 36000, track = SUNSET_RIDGE }: RunOptions,
+  chooseInput: (car: CarPhysics, samples: TrackSample[]) => CarInput,
 ): RunResult | null {
-  const { difficulty = 'medium', maxSteps = 36000, track = SUNSET_RIDGE } = options;
   const car = new CarPhysics(difficulty, track.samples);
   car.spawnAtSample(SPAWN_SAMPLE, 0);
-
   const tracker = new CheckpointTracker(track.checkpoints);
   const trajectory: StepState[] = [];
   const inputs: CarInput[] = [];
-
   for (let step = 0; step < maxSteps; step++) {
-    const input = autopilotInput(car, track.samples);
+    const input = chooseInput(car, track.samples);
     inputs.push(input);
     car.update(DT, input);
     trajectory.push(snapshot(car));
-
     const lapMs = tracker.update(car.x, car.z, step);
-    if (lapMs !== null) {
+    if (lapMs !== null)
       return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
-    }
   }
-
   return null;
 }
 
+export function runAutopilotLap(options: RunOptions = {}): RunResult | null {
+  return runLap(options, (car, samples) => autopilotInput(car, samples));
+}
+
 /**
- * Replay an arbitrary input sequence from the fixed spawn and emit the full
- * per-step state trajectory. lapTimeMs is set when (and if) a valid lap completes.
+ * Replays an input sequence from the fixed spawn and emits the per-step state
+ * trajectory. lapTimeMs is set when (and if) a valid lap completes.
  */
 export function replayInputs(
   inputs: CarInput[],
-  options: { difficulty?: Difficulty; track?: Track } = {}
+  { difficulty = "medium", track = SUNSET_RIDGE }: Omit<RunOptions, "maxSteps"> = {},
 ): { trajectory: StepState[]; lapTimeMs: number | null } {
-  const { difficulty = 'medium', track = SUNSET_RIDGE } = options;
   const car = new CarPhysics(difficulty, track.samples);
   car.spawnAtSample(SPAWN_SAMPLE, 0);
-
   const tracker = new CheckpointTracker(track.checkpoints);
   const trajectory: StepState[] = [];
   let lapTimeMs: number | null = null;
-
-  for (let step = 0; step < inputs.length; step++) {
-    car.update(DT, inputs[step]);
+  inputs.forEach((input, step) => {
+    car.update(DT, input);
     trajectory.push(snapshot(car));
-
-    if (lapTimeMs === null) {
-      const lapMs = tracker.update(car.x, car.z, step);
-      if (lapMs !== null) lapTimeMs = lapMs;
-    }
-  }
-
+    lapTimeMs ??= tracker.update(car.x, car.z, step);
+  });
   return { trajectory, lapTimeMs };
+}
+
+function snapshot(car: CarPhysics): StepState {
+  return { x: car.x, z: car.z, heading: car.heading, speed: car.speed };
+}
+
+function normalizeAngle(a: number): number {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,97 +166,61 @@ export interface PolicyWeights {
 const MEDIUM_MAX_SPEED = MAX_SPEED_MS.medium;
 const POLICY_LOOKAHEADS = [5, 10, 20, 40] as const;
 
-function normalizeAngle(a: number): number {
-  while (a > Math.PI) a -= 2 * Math.PI;
-  while (a < -Math.PI) a += 2 * Math.PI;
-  return a;
-}
-
-/** Build the 7-dim observation vector; mirrors SunsetRidgeEnv._compute_obs in env.py. */
+/** The 7-dim observation vector; mirrors SunsetRidgeEnv._compute_obs in env.py. */
 function computePolicyObs(car: CarPhysics, samples: TrackSample[]): number[] {
   const s = samples[car.centerIndex];
   const dx = car.x - s.x;
   const dz = car.z - s.z;
   // Signed lateral: dirX*dz - dirZ*dx > 0 ⟹ car is left of track direction
   const lateral = (s.dirX * dz - s.dirZ * dx) / ROAD_HALF_WIDTH;
-
   const trackHeading = Math.atan2(s.dirX, s.dirZ);
   const headingErr = normalizeAngle(car.heading - trackHeading) / Math.PI;
   const speedNorm = car.speed / MEDIUM_MAX_SPEED;
-
-  const n = samples.length;
-  const curvatures = POLICY_LOOKAHEADS.map(offset => {
-    const ahead = samples[(car.centerIndex + offset) % n];
+  const curvatures = POLICY_LOOKAHEADS.map((offset) => {
+    const ahead = samples[(car.centerIndex + offset) % samples.length];
     const aheadH = Math.atan2(ahead.dirX, ahead.dirZ);
     return normalizeAngle(aheadH - trackHeading) / Math.PI;
   });
-
-  const raw = [lateral, headingErr, speedNorm, ...curvatures];
-  return raw.map(v => Math.max(-3, Math.min(3, v)));
+  return [lateral, headingErr, speedNorm, ...curvatures].map((v) =>
+    Math.max(-3, Math.min(3, v)),
+  );
 }
 
-/**
- * Run a single forward pass through the exported MLP policy.
- * Applies VecNormalize stats then runs tanh-MLP + output clip.
- */
+/** VecNormalize stats, then tanh-MLP, then the action-space clip. */
 export function policyForward(obs: number[], policy: PolicyWeights): number[] {
-  // Normalize observation using VecNormalize running stats, then clamp to [-5, 5]
-  // (mirrors VecNormalize clip_obs=5.0 in train.py — omitting this clamp feeds
-  // out-of-distribution values to the network when the car deviates sharply).
+  // Clamp to [-5, 5] like VecNormalize clip_obs=5.0 in train.py; without it the
+  // network sees out-of-distribution values when the car deviates sharply.
   let x = obs.map((v, i) => {
-    const normalized = (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
+    const normalized =
+      (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
     return Math.max(-5, Math.min(5, normalized));
   });
-
   const numLayers = policy.layers.length;
   for (let i = 0; i < numLayers; i++) {
     const { weight, bias } = policy.layers[i];
     const prev = x;
-    // Linear: W @ prev + b
-    x = weight.map((row, j) => row.reduce((s, w, k) => s + w * prev[k], 0) + bias[j]);
-    if (i < numLayers - 1) {
-      x = x.map(v => Math.tanh(v)); // hidden activation
-    }
+    x = weight.map(
+      (row, j) => row.reduce((s, w, k) => s + w * prev[k], 0) + bias[j],
+    );
+    if (i < numLayers - 1) x = x.map(Math.tanh);
   }
-  return x.map(v => Math.max(-1, Math.min(1, v))); // clip to action space
+  return x.map((v) => Math.max(-1, Math.min(1, v)));
 }
 
-/**
- * Run the exported policy against the real TypeScript CarPhysics from the fixed
- * spawn, timing the first valid lap.  Returns null if no lap completed within maxSteps.
- */
+/** Runs the exported policy against the real CarPhysics from the fixed spawn. */
 export function runPolicyLap(
   policy: PolicyWeights,
-  options: { difficulty?: Difficulty; maxSteps?: number; track?: Track } = {}
+  options: RunOptions = {},
 ): RunResult | null {
-  const { difficulty = 'medium', maxSteps = 36000, track = SUNSET_RIDGE } = options;
-  const car = new CarPhysics(difficulty, track.samples);
-  car.spawnAtSample(SPAWN_SAMPLE, 0);
-
-  const tracker = new CheckpointTracker(track.checkpoints);
-  const trajectory: StepState[] = [];
-  const inputs: CarInput[] = [];
-
-  for (let step = 0; step < maxSteps; step++) {
-    const obs = computePolicyObs(car, track.samples);
-    const action = policyForward(obs, policy);
-
-    const steer = action[0];
-    const longitudinal = action[1];
-    const input: CarInput = {
+  return runLap(options, (car, samples) => {
+    const [steer, longitudinal] = policyForward(
+      computePolicyObs(car, samples),
+      policy,
+    );
+    return {
       steer,
       throttle: Math.max(0, longitudinal),
       brake: Math.max(0, -longitudinal),
     };
-    inputs.push(input);
-    car.update(DT, input);
-    trajectory.push(snapshot(car));
-
-    const lapMs = tracker.update(car.x, car.z, step);
-    if (lapMs !== null) {
-      return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
-    }
-  }
-
-  return null;
+  });
 }

@@ -2,24 +2,18 @@ import * as THREE from "three";
 import {
   BARRIER_OFFSET,
   ROAD_HALF_WIDTH,
-  TRACKS,
   nearestCenterline,
+  type Track,
   type TrackSample,
 } from "@racing/shared";
 import { getModel, instancedFromModel } from "./models";
 
-export function buildTrack(
-  scene: THREE.Scene,
-  samples: TrackSample[],
-): THREE.Group {
+const BARRIER_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET;
+
+export function buildTrack(scene: THREE.Scene, track: Track): void {
+  const { samples } = track;
   const group = new THREE.Group();
-  const track = TRACKS.find(
-    (track) =>
-      track.samples === samples ||
-      (track.samples[0].x === samples[0].x &&
-        track.samples[0].z === samples[0].z),
-  );
-  const road = getModel(`track:${track?.id}`);
+  const road = getModel(`track:${track.id}`);
   if (road) {
     const surface = road.clone(true);
     // Flat, overlapping road markings receive the sunset shadows without
@@ -51,43 +45,42 @@ export function buildTrack(
     }
   }
   const barrier = getModel("prop:barrier");
-  if (barrier) {
-    const matrices: THREE.Matrix4[] = [];
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < samples.length; i += 2) {
-        const points = [samples[i], samples[(i + 2) % samples.length]].map(
-          (s) =>
-            new THREE.Vector3(
-              s.x - s.dirZ * (ROAD_HALF_WIDTH + BARRIER_OFFSET) * side,
-              0,
-              s.z + s.dirX * (ROAD_HALF_WIDTH + BARRIER_OFFSET) * side,
-            ),
-        );
-        if (
-          points.some(
-            (p) =>
-              nearestCenterline(p.x, p.z, samples).dist < ROAD_HALF_WIDTH + 0.5,
-          )
-        )
-          continue;
-        const delta = points[1].clone().sub(points[0]);
-        const q = new THREE.Quaternion().setFromAxisAngle(
-          THREE.Object3D.DEFAULT_UP,
-          Math.atan2(delta.x, delta.z),
-        );
-        matrices.push(
-          new THREE.Matrix4().compose(
-            points[0].add(points[1]).multiplyScalar(0.5),
-            q,
-            new THREE.Vector3(1, 1, delta.length() + 0.12),
-          ),
-        );
-      }
-    }
-    group.add(instancedFromModel(barrier, matrices));
-  }
+  if (barrier) group.add(instancedFromModel(barrier, barrierMatrices(samples)));
   scene.add(group);
-  return group;
+}
+
+/** One barrier segment per two samples, skipping spans that would cross the road. */
+function barrierMatrices(samples: TrackSample[]): THREE.Matrix4[] {
+  const matrices: THREE.Matrix4[] = [];
+  const a = new THREE.Vector3(),
+    b = new THREE.Vector3(),
+    rotation = new THREE.Quaternion(),
+    scale = new THREE.Vector3(1, 1, 1);
+  const edge = (s: TrackSample, side: number, out: THREE.Vector3) =>
+    out.set(
+      s.x - s.dirZ * BARRIER_DIST * side,
+      0,
+      s.z + s.dirX * BARRIER_DIST * side,
+    );
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < samples.length; i += 2) {
+      edge(samples[i], side, a);
+      edge(samples[(i + 2) % samples.length], side, b);
+      if (
+        nearestCenterline(a.x, a.z, samples).dist < ROAD_HALF_WIDTH + 0.5 ||
+        nearestCenterline(b.x, b.z, samples).dist < ROAD_HALF_WIDTH + 0.5
+      )
+        continue;
+      const dx = b.x - a.x,
+        dz = b.z - a.z;
+      rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, Math.atan2(dx, dz));
+      scale.z = Math.hypot(dx, dz) + 0.12;
+      matrices.push(
+        new THREE.Matrix4().compose(a.add(b).multiplyScalar(0.5), rotation, scale),
+      );
+    }
+  }
+  return matrices;
 }
 
 /** Keeps the circuit usable if the asset download fails. */

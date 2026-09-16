@@ -1,14 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CAR_VARIANTS } from "@racing/shared";
-export { CAR_VARIANTS };
 
 const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
 let ready = false;
 let pending: Promise<void> | undefined;
-/** Resolved against Vite's base so the packaged desktop build (base "./") can load it too. */
-export const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge.glb`;
+// Resolved against Vite's base so the packaged desktop build (base "./") can load it too.
+const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge.glb`;
 
 /** Blender collection names are preserved in glTF extras even after Three sanitizes node names. */
 export function registerLibrary(root: THREE.Group): void {
@@ -37,15 +35,15 @@ export function registerLibrary(root: THREE.Group): void {
         }
       }
     });
-    // The source lays cars out on a workshop floor. Remove that display offset.
     if (name.startsWith("car:")) {
+      // The source lays cars out on a workshop floor. Remove that display offset.
       const bounds = new THREE.Box3().setFromObject(group, true);
       const center = bounds.getCenter(new THREE.Vector3());
-      for (const child of group.children)
-        child.position.sub(new THREE.Vector3(center.x, bounds.min.y, center.z));
-    }
-    group.updateMatrixWorld(true);
-    if (name.startsWith("car:")) separateHeadlightLenses(group);
+      const offset = new THREE.Vector3(center.x, bounds.min.y, center.z);
+      for (const child of group.children) child.position.sub(offset);
+      group.updateMatrixWorld(true);
+      separateHeadlightLenses(group);
+    } else group.updateMatrixWorld(true);
     library.set(name, group);
   });
 }
@@ -113,9 +111,6 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
       loadObservers.clear();
     }));
 }
-export function areModelsLoaded(): boolean {
-  return ready;
-}
 export function getModel(key: string): THREE.Group | null {
   return library.get(key) ?? null;
 }
@@ -132,6 +127,7 @@ export function instancedFromModel(
   shadows = true,
 ): THREE.Group {
   const group = new THREE.Group();
+  if (transforms.length === 0) return group;
   model.updateMatrixWorld(true);
   const matrix = new THREE.Matrix4();
   // Small spatial batches let both the camera and shadow pass reject offscreen trees.
@@ -144,7 +140,7 @@ export function instancedFromModel(
     else cells.set(key, [transform]);
   }
   model.traverse((part) => {
-    if (!(part instanceof THREE.Mesh) || transforms.length === 0) return;
+    if (!(part instanceof THREE.Mesh)) return;
     for (const placements of cells.values()) {
       const mesh = new THREE.InstancedMesh(
         part.geometry,

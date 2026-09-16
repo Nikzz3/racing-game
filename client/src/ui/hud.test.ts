@@ -19,26 +19,24 @@ describe("Hud pacer chip", () => {
   });
   afterEach(() => parent.remove());
 
-  it("pacer chip is hidden initially", () => {
-    const chip = parent.querySelector(".pacer-chip");
-    // Either doesn't exist or not marked visible
-    expect(chip === null || !chip.classList.contains("visible")).toBe(true);
+  it("pacer chip renders hidden inside the top-left HUD panel", () => {
+    const chip = parent.querySelector(".hud-top-left .pacer-chip")!;
+    expect(chip).not.toBeNull();
+    expect(chip.classList.contains("visible")).toBe(false);
   });
 
   it("showPacerChip makes the chip visible", () => {
     hud.showPacerChip(vi.fn());
-    const chip = parent.querySelector(".pacer-chip");
-    expect(chip).not.toBeNull();
-    expect(chip!.classList.contains("visible")).toBe(true);
-  });
-
-  it("chip renders inside the top-left HUD panel", () => {
-    expect(parent.querySelector(".hud-top-left .pacer-chip")).not.toBeNull();
+    expect(
+      parent.querySelector(".pacer-chip")!.classList.contains("visible"),
+    ).toBe(true);
   });
 
   it("chip shows the Pacer's name", () => {
     hud.showPacerChip(vi.fn(), "ByteRacer");
-    expect(parent.querySelector(".pacer-chip")!.textContent).toContain("ByteRacer");
+    expect(parent.querySelector(".pacer-chip")!.textContent).toContain(
+      "ByteRacer",
+    );
   });
 
   it("chip shows a dismiss button with label ✕", () => {
@@ -58,7 +56,9 @@ describe("Hud pacer chip", () => {
   it("hidePacerChip hides the chip", () => {
     hud.showPacerChip(vi.fn());
     hud.hidePacerChip();
-    expect(parent.querySelector(".pacer-chip")!.classList.contains("visible")).toBe(false);
+    expect(
+      parent.querySelector(".pacer-chip")!.classList.contains("visible"),
+    ).toBe(false);
   });
 
   it("showPacerChip replaces the previous dismiss handler", () => {

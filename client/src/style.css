@@ -56,19 +56,11 @@ input,
 select {
   min-width: 0;
   color: var(--ink);
-  border: 1px solid var(--line);
-  background: #191b20;
-  border-radius: 3px;
-  padding: 12px 13px;
   outline: none;
 }
 input::placeholder {
   color: #999ba2;
   opacity: 1;
-}
-input:focus,
-select:focus {
-  border-color: var(--accent);
 }
 [hidden] {
   display: none !important;
@@ -114,13 +106,6 @@ a {
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.07em;
-}
-.brand small {
-  display: block;
-  color: var(--muted);
-  font-size: 8px;
-  letter-spacing: 0.23em;
-  margin-top: 4px;
 }
 .brand-mark {
   display: block;
@@ -173,10 +158,13 @@ a {
   align-items: center;
   gap: 22px;
 }
-.desktop-notice {
+.desktop-notice,
+.update-notice {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 0;
+  background: none;
   font: 9px var(--mono);
   color: #8e9097;
   letter-spacing: 0.07em;
@@ -185,30 +173,7 @@ a {
   text-decoration: none;
   transition: color 0.15s;
 }
-.desktop-notice svg {
-  flex-shrink: 0;
-}
-.desktop-notice:hover,
-.desktop-notice:focus-visible {
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 5px;
-}
-.update-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: 9px var(--mono);
-  color: #8e9097;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 0.15s;
-}
+.desktop-notice svg,
 .update-notice svg {
   flex-shrink: 0;
 }
@@ -219,6 +184,8 @@ a {
 .update-notice[data-status="error"] {
   color: #c9a06a;
 }
+.desktop-notice:hover,
+.desktop-notice:focus-visible,
 .update-notice:hover,
 .update-notice:focus-visible {
   color: var(--accent);
@@ -289,7 +256,6 @@ a {
   position: relative;
   z-index: 1;
 }
-.eyebrow,
 .section-label {
   font: 9px var(--mono);
   color: var(--muted);
@@ -304,6 +270,7 @@ a {
   letter-spacing: 0.005em;
 }
 .garage-heading h1 span,
+.track-heading h1 span,
 .settings-heading h1 span {
   color: var(--accent);
 }
@@ -508,12 +475,14 @@ a {
   position: relative;
   z-index: 4;
 }
-.selected-car-copy {
+.selected-car-copy,
+.selected-track-copy {
   display: flex;
   align-items: center;
   gap: 24px;
 }
-.showroom-number {
+.showroom-number,
+.track-counter {
   font: 11px var(--mono);
   color: var(--accent);
   padding: 12px 20px 12px 0;
@@ -552,7 +521,8 @@ a {
   font-size: 20px;
   font-weight: 400;
 }
-.select-car {
+.select-car,
+.select-track {
   min-width: 240px;
 }
 .garage-navigation {
@@ -642,9 +612,6 @@ a {
     Impact,
     sans-serif;
 }
-.track-heading h1 span {
-  color: var(--accent);
-}
 .menu-back {
   background: transparent;
   color: var(--muted);
@@ -702,27 +669,12 @@ a {
   position: relative;
   z-index: 4;
 }
-.selected-track-copy {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-.track-counter {
-  font: 11px var(--mono);
-  color: var(--accent);
-  border-right: 1px solid #ffffff26;
-  padding: 12px 20px 12px 0;
-  white-space: nowrap;
-}
 .hero-track-name {
   font:
     700 clamp(28px, 3.5vw, 50px) / 1 "Barlow Condensed",
     Impact,
     sans-serif;
   text-transform: uppercase;
-}
-.select-track {
-  min-width: 240px;
 }
 .track-selector {
   display: grid;
@@ -815,9 +767,6 @@ a {
   justify-content: space-between;
   gap: 24px;
   padding-bottom: 35px;
-}
-.settings-heading h1 {
-  font-size: clamp(38px, 4vw, 62px);
 }
 .setup-selections {
   display: flex;
@@ -1052,10 +1001,6 @@ a {
 }
 .panel-heading h2 {
   margin: 0;
-}
-.room-total {
-  font: 9px var(--mono);
-  color: var(--accent);
 }
 .board-heading {
   flex-wrap: wrap;
@@ -2239,6 +2184,9 @@ a {
     top: 154px;
     left: 18px;
     width: 175px;
+    max-height: 24vh;
+    overflow: auto;
+    pointer-events: auto;
   }
   .hud-standings h3 {
     font-size: 8px;
@@ -2252,11 +2200,6 @@ a {
   }
   .hud-standings td:nth-child(2) {
     max-width: 70px;
-  }
-  .hud-standings {
-    max-height: 24vh;
-    overflow: auto;
-    pointer-events: auto;
   }
   .hud-map {
     width: 116px;
@@ -2328,9 +2271,6 @@ a {
   }
   .speed-value {
     font-size: 52px;
-  }
-  .controls-hint {
-    display: none;
   }
 }
 @media (max-height: 500px) {

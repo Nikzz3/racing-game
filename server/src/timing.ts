@@ -1,6 +1,6 @@
 import { CHECKPOINT_RADIUS } from "@racing/shared";
 
-/** A single position sample: server wall-clock time (ms) plus world x/z. */
+/** Server wall-clock time (ms) plus world x/z. */
 interface WindowSample {
   t: number;
   x: number;
@@ -14,9 +14,9 @@ export interface TimingState {
   laps: number;
   lastLapMs: number | null;
   bestLapMs: number | null;
-  /** Rolling window of recent samples (server wall-clock ms + x/z), reset on lap start and Respawn. */
+  /** Recent samples of the lap in progress; reset on lap start and Respawn. */
   windowSamples: WindowSample[];
-  /** Becomes true if any window sample violates the speed bound; cleared on lap start and Respawn. */
+  /** Set once any window violates the speed bound; cleared on lap start and Respawn. */
   lapImplausible: boolean;
 }
 
@@ -33,9 +33,8 @@ export function createTiming(): TimingState {
 }
 
 /**
- * Mutate timing for a respawn: clear the in-progress lap and rewind checkpoint
- * progress to the start line, but keep the driver's completed laps, last lap,
- * and session best — those are facts that already happened.
+ * Abandon the lap in progress and rewind to the start line, keeping completed
+ * laps, last lap and session best — those already happened.
  */
 export function respawnTiming(t: TimingState): void {
   t.next = 0;
@@ -47,58 +46,42 @@ export function respawnTiming(t: TimingState): void {
 export interface LapResult {
   lapTimeMs: number;
   isPersonalBest: boolean;
-  /** False when the rolling-window speed bound or the lap-time floor was violated. */
+  /** False when the speed bound or the lap-time floor was violated. */
   isPlausible: boolean;
 }
 
 const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
-
-/** Sliding window width for speed-bound checking (ms). */
 const PLAUSIBILITY_WINDOW_MS = 1000;
-/** Multiplier applied to maxSpeedMs to allow for network burst jitter. */
+/** Headroom over maxSpeedMs for network burst jitter. */
 const SPEED_TOLERANCE = 1.1;
 /**
- * Floor on the window duration used to judge the speed bound (ms). Samples are
+ * Floor on the window duration the speed bound is judged over. Samples are
  * stamped on arrival, so two honest updates delivered in the same TCP read land
  * a millisecond apart and would read as hundreds of m/s over that sliver.
  * Mid-lap the window is a full second wide and absorbs that; right after the
- * start-line reset, or after trimming collapsed it, it is not. Judging the
- * distance against at least this much time keeps a 0.75 m honest hop at a few
- * m/s while a checkpoint-sized teleport still measures in the hundreds. Young
- * windows are never skipped, so a burst cannot hide behind the lap-start reset.
+ * start-line reset, or after trimming collapsed it, it is not. 250 ms keeps a
+ * 0.75 m honest hop at a few m/s while a checkpoint-sized teleport still
+ * measures in the hundreds, and young windows are never skipped, so a burst
+ * cannot hide behind the lap-start reset.
  */
 const MIN_WINDOW_MS = 250;
 
-/**
- * True when the average speed across the window's samples exceeds the tolerated
- * speed bound — i.e. the car covered more ground than physically possible.
- * The duration is floored at MIN_WINDOW_MS so a young window is judged
- * leniently rather than not at all.
- */
-function windowExceedsSpeedBound(
-  samples: WindowSample[],
-  now: number,
-  maxSpeedMs: number
-): boolean {
+function exceedsSpeedBound(samples: WindowSample[], now: number, maxSpeedMs: number): boolean {
   if (samples.length < 2) return false;
-  let totalDist = 0;
+  let dist = 0;
   for (let i = 1; i < samples.length; i++) {
-    totalDist += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
+    dist += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
   }
   const windowMs = Math.max(now - samples[0].t, MIN_WINDOW_MS);
-  return totalDist / (windowMs / 1000) > maxSpeedMs * SPEED_TOLERANCE;
+  return dist / (windowMs / 1000) > maxSpeedMs * SPEED_TOLERANCE;
 }
 
 /**
- * Advance checkpoint progress from a reported position and validate plausibility.
- *
- * Maintains a rolling window of the last ~1 second of positions; if the total
- * path distance in that window exceeds `maxSpeedMs × 1.1`, the lap is flagged
- * implausible and `submitLap` must not persist it.  A lap that finishes below
- * `minLapMs` is also flagged.  Both flags are silent to the client.
- *
- * Checkpoints must be hit in order, so cutting the track never completes a lap.
- * Returns a result when a full lap completes at the start/finish line.
+ * Advance checkpoint progress from a reported position and judge plausibility
+ * (ADR-0005): the lap is flagged if the path covered in any ~1 s window exceeds
+ * `maxSpeedMs × 1.1`, or if it finishes under `minLapMs`. Both are silent to
+ * the client. Checkpoints must be hit in order, so cutting the track never
+ * completes a lap. Returns a result when a lap completes at the start line.
  */
 export function updateTiming(
   t: TimingState,
@@ -107,17 +90,14 @@ export function updateTiming(
   now: number,
   checkpoints: { x: number; z: number }[],
   maxSpeedMs: number,
-  minLapMs: number
+  minLapMs: number,
 ): LapResult | null {
-  // Maintain rolling window only during an active lap.
   if (t.lapStartT !== null) {
     t.windowSamples.push({ t: now, x, z });
-    // Check the speed bound on the untrimmed window *before* trimming. Trimming
-    // first can collapse the buffer to a single sample whenever the gap since
-    // the previous sample exceeds the window width, which makes
-    // windowExceedsSpeedBound return false and lets a client pacing its updates
-    // more than a window apart teleport any distance per hop undetected.
-    if (!t.lapImplausible && windowExceedsSpeedBound(t.windowSamples, now, maxSpeedMs)) {
+    // Judge before trimming: trimming first can collapse the window to this one
+    // sample whenever the gap since the previous sample exceeds the window
+    // width, which would let sparse updates teleport any distance per hop.
+    if (!t.lapImplausible && exceedsSpeedBound(t.windowSamples, now, maxSpeedMs)) {
       t.lapImplausible = true;
     }
     while (t.windowSamples.length > 1 && now - t.windowSamples[0].t > PLAUSIBILITY_WINDOW_MS) {
@@ -137,14 +117,12 @@ export function updateTiming(
       t.laps += 1;
       t.lastLapMs = lapTimeMs;
       const isPlausible = !t.lapImplausible && lapTimeMs >= minLapMs;
-      // Only a plausible lap can become the personal best. An implausible lap
-      // must not overwrite bestLapMs or report isPersonalBest — that PB state is
-      // broadcast to the room even though the lap is barred from the leaderboard.
+      // An implausible lap is still broadcast to the room but must never become
+      // the session best or be advertised as a PB.
       const isPersonalBest = isPlausible && (t.bestLapMs === null || lapTimeMs < t.bestLapMs);
       if (isPersonalBest) t.bestLapMs = lapTimeMs;
       result = { lapTimeMs, isPersonalBest, isPlausible };
     }
-    // Reset plausibility state for the new lap.
     t.lapStartT = now;
     t.lapImplausible = false;
     t.windowSamples = [{ t: now, x, z }];

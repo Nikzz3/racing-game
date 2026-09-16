@@ -2,7 +2,7 @@
  * Difficulty is a property of a Room (see CONTEXT.md): a named set of physics
  * rules applied to every player in that room and fixed for its lifetime. The
  * physics numbers live client-side (the server never simulates the car), except
- * the per-difficulty top speed below, shared so server-side lap plausibility
+ * the per-difficulty top speed, shared so server-side lap plausibility
  * validation can use it (ADR-0005).
  */
 export type Difficulty = "easy" | "medium" | "hard";
@@ -18,14 +18,7 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   hard: "Hard",
 };
 
-export function isDifficulty(value: unknown): value is Difficulty {
-  return value === "easy" || value === "medium" || value === "hard";
-}
-
-/**
- * Top-speed cap per difficulty in m/s. Single source of truth used by client
- * physics, server plausibility validation, and the RL harness.
- */
+/** Top-speed cap per difficulty in m/s, shared by client physics, server validation and the RL harness. */
 export const MAX_SPEED_MS: Record<Difficulty, number> = {
   easy: 52,
   medium: 90,
@@ -34,5 +27,5 @@ export const MAX_SPEED_MS: Record<Difficulty, number> = {
 
 /** Coerce arbitrary input to a valid difficulty, falling back to the default. */
 export function asDifficulty(value: unknown): Difficulty {
-  return isDifficulty(value) ? value : DEFAULT_DIFFICULTY;
+  return (DIFFICULTIES as unknown[]).includes(value) ? (value as Difficulty) : DEFAULT_DIFFICULTY;
 }

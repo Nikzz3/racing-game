@@ -2,27 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
 
-const DOCKER_SOCKET = "/var/run/docker.sock";
-const POSTGRES_IMAGE = "postgres:17-alpine";
-const POSTGRES_CONTAINER_PORT = 5432;
-const POSTGRES_CREDENTIALS = {
-  user: "postgres",
-  password: "postgres",
-  database: "racing",
-} as const;
+let container: StartedTestContainer | undefined;
+let playwright: ChildProcess | undefined;
+let interrupted = false;
+let stopping: Promise<unknown> | undefined;
 
-let startedPostgresContainer: StartedTestContainer | undefined;
-let playwrightProcess: ChildProcess | undefined;
-let shutdownSignal: NodeJS.Signals | undefined;
-let containerStopPromise: Promise<void> | undefined;
-
-function stopContainer(): Promise<void> {
-  if (!startedPostgresContainer) {
-    return Promise.resolve();
-  }
-
-  containerStopPromise ??= startedPostgresContainer.stop().then(() => undefined);
-  return containerStopPromise;
+function stopContainer(): Promise<unknown> {
+  // Only memoise once a container exists; a signal during startup must not
+  // cache a no-op that leaves the container running afterwards.
+  if (!container) return Promise.resolve();
+  stopping ??= container.stop();
+  return stopping;
 }
 
 /**
@@ -32,21 +22,15 @@ function stopContainer(): Promise<void> {
  * block instead. An explicit DOCKER_HOST always wins.
  */
 function adoptPodmanSocket(): void {
-  if (process.env.DOCKER_HOST !== undefined || existsSync(DOCKER_SOCKET)) {
-    return;
-  }
-
+  if (process.env.DOCKER_HOST !== undefined || existsSync("/var/run/docker.sock")) return;
   const runtimeDir = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.()}`;
-  const podmanSocket = `${runtimeDir}/podman/podman.sock`;
-  if (!existsSync(podmanSocket)) {
-    return;
-  }
-
-  process.env.DOCKER_HOST = `unix://${podmanSocket}`;
+  const socket = `${runtimeDir}/podman/podman.sock`;
+  if (!existsSync(socket)) return;
+  process.env.DOCKER_HOST = `unix://${socket}`;
   process.env.TESTCONTAINERS_RYUK_DISABLED ??= "true";
 }
 
-async function getDatabaseUrl(): Promise<string> {
+async function databaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
     // The suite truncates rooms, best_laps, and replays between tests, so an
     // external database must be explicitly marked disposable before we touch it.
@@ -61,70 +45,51 @@ async function getDatabaseUrl(): Promise<string> {
   }
 
   adoptPodmanSocket();
-
-  startedPostgresContainer = await new GenericContainer(POSTGRES_IMAGE)
-    .withEnvironment({
-      POSTGRES_USER: POSTGRES_CREDENTIALS.user,
-      POSTGRES_PASSWORD: POSTGRES_CREDENTIALS.password,
-      POSTGRES_DB: POSTGRES_CREDENTIALS.database,
-    })
-    .withExposedPorts(POSTGRES_CONTAINER_PORT)
+  container = await new GenericContainer("postgres:17-alpine")
+    .withEnvironment({ POSTGRES_USER: "postgres", POSTGRES_PASSWORD: "postgres", POSTGRES_DB: "racing" })
+    .withExposedPorts(5432)
     .withWaitStrategy(Wait.forHealthCheck())
     .withHealthCheck({
-      test: [
-        "CMD-SHELL",
-        `pg_isready -U ${POSTGRES_CREDENTIALS.user} -d ${POSTGRES_CREDENTIALS.database}`,
-      ],
+      test: ["CMD-SHELL", "pg_isready -U postgres -d racing"],
       interval: 1_000,
       timeout: 3_000,
       retries: 30,
     })
     .start();
-
-  const { user, password, database } = POSTGRES_CREDENTIALS;
-  const host = startedPostgresContainer.getHost();
   // Docker picks a free host port, so a local Postgres (or anything else) on a
   // fixed port can never collide with the throwaway container.
-  const hostPort = startedPostgresContainer.getMappedPort(POSTGRES_CONTAINER_PORT);
-  return `postgres://${user}:${password}@${host}:${hostPort}/${database}`;
+  return `postgres://postgres:postgres@${container.getHost()}:${container.getMappedPort(5432)}/racing`;
 }
 
-function runPlaywright(databaseUrl: string): Promise<number> {
+function runPlaywright(url: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    playwrightProcess = spawn(
+    playwright = spawn(
       "npx",
       ["playwright", "test", "--config", "e2e/playwright.config.ts", ...process.argv.slice(2)],
       {
         stdio: "inherit",
         // ALLOW_TRUNCATE is safe to grant here: either the wrapper provisioned a
         // throwaway container, or the caller already opted in (checked above).
-        env: { ...process.env, DATABASE_URL: databaseUrl, E2E_DATABASE_ALLOW_TRUNCATE: "1" },
+        env: { ...process.env, DATABASE_URL: url, E2E_DATABASE_ALLOW_TRUNCATE: "1" },
       },
     );
-    playwrightProcess.once("error", reject);
-    playwrightProcess.once("close", (code, signal) => {
-      if (signal) {
-        resolve(1);
-        return;
-      }
-
-      resolve(code ?? 1);
-    });
+    playwright.once("error", reject);
+    playwright.once("close", (code, signal) => resolve(signal ? 1 : (code ?? 1)));
   });
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    shutdownSignal = signal;
-    playwrightProcess?.kill(signal);
+    interrupted = true;
+    playwright?.kill(signal);
     void stopContainer();
   });
 }
 
 let exitCode = 1;
 try {
-  const databaseUrl = await getDatabaseUrl();
-  exitCode = shutdownSignal ? 1 : await runPlaywright(databaseUrl);
+  const url = await databaseUrl();
+  exitCode = interrupted ? 1 : await runPlaywright(url);
 } finally {
   await stopContainer();
 }

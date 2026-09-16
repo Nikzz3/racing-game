@@ -9,13 +9,7 @@ vi.mock("./db", () => ({ pool: { query: vi.fn(), connect: vi.fn() } }));
 
 function driver() {
   const player = createPlayer("driver", {} as WebSocket);
-  const room = new Room(
-    "room",
-    "Race",
-    0,
-    "medium",
-    resolveTrack("sunset-ridge"),
-  );
+  const room = new Room("room", "Race", 0, "medium", resolveTrack("sunset-ridge"));
   player.room = room;
   player.name = "Ava";
   player.variant = "taxi";
@@ -28,7 +22,7 @@ function driver() {
     rot: 0,
     speed: 0,
   };
-  return { player, room, state };
+  return { player, state };
 }
 
 describe("lap recording boundaries", () => {
@@ -37,20 +31,16 @@ describe("lap recording boundaries", () => {
     recordState(player, state, 1_000);
     player.timing.next = 0;
     const lap = recordState(player, state, 301_000)!;
-    expect(lap.message).toMatchObject({
-      name: "Ava",
-      laps: 1,
-      lapTimeMs: 300_000,
-    });
+    expect(lap.message).toMatchObject({ name: "Ava", laps: 1, lapTimeMs: 300_000 });
     expect(lap.frames?.map((frame) => frame[0])).toEqual([0, 300_000]);
-    expect(player.lapFrames.map((frame) => frame[0])).toEqual([0]);
+    expect(player.lapFrames?.map((frame) => frame[0])).toEqual([0]);
 
     recordState(player, state, 301_050);
     player.name = "Changed";
     player.variant = "van";
     player.timing.laps = 9;
     player.room = null;
-    expect(player.lapFrames.map((frame) => frame[0])).toEqual([0, 50]);
+    expect(player.lapFrames?.map((frame) => frame[0])).toEqual([0, 50]);
     expect(lap.frames?.map((frame) => frame[0])).toEqual([0, 300_000]);
     expect(lap.message.name).toBe("Ava");
     expect(lap.message.laps).toBe(1);
@@ -60,14 +50,21 @@ describe("lap recording boundaries", () => {
   it("discards an over-cap replay and starts a fresh recording at the boundary", () => {
     const { player, state } = driver();
     recordState(player, state, 1_000);
-    player.lapFrames = Array.from({ length: MAX_REPLAY_FRAMES }, () =>
-      makeFrame(0, 0, 0, 0, 0),
-    );
+    player.lapFrames = Array.from({ length: MAX_REPLAY_FRAMES }, () => makeFrame(0, 0, 0, 0, 0));
     player.timing.next = 0;
     const lap = recordState(player, state, 301_000)!;
     expect(lap.frames).toBeNull();
     expect(player.lapFrames).toHaveLength(1);
-    expect(player.lapFramesValid).toBe(true);
+  });
+
+  it("stops recording mid-lap once the cap is reached", () => {
+    const { player, state } = driver();
+    recordState(player, state, 1_000);
+    player.lapFrames = Array.from({ length: MAX_REPLAY_FRAMES }, () => makeFrame(0, 0, 0, 0, 0));
+    recordState(player, { ...state, x: 100_000 }, 1_050);
+    expect(player.lapFrames).toBeNull();
+    recordState(player, { ...state, x: 100_000 }, 1_100);
+    expect(player.lapFrames).toBeNull();
   });
 
   it("does not start a recording before crossing the start checkpoint", () => {
