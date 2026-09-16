@@ -9,12 +9,13 @@ import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
+import { LoadingScreen } from "./ui/loading-screen";
 
 /** Owns transitions between lobby, live driving and replay playback. */
 export class RacingApp {
   private readonly net = new Net();
   private readonly lobby: Lobby;
-  private readonly assets = preloadModels();
+  private readonly assets: Promise<void>;
   private view: Game | ReplayViewer | null = null;
   private playerId = "";
   private revision = 0;
@@ -58,7 +59,29 @@ export class RacingApp {
         );
       }
     });
-    void this.assets.then(() => this.lobby.paintGarageThumbnails());
+    const loading = new LoadingScreen(root);
+    let assetFailure = false;
+    this.assets = preloadModels((progress) => {
+      assetFailure = progress.phase === "error";
+      loading.update(progress);
+    });
+    void this.assets.then(async () => {
+      // Give the opening status a frame before creating GPU resources.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      try {
+        const garageReady = this.lobby.paintGarageThumbnails();
+        if (assetFailure) return;
+        if (garageReady === false) {
+          loading.fail("The 3D garage could not start on this device. You can still choose a car and race.");
+          return;
+        }
+        // GarageStage draws synchronously. Reveal it after the browser presents it.
+        requestAnimationFrame(() => loading.dismiss());
+      } catch (error) {
+        console.error("Garage could not start", error);
+        loading.fail("The garage could not open. Try again or continue without 3D.");
+      }
+    });
   }
   async start(): Promise<void> {
     const attempt = ++this.connectionAttempt;

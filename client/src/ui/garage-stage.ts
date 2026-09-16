@@ -1,38 +1,51 @@
 import * as THREE from "three";
-import type { Variant } from "@racing/shared";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { CAR_VARIANTS, type Variant } from "@racing/shared";
 import { createCarMesh, disposeCarMesh } from "../game/car";
 import { getModel } from "../game/models";
 import { CHEAP_RENDER } from "../game/scene";
+import { GarageCamera, garageBayX } from "./garage-camera";
 
-interface Slide {
-  mesh: THREE.Group;
-  from: number;
-  to: number;
-  started: number;
-  retiring: boolean;
-}
-
-/** A live Blender car with a contact shadow and a short carousel transition. */
+/** Persistent Blender workshop behind the lobby's car and circuit controls. */
 export class GarageStage {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(32, 1, 0.1, 60);
-  private readonly light = new THREE.DirectionalLight(0xffce94, 4.2);
+  private readonly light = new THREE.DirectionalLight(0xffe2c2, 2.1);
   private readonly floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(30, 30),
+    new THREE.PlaneGeometry(50, 30),
     new THREE.ShadowMaterial({ color: 0x080604, opacity: 0.42 }),
   );
   private readonly observer: ResizeObserver;
+  private readonly reflection: THREE.WebGLRenderTarget;
+  private readonly rig = new GarageCamera();
+  private readonly cars = new THREE.Group();
+  private readonly contactGeometry = new THREE.PlaneGeometry(3.5, 4.8);
+  private readonly contactMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `varying vec2 vUv;
+      void main() {
+        float opacity = 0.42 * (1.0 - smoothstep(0.15, 0.5, length(vUv - 0.5)));
+        gl_FragColor = vec4(0.025, 0.03, 0.04, opacity);
+      }`,
+  });
+  private screen: "garage" | "track" | "settings" = "garage";
   private readonly motion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   );
-  private readonly slides: Slide[] = [];
   private variant?: Variant;
   private active = true;
   private disposed = false;
   private animation = 0;
   private lastDraw = 0;
-  private yaw: number | null = null;
+  private travelling = false;
   private drag: { pointerId: number; x: number } | null = null;
 
   constructor(
@@ -50,7 +63,7 @@ export class GarageStage {
     );
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
+    this.renderer.toneMappingExposure = 0.95;
     this.renderer.shadowMap.enabled = !CHEAP_RENDER;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
@@ -58,9 +71,15 @@ export class GarageStage {
     canvas.setAttribute("aria-hidden", "true");
     canvas.style.cssText =
       "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
-    host.append(canvas);
-    this.camera.position.set(4.6, 2.7, 6.2);
-    this.camera.lookAt(0, 0.65, 0);
+    this.camera.position.set(5, 2.8, 7.6);
+    this.camera.lookAt(0, 1, 0);
+    const environment = new RoomEnvironment();
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.reflection = pmrem.fromScene(environment, 0.04);
+    this.scene.environment = this.reflection.texture;
+    this.scene.environmentIntensity = 0.35;
+    environment.dispose();
+    pmrem.dispose();
     this.light.position.set(-3, 6, 5);
     this.light.castShadow = !CHEAP_RENDER;
     this.light.shadow.mapSize.set(1024, 1024);
@@ -75,15 +94,45 @@ export class GarageStage {
     this.light.shadow.normalBias = 0.035;
     this.scene.add(
       this.light,
-      new THREE.HemisphereLight(0xe1d9f0, 0x352619, 2.0),
+      new THREE.HemisphereLight(0xe1e8f0, 0x352619, 0.75),
     );
-    const rim = new THREE.DirectionalLight(0xff8d4b, 2.2);
+    const rim = new THREE.DirectionalLight(0xffb87e, 0.8);
     rim.position.set(5, 3, -5);
     this.scene.add(rim);
     this.floor.rotation.x = -Math.PI / 2;
     this.floor.position.y = -0.02;
     this.floor.receiveShadow = true;
-    this.scene.add(this.floor);
+    const garage = getModel("environment:garage");
+    if (garage) {
+      this.scene.add(garage.clone(true));
+      this.scene.background = new THREE.Color(0x323b43);
+      // Match the authored ceiling fixtures without adding six shadow passes.
+      RectAreaLightUniformsLib.init();
+      const ceiling = new THREE.RectAreaLight(0xe2edff, 3, 36, 5);
+      ceiling.position.set(0, 6.4, 0);
+      ceiling.lookAt(0, 0, 0);
+      const bench = new THREE.PointLight(0xffdfad, 10, 7, 2);
+      bench.position.set(-11.4, 2, -5.8);
+      this.scene.add(ceiling, bench);
+    } else {
+      this.scene.add(this.floor);
+    }
+    for (const variant of CAR_VARIANTS) {
+      if (!getModel(`car:${variant}`)) continue;
+      const car = createCarMesh(`garage-${variant}`, undefined, variant);
+      car.position.x = garageBayX(variant);
+      // Soft contact occlusion also grounds the parked cars in software WebGL.
+      const contact = new THREE.Mesh(this.contactGeometry, this.contactMaterial);
+      contact.rotation.x = -Math.PI / 2;
+      contact.position.y = 0.013;
+      car.add(contact);
+      this.cars.add(car);
+    }
+    this.scene.add(this.cars);
+    // Touch the DOM last so a failed GPU setup leaves nothing behind for the
+    // still-preview fallback to clean up.
+    host.append(canvas);
+    if (garage) host.classList.add("has-garage-environment");
     this.observer = new ResizeObserver(this.resize);
     this.observer.observe(host);
     document.addEventListener("visibilitychange", this.visibility);
@@ -98,7 +147,7 @@ export class GarageStage {
     this.resize();
   }
 
-  setVariant(variant: Variant, direction = 1): void {
+  setVariant(variant: Variant): void {
     if (
       this.disposed ||
       this.variant === variant ||
@@ -107,26 +156,8 @@ export class GarageStage {
       return;
     this.variant = variant;
     this.endDrag();
-    this.yaw = null;
     const now = performance.now();
-    this.retire((slide) => slide.retiring);
-    const previous = this.slides[0];
-    const animate = previous !== undefined && !this.motion.matches;
-    if (animate) {
-      previous.from = this.offset(previous, now);
-      previous.to = -Math.sign(direction || 1) * 9;
-      previous.started = now;
-      previous.retiring = true;
-    } else this.retire(() => true);
-    const mesh = createCarMesh("showroom", undefined, variant);
-    this.scene.add(mesh);
-    this.slides.push({
-      mesh,
-      from: animate ? Math.sign(direction || 1) * 9 : 0,
-      to: 0,
-      started: now,
-      retiring: false,
-    });
+    this.rig.focus(variant, now, this.motion.matches);
     this.draw(now);
     this.schedule();
   }
@@ -142,18 +173,23 @@ export class GarageStage {
     }
   }
 
+  setScreen(screen: "garage" | "track" | "settings"): void {
+    this.endDrag();
+    this.screen = screen;
+    this.draw(performance.now());
+  }
+
   private pointerDown = (event: PointerEvent): void => {
     if (
       !this.active ||
+      this.screen !== "garage" ||
       this.disposed ||
       this.drag ||
       event.button !== 0 ||
       (event.target instanceof Element && event.target.closest("button"))
     )
       return;
-    const current = this.slides.find((slide) => !slide.retiring);
-    if (!current) return;
-    this.yaw = current.mesh.rotation.y;
+    if (!this.variant) return;
     this.drag = { pointerId: event.pointerId, x: event.clientX };
     this.interactionHost.setPointerCapture(event.pointerId);
     this.interactionHost.classList.add("is-rotating-car");
@@ -161,11 +197,10 @@ export class GarageStage {
 
   private pointerMove = (event: PointerEvent): void => {
     if (!this.drag || event.pointerId !== this.drag.pointerId) return;
-    // A drag across the stage turns the car once, at any viewport size.
-    this.yaw =
-      (this.yaw ?? 0) +
-      ((event.clientX - this.drag.x) * Math.PI * 2) /
-        Math.max(this.interactionHost.clientWidth, 1);
+    this.rig.orbit(
+      ((event.clientX - this.drag.x) * 2) /
+        Math.max(this.interactionHost.clientWidth, 1),
+    );
     this.drag.x = event.clientX;
     this.draw(performance.now());
   };
@@ -182,13 +217,6 @@ export class GarageStage {
       this.interactionHost.releasePointerCapture(drag.pointerId);
   }
 
-  private offset(slide: Slide, now: number): number {
-    const t = this.motion.matches
-      ? 1
-      : Math.min(1, Math.max(0, (now - slide.started) / 620));
-    return THREE.MathUtils.lerp(slide.from, slide.to, 1 - Math.pow(1 - t, 3));
-  }
-
   private resize = (): void => {
     if (this.disposed || !this.active) return;
     const width = this.host.clientWidth,
@@ -196,26 +224,27 @@ export class GarageStage {
     if (!width || !height) return;
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
-    // Keep the whole car in frame on narrow portrait screens.
-    this.camera.fov = this.camera.aspect < 1.25 ? 43 : 32;
+    // Preserve a 40-degree horizontal view so long cars fit on tall phones.
+    this.camera.fov = Math.max(
+      42,
+      THREE.MathUtils.radToDeg(
+        2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(20)) / this.camera.aspect),
+      ),
+    );
     this.camera.updateProjectionMatrix();
     this.draw(performance.now());
   };
 
   private draw(now: number): void {
     if (!this.active || this.disposed || document.hidden) return;
-    this.retire(
-      (slide) =>
-        slide.retiring && (this.motion.matches || now - slide.started >= 620),
-    );
-    for (const slide of this.slides) {
-      const offset = this.offset(slide, now);
-      slide.mesh.position.set(offset * 0.803, 0, -offset * 0.595);
-      if (!slide.retiring)
-        slide.mesh.rotation.y =
-          this.yaw ??
-          (this.motion.matches ? 0 : Math.sin(now * 0.00018) * 0.12);
-    }
+    this.travelling = this.rig.update(now);
+    this.camera.position.copy(this.rig.position);
+    this.camera.lookAt(this.rig.target);
+    this.cars.visible = this.screen !== "track";
+    // Keep the contact-shadow pass centered on the selected bay.
+    this.light.position.set(this.rig.target.x - 3, 6, 5);
+    this.light.target.position.set(this.rig.target.x, 0, 0);
+    this.light.target.updateMatrixWorld();
     this.renderer.render(this.scene, this.camera);
     this.lastDraw = now;
   }
@@ -232,6 +261,7 @@ export class GarageStage {
       this.active &&
       !this.disposed &&
       !document.hidden &&
+      this.travelling &&
       !this.motion.matches
     )
       this.animation = requestAnimationFrame(this.frame);
@@ -246,18 +276,9 @@ export class GarageStage {
     }
   };
   private motionChanged = (): void => {
+    if (this.motion.matches) this.rig.finish();
     this.setActive(this.active);
   };
-  /** Drop and dispose every slide matching `done`, in place (this runs per frame). */
-  private retire(done: (slide: Slide) => boolean): void {
-    for (let i = this.slides.length - 1; i >= 0; i--) {
-      const slide = this.slides[i];
-      if (!done(slide)) continue;
-      this.slides.splice(i, 1);
-      this.scene.remove(slide.mesh);
-      disposeCarMesh(slide.mesh);
-    }
-  }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -275,13 +296,19 @@ export class GarageStage {
     this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.visibility);
     this.motion.removeEventListener("change", this.motionChanged);
-    this.retire(() => true);
+    for (const car of this.cars.children) {
+      if (car instanceof THREE.Group) disposeCarMesh(car);
+    }
     this.floor.geometry.dispose();
     this.floor.material.dispose();
+    this.contactGeometry.dispose();
+    this.contactMaterial.dispose();
+    this.reflection.dispose();
     this.light.shadow.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.host.classList.remove("has-live-car");
+    this.host.classList.remove("has-garage-environment");
   }
 }

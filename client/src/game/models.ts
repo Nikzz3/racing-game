@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
+let ready = false;
 let pending: Promise<void> | undefined;
 // Resolved against Vite's base so the packaged desktop build (base "./") can load it too.
 const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge.glb`;
@@ -11,7 +12,7 @@ const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge
 export function registerLibrary(root: THREE.Group): void {
   root.traverse((node) => {
     const name: string = node.userData.name ?? node.name;
-    if (!/^(car|nature|prop|track|preview):/.test(name)) return;
+    if (!/^(car|nature|prop|track|preview|environment):/.test(name)) return;
     const group = new THREE.Group();
     group.name = name;
     for (const child of node.children) group.add(child.clone(true));
@@ -75,14 +76,40 @@ function separateHeadlightLenses(car: THREE.Group): void {
   });
 }
 
-/** Resolves even when the download fails: the game falls back to placeholder geometry. */
-export function preloadModels(): Promise<void> {
+export type ModelLoadProgress = {
+  phase: "loading" | "preparing" | "ready" | "error";
+  loaded: number;
+  total: number;
+};
+let loadProgress: ModelLoadProgress = { phase: "loading", loaded: 0, total: 0 };
+const loadObservers = new Set<(progress: ModelLoadProgress) => void>();
+function reportLoad(progress: ModelLoadProgress): void {
+  loadProgress = progress;
+  for (const observer of loadObservers) observer(progress);
+}
+
+export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void): Promise<void> {
+  if (onProgress) {
+    onProgress(loadProgress);
+    if (!ready) loadObservers.add(onProgress);
+  }
   return (pending ??= new GLTFLoader()
-    .loadAsync(ASSET_LIBRARY_URL)
-    .then(({ scene }) => registerLibrary(scene))
-    .catch((error: unknown) =>
-      console.warn("Blender asset library could not load", error),
-    ));
+    .loadAsync(ASSET_LIBRARY_URL, (event) => reportLoad({
+      phase: "loading", loaded: event.loaded, total: event.lengthComputable ? event.total : 0,
+    }))
+    .then(({ scene }) => {
+      reportLoad({ ...loadProgress, phase: "preparing" });
+      registerLibrary(scene);
+      reportLoad({ ...loadProgress, phase: "ready" });
+    })
+    .catch((error: unknown) => {
+      console.warn("Blender asset library could not load", error);
+      reportLoad({ ...loadProgress, phase: "error" });
+    })
+    .finally(() => {
+      ready = true;
+      loadObservers.clear();
+    }));
 }
 export function getModel(key: string): THREE.Group | null {
   return library.get(key) ?? null;

@@ -173,7 +173,6 @@ export class Lobby {
   private roomChoice: string | null = null;
   private stage: GarageStage | null = null;
   private trackStage: TrackStage | null = null;
-  private slideDirection = 1;
   private pointerStart: { x: number; y: number } | null = null;
 
   constructor(
@@ -196,12 +195,13 @@ export class Lobby {
       <main class="lobby">
         <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside">${desktopNotice()}${updateNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
         <div class="lobby-deck" data-screen="garage">
+          <div class="live-car-stage" aria-hidden="true"></div>
           <section class="garage-screen menu-screen" aria-label="Choose your car">
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
             <div class="car-stage" role="region" aria-roledescription="carousel" aria-label="Cars" tabindex="0">
               <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><span class="stage-watermark" aria-hidden="true"></span><div class="stage-platform"></div>
               <div class="car-slides">${CHOICES.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${label(v)}" aria-hidden="true"><img class="stage-car" alt="${v === "random" ? "Random car" : LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
-              <div class="live-car-stage"></div><div class="showroom-loading">Preparing your garage<span></span></div>
+              <div class="showroom-loading">Preparing your garage<span></span></div>
               <button class="carousel-arrow carousel-previous" type="button" data-carousel="previous" aria-label="Previous car"><span>←</span></button>
               <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
@@ -393,12 +393,6 @@ export class Lobby {
   }
   private chooseCar(choice: Choice): void {
     if (choice === this.choice) return;
-    const distance =
-      (CHOICES.indexOf(choice) -
-        CHOICES.indexOf(this.choice) +
-        CHOICES.length) %
-      CHOICES.length;
-    this.slideDirection = distance <= CHOICES.length / 2 ? 1 : -1;
     this.choice = choice;
     localStorage.setItem("racer-variant", choice);
     this.check(".garage-card", "variant", choice);
@@ -582,7 +576,7 @@ export class Lobby {
   }
   private setScreen(screen: Screen): void {
     this.screen = screen;
-    this.stage?.setActive(screen === "garage");
+    this.stage?.setScreen(screen);
     this.trackStage?.setActive(screen === "track");
     this.find(".lobby-deck").dataset.screen = screen;
     for (const page of ["garage", "track", "settings"] as const) {
@@ -621,7 +615,7 @@ export class Lobby {
       state === "connected" ? "LIVE MULTIPLAYER" : state.toUpperCase();
     badge.dataset.state = state;
   }
-  paintGarageThumbnails(): void {
+  paintGarageThumbnails(): boolean {
     this.images = renderVariantThumbnails(CAR_VARIANTS);
     for (const choice of CHOICES) {
       const url = this.images.get(
@@ -632,7 +626,7 @@ export class Lobby {
       img.src = url;
       img.hidden = false;
     }
-    this.find(".showroom-loading").hidden = this.images.size > 0;
+    this.find(".showroom-loading").hidden = true;
     const shown = this.root.style.display !== "none";
     if (!this.stage) {
       try {
@@ -640,7 +634,8 @@ export class Lobby {
           this.find(".live-car-stage"),
           this.find(".car-stage"),
         );
-        this.stage.setActive(shown && this.screen === "garage");
+        this.stage.setActive(shown);
+        this.stage.setScreen(this.screen);
       } catch {
         // The still previews also work when a second WebGL context is unavailable.
       }
@@ -655,6 +650,7 @@ export class Lobby {
     }
     this.paintTrack();
     this.paintHero();
+    return this.stage !== null;
   }
   private paintHero(): void {
     const index = CHOICES.indexOf(this.choice);
@@ -667,7 +663,7 @@ export class Lobby {
     this.find(".stage-watermark").textContent = name;
     this.find(".showroom-number").textContent =
       `${this.choice === "random" ? "↝" : String(index + 1).padStart(2, "0")} / ${CAR_COUNT}`;
-    this.stage?.setVariant(this.selectedVariant, this.slideDirection);
+    this.stage?.setVariant(this.selectedVariant);
     this.root
       .querySelectorAll<HTMLElement>(".car-slide")
       .forEach((slide, i) => {
@@ -875,7 +871,7 @@ export class Lobby {
   }
   show(): void {
     this.root.style.display = "";
-    this.stage?.setActive(this.screen === "garage");
+    this.stage?.setActive(true);
     this.trackStage?.setActive(this.screen === "track");
   }
   hide(): void {

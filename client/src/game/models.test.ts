@@ -9,3 +9,10 @@ describe("preloadModels", () => {
     expect(getModel("nature:tree_detailed")).toBeNull();
   });
 });
+
+it("reports cached failure to later callers without retrying or leaving them loading", async () => {
+  await preloadModels();
+  const progress: string[] = [];
+  await preloadModels((state) => progress.push(state.phase));
+  expect(progress).toEqual(["error"]);
+});
