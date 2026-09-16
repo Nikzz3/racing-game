@@ -1,34 +1,21 @@
 """
-Python port of the car physics and track math.
+Python port of the car physics and track math, mirrored exactly from
+shared/src/track.ts (control points, Catmull-Rom sampling, nearest_centerline)
+and client/src/game/physics.ts (CarPhysics.update, difficulty tuning, wall clamp).
+rl/tests/test_golden.py replays Node-generated trajectories through this port,
+so keep the arithmetic order identical to the TypeScript.
 
-Sources mirrored exactly:
-  shared/src/track.ts  — CONTROL_POINTS, catmull_rom, sample_track, nearest_centerline
-  client/src/game/physics.ts — CarPhysics.update, difficulty constants, wall clamp
-
-Track-taking functions accept a `samples` list (a track's centerline) and
-default to TRACK_SAMPLES (Sunset Ridge).
-
-Public API:
-  TRACKS                     dict[str, list[dict]]  registered tracks by name
-  TRACK_SAMPLES              list[dict]  512 {x, z, dirX, dirZ} samples
-  nearest_centerline(x, z, samples=TRACK_SAMPLES)        -> {index, dist}
-  spawn_at_sample(index, lateral_offset, samples=...)    -> PhysicsState
-  step(state, action, dt, difficulty, samples=...)       -> PhysicsState
+Track-taking functions accept a `samples` centerline and default to Sunset Ridge.
 """
 
 import math
 from dataclasses import dataclass
 
-# ---------------------------------------------------------------------------
-# Track constants  (shared/src/track.ts)
-# ---------------------------------------------------------------------------
+ROAD_HALF_WIDTH = 7
+BARRIER_OFFSET = 6
+TRACK_DIVISIONS = 512
 
-ROAD_HALF_WIDTH: float = 7
-BARRIER_OFFSET: float = 6
-TRACK_DIVISIONS: int = 512
-
-# Control points [x, z] of the Sunset Ridge centerline.
-_CONTROL_POINTS: list[tuple[float, float]] = [
+_SUNSET_RIDGE_CONTROL_POINTS = [
     (-40, -210), (40, -213), (110, -205),
     (175, -180), (215, -120),
     (196, -58), (157, -20), (178, 32),
@@ -41,8 +28,17 @@ _CONTROL_POINTS: list[tuple[float, float]] = [
     (-195, -150), (-130, -195),
 ]
 
+# "Serpent's Coil": an apex at every control point (ADR 0003).
+_STORMHAVEN_CONTROL_POINTS = [
+    (232, 30), (228, -60), (218, -150), (188, -202), (110, -220), (25, -220),
+    (-65, -208), (-150, -188), (-198, -150), (-190, -102), (-150, -72),
+    (-110, -100), (-70, -73), (-30, -100), (10, -70), (45, -94), (95, -70),
+    (135, -20), (140, 40), (110, 80), (60, 95), (0, 80), (-70, 112),
+    (-140, 150), (-95, 172), (-40, 178), (90, 175), (185, 140), (225, 90),
+]
 
-def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
+
+def _catmull_rom(p0, p1, p2, p3, t):
     t2 = t * t
     t3 = t2 * t
     return 0.5 * (
@@ -53,12 +49,9 @@ def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
     )
 
 
-def _sample_track(
-    control_points: list[tuple[float, float]],
-    divisions: int = TRACK_DIVISIONS,
-) -> list[dict]:
+def _sample_track(control_points, divisions=TRACK_DIVISIONS):
     n = len(control_points)
-    pts: list[tuple[float, float]] = []
+    pts = []
     for s in range(divisions):
         u = (s / divisions) * n
         i = int(u)
@@ -71,7 +64,7 @@ def _sample_track(
         z = _catmull_rom(p0[1], p1[1], p2[1], p3[1], t)
         pts.append((x, z))
 
-    samples: list[dict] = []
+    samples = []
     for idx, (x, z) in enumerate(pts):
         nx, nz = pts[(idx + 1) % divisions]
         dx = nx - x
@@ -81,61 +74,12 @@ def _sample_track(
     return samples
 
 
-TRACK_SAMPLES: list[dict] = _sample_track(_CONTROL_POINTS)
-
-# ---------------------------------------------------------------------------
-# Stormhaven Circuit  (shared/src/track.ts — STORMHAVEN_CONTROL_POINTS)
-#
-# "Serpent's Coil" layout: 29 control points, an apex at every one, so an
-# apex-to-apex chord traces the racing line and grass-cutting can no longer
-# save time. Keep this list in exact sync with the TS source — the golden
-# TestStormhavenSampleParity test replays the TS-derived samples through this
-# Python port and asserts equality to 1e-9. See ADR 0003.
-# ---------------------------------------------------------------------------
-
-_STORMHAVEN_CONTROL_POINTS: list[tuple[float, float]] = [
-    (232, 30),
-    (228, -60),
-    (218, -150),
-    (188, -202),
-    (110, -220),
-    (25, -220),
-    (-65, -208),
-    (-150, -188),
-    (-198, -150),
-    (-190, -102),
-    (-150, -72),
-    (-110, -100),
-    (-70, -73),
-    (-30, -100),
-    (10, -70),
-    (45, -94),
-    (95, -70),
-    (135, -20),
-    (140, 40),
-    (110, 80),
-    (60, 95),
-    (0, 80),
-    (-70, 112),
-    (-140, 150),
-    (-95, 172),
-    (-40, 178),
-    (90, 175),
-    (185, 140),
-    (225, 90),
-]
-
-STORMHAVEN_SAMPLES: list[dict] = _sample_track(_STORMHAVEN_CONTROL_POINTS)
+TRACK_SAMPLES = _sample_track(_SUNSET_RIDGE_CONTROL_POINTS)
+STORMHAVEN_SAMPLES = _sample_track(_STORMHAVEN_CONTROL_POINTS)
+TRACKS = {"sunset-ridge": TRACK_SAMPLES, "stormhaven": STORMHAVEN_SAMPLES}
 
 
-TRACKS: dict[str, list[dict]] = {
-    "sunset-ridge": TRACK_SAMPLES,
-    "stormhaven": STORMHAVEN_SAMPLES,
-}
-
-
-def nearest_centerline(x: float, z: float, samples: list[dict] = TRACK_SAMPLES) -> dict:
-    """Full linear scan — mirrors the TypeScript implementation exactly."""
+def nearest_centerline(x, z, samples=TRACK_SAMPLES):
     best = 0
     best_d2 = float("inf")
     for i, s in enumerate(samples):
@@ -148,23 +92,19 @@ def nearest_centerline(x: float, z: float, samples: list[dict] = TRACK_SAMPLES) 
     return {"index": best, "dist": math.sqrt(best_d2)}
 
 
-# ---------------------------------------------------------------------------
-# Physics constants  (client/src/game/physics.ts)
-# ---------------------------------------------------------------------------
-
-DIFFICULTY_PHYSICS: dict[str, dict] = {
+DIFFICULTY_PHYSICS = {
     "easy":   {"max_speed": 52,  "engine_accel": 38, "grass_max_speed": 24, "grass_friction": 1.5},
     "medium": {"max_speed": 90,  "engine_accel": 65, "grass_max_speed": 9,  "grass_friction": 6},
     "hard":   {"max_speed": 110, "engine_accel": 80, "grass_max_speed": 5,  "grass_friction": 10},
 }
 
-BRAKE_DECEL: float = 38
-REVERSE_MAX_SPEED: float = 14
-COAST_DECEL: float = 5
-DRAG: float = 0.01
-GRASS_DECEL: float = 110
-STEER_RATE: float = 1.8
-WALL_DIST: float = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2  # 11.8
+BRAKE_DECEL = 38
+REVERSE_MAX_SPEED = 14
+COAST_DECEL = 5
+DRAG = 0.01
+GRASS_DECEL = 110
+STEER_RATE = 1.8
+WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2
 
 
 @dataclass
@@ -178,47 +118,24 @@ class PhysicsState:
     touching_wall: bool = False
 
 
-def spawn_at_sample(
-    index: int,
-    lateral_offset: float,
-    samples: list[dict] = TRACK_SAMPLES,
-) -> PhysicsState:
-    """
-    Mirror of CarPhysics.spawnAtSample.
-    Left-pointing normal of the direction of travel offsets the spawn position.
-    """
+def spawn_at_sample(index, lateral_offset, samples=TRACK_SAMPLES):
+    """Offset along the left-pointing normal of the direction of travel."""
     s = samples[index]
-    nx = -s["dirZ"]
-    nz = s["dirX"]
     return PhysicsState(
-        x=s["x"] + nx * lateral_offset,
-        z=s["z"] + nz * lateral_offset,
+        x=s["x"] + -s["dirZ"] * lateral_offset,
+        z=s["z"] + s["dirX"] * lateral_offset,
         heading=math.atan2(s["dirX"], s["dirZ"]),
         speed=0.0,
-        on_track=True,
         center_index=index,
-        touching_wall=False,
     )
 
 
-def step(
-    state: PhysicsState,
-    action: dict,
-    dt: float,
-    difficulty: str = "medium",
-    samples: list[dict] = TRACK_SAMPLES,
-) -> PhysicsState:
-    """
-    Pure stepping function mirroring CarPhysics.update.
-    Returns a new PhysicsState; the input state is not mutated.
-
-    action keys: throttle (0–1), brake (0–1), steer (−1 to 1).
-    """
+def step(state, action, dt, difficulty="medium", samples=TRACK_SAMPLES):
+    """One fixed step of CarPhysics.update; returns a new state. action: throttle/brake in 0..1, steer in -1..1."""
     tuning = DIFFICULTY_PHYSICS[difficulty]
-
-    throttle: float = action["throttle"]
-    brake: float = action["brake"]
-    steer: float = action["steer"]
+    throttle = action["throttle"]
+    brake = action["brake"]
+    steer = action["steer"]
 
     x = state.x
     z = state.z
@@ -226,7 +143,6 @@ def step(
     speed = state.speed
     touching_wall = state.touching_wall
 
-    # --- Throttle / brake / coast ---
     if throttle > 0:
         speed += tuning["engine_accel"] * throttle * dt
     if brake > 0:
@@ -239,7 +155,6 @@ def step(
             speed -= math.copysign(c, speed)
     speed -= speed * abs(speed) * DRAG * dt
 
-    # --- Surface limits ---
     before = nearest_centerline(x, z, samples)
     on_track = before["dist"] <= ROAD_HALF_WIDTH + 0.6
     limit = tuning["max_speed"] if on_track else tuning["grass_max_speed"]
@@ -254,17 +169,16 @@ def step(
     if speed < -REVERSE_MAX_SPEED:
         speed = -REVERSE_MAX_SPEED
 
-    # --- Steering: no grip at standstill, reduced authority at high speed ---
+    # No grip at standstill, reduced authority at high speed.
     grip = min(abs(speed) / 14, 1.0) / (1.0 + abs(speed) * 0.015)
-    # JS: Math.sign(this.speed || 1) — treats 0 as positive (falsy → 1)
+    # JS: Math.sign(this.speed || 1) treats 0 as positive.
     speed_sign = 1.0 if speed >= 0.0 else -1.0
     heading += steer * STEER_RATE * grip * speed_sign * dt
 
-    # --- Integrate position ---
     x += math.sin(heading) * speed * dt
     z += math.cos(heading) * speed * dt
 
-    # --- Barrier collision: clamp to wall, one-time speed penalty on contact ---
+    # Barrier: clamp to the wall, one-time speed penalty on first contact.
     after = nearest_centerline(x, z, samples)
     center_index = after["index"]
     if after["dist"] > WALL_DIST:
@@ -278,12 +192,4 @@ def step(
     elif after["dist"] < WALL_DIST - 0.5:
         touching_wall = False
 
-    return PhysicsState(
-        x=x,
-        z=z,
-        heading=heading,
-        speed=speed,
-        on_track=on_track,
-        center_index=center_index,
-        touching_wall=touching_wall,
-    )
+    return PhysicsState(x, z, heading, speed, on_track, center_index, touching_wall)

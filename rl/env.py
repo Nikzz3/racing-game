@@ -1,24 +1,20 @@
 """
-Gymnasium environment wrapping the racing car physics for any registered Track.
+Gymnasium time-trial environment over the physics port, for any registered Track.
 
-Observation (7-dim, normalized to [-3, 3]):
+Observation (7-dim, clipped to [-3, 3]):
   [0] signed lateral offset from centerline  / ROAD_HALF_WIDTH
   [1] heading error vs. track direction       / pi
   [2] current speed                           / max_speed
   [3-6] curvature lookahead at +5/+10/+20/+40 samples ahead / pi
 
-Action (2-dim, continuous [-1, 1]):
-  [0] steer         (-1 = full left, +1 = full right)
-  [1] longitudinal  (+1 = full throttle, -1 = full brake)
+Action (2-dim, [-1, 1]): [steer, longitudinal] with +1 = full throttle, -1 = full brake.
 
 Reward: arc-length progress per step - wall_penalty - offtrack_penalty
-        (+ optional bounded Gaussian bonus for hugging an oracle racing line)
+        (+ an optional bounded Gaussian bonus for hugging an oracle racing line).
 
-Episode:
-  - Capped at max_steps (truncation)
-  - Early terminated when stuck at wall ≥60 steps, or reversing (net
-    backward progress over a 60-step sliding window)
-  - Randomized reset for training; fixed spawn (_spawn_sample) for eval
+Episodes truncate at max_steps and terminate early when stuck at a wall for
+_STUCK_THRESHOLD steps or reversing (net backward progress over a sliding window).
+Training resets are randomised; eval_mode spawns at the fixed harness.ts sample.
 """
 
 import json
@@ -43,13 +39,25 @@ from physics import (
 
 OBS_DIM = 7
 ACTION_DIM = 2
-SPAWN_SAMPLE = TRACK_DIVISIONS - 14  # mirrors harness.ts (Sunset Ridge default)
+SPAWN_SAMPLE = TRACK_DIVISIONS - 14  # mirrors harness.ts
 DT = 1 / 60
 LOOKAHEADS = (5, 10, 20, 40)
 
+_STUCK_THRESHOLD = 60
+_REVERSE_WINDOW = 60
+_REVERSE_NET_THRESHOLD = 3  # net backward samples within the window
 
-def _arc_length_stats(samples: list[dict]) -> tuple[float, float]:
-    """Return (average, total) arc-length per centerline sample over the loop."""
+# Wall penalty scales with approach speed²: a fast slam is costly, a gentle
+# low-speed correction against the barrier is nearly free. This avoids the
+# wall-grinding / freezing local optimum a flat penalty induces (kinetic-energy
+# wall penalty from GT Sport, Fuchs et al. 2020, c_w≈5e-4). At Medium top speed
+# (90) this is ≈-4.05; at a 30-unit correction ≈-0.45. Uses the pre-step speed,
+# since physics.step already damps speed by 0.45 on first contact.
+WALL_PENALTY_COEF = 5e-4
+
+
+def _arc_length_stats(samples):
+    """(average, total) arc length per centerline sample over the loop."""
     n = len(samples)
     seg_lengths = [
         math.hypot(
@@ -61,25 +69,10 @@ def _arc_length_stats(samples: list[dict]) -> tuple[float, float]:
     return sum(seg_lengths) / n, sum(seg_lengths)
 
 
-# Module-level defaults (Sunset Ridge) kept for backward compatibility
 AVG_ARC_LENGTH, TOTAL_TRACK_LENGTH = _arc_length_stats(TRACK_SAMPLES)
 
-# Termination thresholds
-_STUCK_THRESHOLD = 60       # consecutive wall-contact steps → terminate
-_REVERSE_WINDOW = 60        # step window for reverse detection
-_REVERSE_NET_THRESHOLD = 3  # net backward samples within window → terminate
 
-# Wall penalty scales with approach speed²: penalty = -WALL_PENALTY_COEF * v².
-# A fast slam is costly; gentle low-speed correction against the barrier is
-# nearly free. This avoids the wall-grinding / freezing local optimum that a
-# flat penalty induces, mirroring the kinetic-energy wall penalty from GT Sport
-# (Fuchs et al. 2020, c_w≈5e-4). At Medium top speed (90) this is ≈-4.05; at a
-# 30-unit correction ≈-0.45. Uses the pre-step approach speed, since
-# physics.step already damps speed by 0.45 on first contact.
-WALL_PENALTY_COEF = 5e-4
-
-
-def _normalize_angle(a: float) -> float:
+def _normalize_angle(a):
     while a > math.pi:
         a -= 2.0 * math.pi
     while a < -math.pi:
@@ -87,20 +80,30 @@ def _normalize_angle(a: float) -> float:
     return a
 
 
-class TimeTrialEnv(gym.Env):
-    """Single-car time-trial on a configurable Track."""
+def _track_heading(s):
+    return math.atan2(s["dirX"], s["dirZ"])
 
-    metadata: dict = {"render_modes": []}
+
+def _signed_lateral(state, s):
+    """Metres left (positive) of the track direction, the same cross-product
+    convention as spawn_at_sample's left-pointing normal."""
+    dx = state.x - s["x"]
+    dz = state.z - s["z"]
+    return s["dirX"] * dz - s["dirZ"] * dx
+
+
+class TimeTrialEnv(gym.Env):
+    metadata = {"render_modes": []}
 
     def __init__(
         self,
-        track: str = "sunset-ridge",
-        difficulty: str = "medium",
-        eval_mode: bool = False,
-        max_steps: int = 3600,
-        line_reward_coef: float = 0.0,
-        line_reward_sigma: float = 3.0,
-    ) -> None:
+        track="sunset-ridge",
+        difficulty="medium",
+        eval_mode=False,
+        max_steps=3600,
+        line_reward_coef=0.0,
+        line_reward_sigma=3.0,
+    ):
         super().__init__()
         if track not in TRACKS:
             raise ValueError(f"Unknown track {track!r}; valid: {sorted(TRACKS)}")
@@ -114,21 +117,16 @@ class TimeTrialEnv(gym.Env):
         self._samples = TRACKS[track]
         self._track_divisions = len(self._samples)
         self._avg_arc_length, self._total_track_length = _arc_length_stats(self._samples)
-        self._spawn_sample: int = self._track_divisions - 14  # mirrors harness.ts
+        self._spawn_sample = self._track_divisions - 14  # mirrors harness.ts
 
-        # Optional oracle-racing-line proximity reward. Loaded only when the
-        # coefficient is positive, so environments/CI without the reference
-        # file behave exactly as before (reward term stays 0). The `alpha`
-        # array is the target signed lateral offset in metres, indexed by
-        # center_index (length self._track_divisions for this track).
-        self._line_target: np.ndarray | None = None
+        # Target signed lateral offset (metres) per center_index for the oracle
+        # racing line. Loaded only when the bonus is enabled, so environments
+        # without the reference file behave exactly as before.
+        self._line_target = None
         if line_reward_coef > 0.0:
-            line_path = os.path.join(
-                os.path.dirname(__file__), "experiments", "racing_line.json"
-            )
+            line_path = os.path.join(os.path.dirname(__file__), "experiments", "racing_line.json")
             with open(line_path) as f:
-                line_data = json.load(f)
-            alpha = np.asarray(line_data["alpha"], dtype=np.float64)
+                alpha = np.asarray(json.load(f)["alpha"], dtype=np.float64)
             if alpha.shape[0] != self._track_divisions:
                 raise ValueError(
                     f"racing_line.json alpha length {alpha.shape[0]} != "
@@ -136,22 +134,14 @@ class TimeTrialEnv(gym.Env):
                 )
             self._line_target = alpha
 
-        self.observation_space = spaces.Box(
-            low=-3.0, high=3.0, shape=(OBS_DIM,), dtype=np.float32
-        )
-        self.action_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(ACTION_DIM,), dtype=np.float32
-        )
+        self.observation_space = spaces.Box(low=-3.0, high=3.0, shape=(OBS_DIM,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(ACTION_DIM,), dtype=np.float32)
 
-        self._state: PhysicsState | None = None
-        self._step_count: int = 0
-        self._stuck_steps: int = 0
-        self._progress_window: deque[int] = deque(maxlen=_REVERSE_WINDOW)
-        self._total_progress: float = 0.0
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        self._state = None
+        self._step_count = 0
+        self._stuck_steps = 0
+        self._progress_window = deque(maxlen=_REVERSE_WINDOW)
+        self._total_progress = 0.0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -167,7 +157,6 @@ class TimeTrialEnv(gym.Env):
         self._stuck_steps = 0
         self._progress_window = deque(maxlen=_REVERSE_WINDOW)
         self._total_progress = 0.0
-
         return self._compute_obs(), {}
 
     def step(self, action):
@@ -177,7 +166,7 @@ class TimeTrialEnv(gym.Env):
         brake = max(0.0, -longitudinal)
 
         prev_index = self._state.center_index
-        approach_speed = self._state.speed  # pre-collision speed for wall penalty
+        approach_speed = self._state.speed
 
         self._state = _physics_step(
             self._state,
@@ -188,57 +177,40 @@ class TimeTrialEnv(gym.Env):
         )
         self._step_count += 1
 
-        # Signed arc-length progress this step
+        # Signed sample delta, wrapped around the loop.
         delta = (self._state.center_index - prev_index) % self._track_divisions
         if delta > self._track_divisions // 2:
             delta -= self._track_divisions
         progress = delta * self._avg_arc_length
         self._total_progress += progress
 
-        # Reward
         wall_penalty = (
             -WALL_PENALTY_COEF * approach_speed * approach_speed
             if self._state.touching_wall else 0.0
         )
         offtrack_penalty = -0.5 if not self._state.on_track else 0.0
 
-        # Oracle-line proximity bonus (0 unless line_reward_coef > 0). A
-        # bounded Gaussian in the signed lateral error (metres, same
-        # left-positive convention as _compute_obs): +coef when exactly on the
-        # oracle line, decaying to 0 within a few sigma. Being non-negative and
-        # bounded by coef, it cannot swamp the progress signal the way an
-        # unbounded quadratic penalty does — early exploration far from the
-        # line is never punished into net-negative (cf. arXiv:2306.07003).
+        # Bounded Gaussian in the signed lateral error: +coef exactly on the oracle
+        # line, decaying to 0 within a few sigma. Non-negative and bounded by coef,
+        # so unlike an unbounded quadratic penalty it cannot swamp the progress
+        # signal or punish early exploration into net-negative (cf. arXiv:2306.07003).
         line_bonus = 0.0
         if self._line_target is not None:
             s = self._samples[self._state.center_index]
-            dx = self._state.x - s["x"]
-            dz = self._state.z - s["z"]
-            lateral_m = s["dirX"] * dz - s["dirZ"] * dx
-            error = lateral_m - self._line_target[self._state.center_index]
+            error = _signed_lateral(self._state, s) - self._line_target[self._state.center_index]
             line_bonus = self.line_reward_coef * math.exp(
                 -(error * error) / (self._line_sigma * self._line_sigma)
             )
 
         reward = float(progress + wall_penalty + offtrack_penalty + line_bonus)
 
-        # Stuck counter: any wall contact persisting (regardless of speed)
-        if self._state.touching_wall:
-            self._stuck_steps += 1
-        else:
-            self._stuck_steps = 0
-
-        # Reverse detection: sliding window of signed sample deltas
+        self._stuck_steps = self._stuck_steps + 1 if self._state.touching_wall else 0
         self._progress_window.append(delta)
-        window_net = sum(self._progress_window)
-        reverse_terminated = (
+        reversing = (
             len(self._progress_window) >= _REVERSE_WINDOW
-            and window_net < -_REVERSE_NET_THRESHOLD
+            and sum(self._progress_window) < -_REVERSE_NET_THRESHOLD
         )
-
-        terminated = bool(
-            self._stuck_steps >= _STUCK_THRESHOLD or reverse_terminated
-        )
+        terminated = bool(self._stuck_steps >= _STUCK_THRESHOLD or reversing)
         truncated = bool(self._step_count >= self.max_steps)
 
         info = {
@@ -250,35 +222,19 @@ class TimeTrialEnv(gym.Env):
         }
         return self._compute_obs(), reward, terminated, truncated, info
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _compute_obs(self) -> np.ndarray:
+    def _compute_obs(self):
         state = self._state
         s = self._samples[state.center_index]
-
-        dx = state.x - s["x"]
-        dz = state.z - s["z"]
-        # Signed lateral: dirX*dz - dirZ*dx > 0 ⟹ car is LEFT of track direction
-        # (same cross-product convention as spawnAtSample's left-pointing normal)
-        lateral = (s["dirX"] * dz - s["dirZ"] * dx) / ROAD_HALF_WIDTH
-
-        track_heading = math.atan2(s["dirX"], s["dirZ"])
+        lateral = _signed_lateral(state, s) / ROAD_HALF_WIDTH
+        track_heading = _track_heading(s)
         heading_err = _normalize_angle(state.heading - track_heading) / math.pi
-
         speed_norm = state.speed / self._tuning["max_speed"]
-
-        curvatures: list[float] = []
-        for offset in LOOKAHEADS:
-            ahead_idx = (state.center_index + offset) % self._track_divisions
-            ahead_s = self._samples[ahead_idx]
-            ahead_heading = math.atan2(ahead_s["dirX"], ahead_s["dirZ"])
-            curvatures.append(
-                _normalize_angle(ahead_heading - track_heading) / math.pi
-            )
-
-        obs = np.array(
-            [lateral, heading_err, speed_norm, *curvatures], dtype=np.float32
-        )
+        curvatures = [
+            _normalize_angle(
+                _track_heading(self._samples[(state.center_index + offset) % self._track_divisions])
+                - track_heading
+            ) / math.pi
+            for offset in LOOKAHEADS
+        ]
+        obs = np.array([lateral, heading_err, speed_norm, *curvatures], dtype=np.float32)
         return np.clip(obs, -3.0, 3.0)

@@ -7,8 +7,9 @@ test("selects a car through the carousel before configuring a race", async ({ pa
   const next = page.getByRole("button", { name: "Next car", exact: true });
   const previous = page.getByRole("button", { name: "Previous car", exact: true });
   const select = page.getByRole("button", { name: "Select car", exact: true });
+  const createAndRace = page.getByRole("button", { name: "Create & Race" });
   await expect(select).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create & Race" })).toHaveCount(0);
+  await expect(createAndRace).toHaveCount(0);
   const startingVariant = await selectedCar.getAttribute("data-variant");
 
   await next.click();
@@ -34,7 +35,7 @@ test("selects a car through the carousel before configuring a race", async ({ pa
   await select.click();
   const selectTrack = page.getByRole("button", { name: "Select track", exact: true });
   await expect(selectTrack).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create & Race" })).toHaveCount(0);
+  await expect(createAndRace).toHaveCount(0);
   const selectedTrack = page.locator(".track-card.active");
   const startingTrack = await selectedTrack.getAttribute("data-track");
   await page.locator('[data-track-carousel="next"]').click();
@@ -42,7 +43,7 @@ test("selects a car through the carousel before configuring a race", async ({ pa
   await page.locator('[data-track-carousel="previous"]').click();
   await expect(selectedTrack).toHaveAttribute("data-track", startingTrack!);
   await selectTrack.click();
-  await expect(page.getByRole("button", { name: "Create & Race" })).toBeVisible();
+  await expect(createAndRace).toBeVisible();
   await page.getByLabel("Driver", { exact: true }).fill("Carousel Driver");
   await page.getByPlaceholder("New room name").fill("Sunset Session");
 
@@ -58,34 +59,36 @@ test("selects a car through the carousel before configuring a race", async ({ pa
 });
 
 test.describe("touch controls", () => {
-test.use({ hasTouch: true });
-test("car selection and race setup remain usable on a phone with reduced motion", async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  const next = page.getByRole("button", { name: "Next car", exact: true });
-  await expect(next).toBeInViewport();
-  await next.click();
-  const select = page.getByRole("button", { name: "Select car", exact: true });
-  await expect(select).toBeInViewport();
-  await select.click();
-  const selectTrack = page.getByRole("button", { name: "Select track", exact: true });
-  await expect(selectTrack).toBeInViewport();
-  await selectTrack.click();
-  await page.getByLabel("Driver", { exact: true }).fill("Phone Driver");
-  await page.getByPlaceholder("New room name").fill("Phone Session");
-  await expect(page.getByRole("button", { name: "Create & Race" })).toBeEnabled();
-  await page.getByRole("button", { name: "Change car", exact: true }).click();
-  await expect(select).toBeInViewport();
-  await select.click();
-  await selectTrack.click();
-  await page.getByRole("button", { name: "Create & Race" }).click();
-  await expect(page.locator(".hud-map")).toBeInViewport();
-  await expect(page.locator(".hud-speed")).toBeInViewport();
-  await expect(page.locator(".joystick")).toBeInViewport();
-  const dial = (await page.locator(".hud-speed").boundingBox())!;
-  const joystick = (await page.locator(".joystick").boundingBox())!;
-  expect(dial.y + dial.height).toBeLessThanOrEqual(joystick.y);
-  await page.screenshot({ path: testInfo.outputPath("race-hud-phone.png") });
-});
+  test.use({ hasTouch: true });
+
+  test("car selection and race setup remain usable on a phone with reduced motion", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    const next = page.getByRole("button", { name: "Next car", exact: true });
+    await expect(next).toBeInViewport();
+    await next.click();
+    const select = page.getByRole("button", { name: "Select car", exact: true });
+    await expect(select).toBeInViewport();
+    await select.click();
+    const selectTrack = page.getByRole("button", { name: "Select track", exact: true });
+    await expect(selectTrack).toBeInViewport();
+    await selectTrack.click();
+    await page.getByLabel("Driver", { exact: true }).fill("Phone Driver");
+    await page.getByPlaceholder("New room name").fill("Phone Session");
+    const createAndRace = page.getByRole("button", { name: "Create & Race" });
+    await expect(createAndRace).toBeEnabled();
+    await page.getByRole("button", { name: "Change car", exact: true }).click();
+    await expect(select).toBeInViewport();
+    await select.click();
+    await selectTrack.click();
+    await createAndRace.click();
+    await expect(page.locator(".hud-map")).toBeInViewport();
+    await expect(page.locator(".hud-speed")).toBeInViewport();
+    await expect(page.locator(".joystick")).toBeInViewport();
+    const dial = (await page.locator(".hud-speed").boundingBox())!;
+    const joystick = (await page.locator(".joystick").boundingBox())!;
+    expect(dial.y + dial.height).toBeLessThanOrEqual(joystick.y);
+    await page.screenshot({ path: testInfo.outputPath("race-hud-phone.png") });
+  });
 });

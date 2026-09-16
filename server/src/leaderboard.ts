@@ -1,8 +1,10 @@
 import type { Difficulty, LeaderboardEntry, TrackSlug } from "@racing/shared";
 import { pool } from "./db";
 
-/** Top `n` entries for every (track, difficulty) pair, flattened. */
-export async function topEntries(n = 10): Promise<LeaderboardEntry[]> {
+const TOP_N = 10;
+
+/** Top entries for every (track, difficulty) pair, flattened. */
+export async function topEntries(): Promise<LeaderboardEntry[]> {
   const { rows } = await pool.query(
     `SELECT name, time_ms, date, difficulty, track, has_replay FROM (
        SELECT b.name, b.time_ms, b.date, b.difficulty, b.track,
@@ -15,7 +17,7 @@ export async function topEntries(n = 10): Promise<LeaderboardEntry[]> {
      ) ranked
      WHERE rn <= $1
      ORDER BY track ASC, difficulty ASC, time_ms ASC`,
-    [n]
+    [TOP_N],
   );
   return rows.map((r) => ({
     name: r.name,
@@ -27,11 +29,11 @@ export async function topEntries(n = 10): Promise<LeaderboardEntry[]> {
   }));
 }
 
-/** Current track-record time for a single (track, difficulty) pair, or null if none set yet. */
+/** Current Track Record time for a (track, difficulty) pair, or null if none set yet. */
 export async function bestTime(track: TrackSlug, difficulty: Difficulty): Promise<number | null> {
   const { rows } = await pool.query(
     "SELECT MIN(time_ms) AS best FROM best_laps WHERE track = $1 AND difficulty = $2",
-    [track, difficulty]
+    [track, difficulty],
   );
   return rows[0]?.best ?? null;
 }

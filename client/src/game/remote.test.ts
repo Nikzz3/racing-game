@@ -37,7 +37,7 @@ function makeMeshWithSprite(): {
   const disposeMaterial = vi.fn();
   const mesh = new THREE.Group();
   const mat = new THREE.SpriteMaterial();
-  (mat as any).map = { dispose: disposeTexture };
+  mat.map = { dispose: disposeTexture } as unknown as THREE.Texture;
   mat.dispose = disposeMaterial;
   const sprite = new THREE.Sprite(mat);
   mesh.add(sprite);
@@ -48,7 +48,6 @@ function makeMockScene() {
   return { add: vi.fn(), remove: vi.fn() } as unknown as THREE.Scene;
 }
 
-// ── disposeCarMesh unit tests ────────────────────────────────────────────────
 
 describe("disposeCarMesh", () => {
   it("disposes the sprite material and texture", () => {
@@ -63,7 +62,6 @@ describe("disposeCarMesh", () => {
     mesh.add(
       new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()),
     );
-    // should not throw
     expect(() => disposeCarMesh(mesh)).not.toThrow();
   });
 
@@ -72,14 +70,12 @@ describe("disposeCarMesh", () => {
     const mat = new THREE.SpriteMaterial();
     const disposeMaterial = vi.fn();
     mat.dispose = disposeMaterial;
-    // mat.map is null by default
     mesh.add(new THREE.Sprite(mat));
     disposeCarMesh(mesh);
     expect(disposeMaterial).toHaveBeenCalledOnce();
   });
 });
 
-// ── RemotePlayers disposal tests ─────────────────────────────────────────────
 
 describe("RemotePlayers name-tag disposal", () => {
   let scene: THREE.Scene;
@@ -95,11 +91,8 @@ describe("RemotePlayers name-tag disposal", () => {
     const { mesh, disposeTexture, disposeMaterial } = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(mesh);
 
-    // Player joins
     rp.onSnapshot([makeSnapshot("p1")]);
-    expect(vi.mocked(createCarMesh)).toHaveBeenCalledOnce();
-
-    // Player leaves (empty snapshot)
+    expect(createCarMesh).toHaveBeenCalledOnce();
     rp.onSnapshot([]);
 
     expect(disposeMaterial).toHaveBeenCalledOnce();
@@ -127,15 +120,14 @@ describe("RemotePlayers name-tag disposal", () => {
     vi.mocked(createCarMesh).mockReturnValueOnce(mesh);
 
     rp.onSnapshot([makeSnapshot("p1")]);
-    rp.onSnapshot([]); // p1 leaves → disposed once
-    rp.dispose(); // nothing left to dispose
+    rp.onSnapshot([]);
+    rp.dispose();
 
     expect(disposeMaterial).toHaveBeenCalledOnce();
     expect(disposeTexture).toHaveBeenCalledOnce();
   });
 });
 
-// ── RemotePlayers Variant rendering tests ────────────────────────────────────
 
 describe("RemotePlayers variants", () => {
   let scene: THREE.Scene;

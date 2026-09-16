@@ -28,7 +28,6 @@ export class ReplayViewer {
   private readonly overlay = document.createElement("div");
   private readonly timeEl: HTMLElement;
   private readonly finishedEl: HTMLElement;
-  private readonly exitButton: HTMLButtonElement;
   private animationFrame = 0;
   private running = true;
   private lastFrame: number;
@@ -52,7 +51,7 @@ export class ReplayViewer {
     parent.append(this.container);
     const track = resolveTrack(trackSlug);
     this.bundle = createScene(this.container, track.samples);
-    buildTrack(this.bundle.scene, track.samples);
+    buildTrack(this.bundle.scene, track);
     this.carMesh = createCarMesh(name, name, variant);
     this.bundle.scene.add(this.carMesh);
 
@@ -71,19 +70,17 @@ export class ReplayViewer {
     this.timeEl.textContent = `--:--.--- / ${formatMs(timeMs)}`;
     this.finishedEl =
       this.overlay.querySelector<HTMLElement>(".replay-finished")!;
-    this.exitButton =
-      this.overlay.querySelector<HTMLButtonElement>(".replay-exit")!;
-    this.exitButton.addEventListener("click", this.close);
+    this.overlay
+      .querySelector(".replay-exit")!
+      .addEventListener("click", () => {
+        this.dispose();
+        this.onClose();
+      });
     parent.append(this.overlay);
     window.addEventListener("resize", this.onResize);
     this.restart(this.playStart);
     this.animationFrame = requestAnimationFrame(this.frame);
   }
-
-  private close = (): void => {
-    this.dispose();
-    this.onClose();
-  };
 
   private onResize = (): void => {
     const { camera, renderer } = this.bundle;
@@ -122,12 +119,12 @@ export class ReplayViewer {
     this.playStart = now;
     this.finishedAt = null;
     this.finishedEl.hidden = true;
-    this.applyFrameAt(0);
+    this.applyFrameAt(0, 0);
     const { x, z } = this.carMesh.position;
     snapBehindCar(this.bundle.camera, x, z, this.carMesh.rotation.y);
   }
 
-  private applyFrameAt(time: number, dt = 0): void {
+  private applyFrameAt(time: number, dt: number): void {
     const pose = interpolatePose(this.frames, time);
     this.carMesh.position.set(pose.x, 0, pose.z);
     this.carMesh.rotation.y = pose.heading;
@@ -139,7 +136,6 @@ export class ReplayViewer {
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.onResize);
-    this.exitButton.removeEventListener("click", this.close);
     disposeCarMesh(this.carMesh);
     disposeWorld(this.bundle);
     this.container.remove();

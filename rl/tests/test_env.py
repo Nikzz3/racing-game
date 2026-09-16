@@ -1,20 +1,4 @@
-"""
-Behavioral tests for TimeTrialEnv.
-
-Tests exercise the public reset/step contract; no assertions on internal fields
-beyond what info dict exposes.  Coverage:
-  - Observation shape, dtype, bounds
-  - Lateral-offset sign convention (left = positive)
-  - Heading-error near-zero when aligned with track
-  - Curvature lookahead dimension
-  - Reward = progress + wall + offtrack terms (observable via info+reward together)
-  - Wall-contact penalty lowers reward relative to same progress on clean surface
-  - Offtrack penalty fires when on_track=False
-  - Termination on stuck at wall
-  - Termination on sustained reverse progress
-  - Randomized reset gives varied start positions
-  - Eval-mode reset gives fixed spawn
-"""
+"""Behavioural tests for TimeTrialEnv through its reset/step contract."""
 
 import math
 import sys
@@ -27,30 +11,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from env import (
     TimeTrialEnv,
-    SPAWN_SAMPLE,
     OBS_DIM,
     LOOKAHEADS,
     AVG_ARC_LENGTH,
-    TOTAL_TRACK_LENGTH,
     _STUCK_THRESHOLD,
     _REVERSE_WINDOW,
-    _REVERSE_NET_THRESHOLD,
     WALL_PENALTY_COEF,
-    DT,
 )
 from physics import (
     PhysicsState,
     TRACK_SAMPLES,
     STORMHAVEN_SAMPLES,
     TRACK_DIVISIONS,
-    ROAD_HALF_WIDTH,
+    WALL_DIST,
     spawn_at_sample,
 )
 
-
-# ---------------------------------------------------------------------------
-# Observation invariants
-# ---------------------------------------------------------------------------
 
 
 class TestObservation:
@@ -117,10 +93,6 @@ class TestObservation:
                 break
 
 
-# ---------------------------------------------------------------------------
-# Reward structure
-# ---------------------------------------------------------------------------
-
 
 class TestReward:
     def test_forward_throttle_yields_positive_cumulative_reward(self):
@@ -181,10 +153,6 @@ class TestReward:
             )
             if info["touching_wall"]:
                 wall_touched = True
-                # Reward must be ≤ progress (progress ≥ 0 because wall clamp keeps us moving)
-                # The -2.0 wall penalty should make this noticeably negative unless progress > 2
-                # At wall, speed is reduced so progress per step is small → reward < 0
-                # Just verify it's less than 2.0 (the penalty amount) worse than a clean step
                 break
             if terminated or truncated:
                 break
@@ -203,8 +171,6 @@ class TestReward:
             )
             if not info["on_track"]:
                 offtrack_found = True
-                # With off-track: reward = progress - 0.5 (and possible wall too)
-                # Progress near wall is ~0; reward should be negative
                 break
             if terminated or truncated:
                 break
@@ -212,10 +178,6 @@ class TestReward:
         if not offtrack_found:
             pytest.skip("Could not drive car off-track in this test scenario")
 
-
-# ---------------------------------------------------------------------------
-# Oracle-line proximity reward
-# ---------------------------------------------------------------------------
 
 
 class TestLineReward:
@@ -286,10 +248,6 @@ class TestLineReward:
         assert base - 1e-9 <= reward <= base + coef + 1e-9
 
 
-# ---------------------------------------------------------------------------
-# Termination conditions
-# ---------------------------------------------------------------------------
-
 
 class TestTermination:
     def test_truncation_at_max_steps(self):
@@ -314,8 +272,6 @@ class TestTermination:
         env.reset()
 
         # Place car pinned at the wall so each step keeps touching_wall=True
-        from physics import WALL_DIST
-
         s = env._samples[0]
         nx = -s["dirZ"]
         nz = s["dirX"]
@@ -370,10 +326,6 @@ class TestTermination:
         assert terminated, "Expected termination after sustained reverse"
 
 
-# ---------------------------------------------------------------------------
-# Reset behaviour
-# ---------------------------------------------------------------------------
-
 
 class TestReset:
     def test_eval_mode_spawns_at_fixed_sample(self):
@@ -416,10 +368,6 @@ class TestReset:
         np.testing.assert_array_equal(obs, obs2)
 
 
-# ---------------------------------------------------------------------------
-# Action space
-# ---------------------------------------------------------------------------
-
 
 class TestActions:
     def test_positive_longitudinal_is_throttle(self):
@@ -447,10 +395,6 @@ class TestActions:
         # Speed should be near zero or slightly negative (reverse)
         assert info["speed"] <= 1.0, f"Expected low speed after braking, got {info['speed']:.2f}"
 
-
-# ---------------------------------------------------------------------------
-# Track parameterization
-# ---------------------------------------------------------------------------
 
 
 class TestTrackParameterization:
@@ -516,6 +460,5 @@ class TestTrackParameterization:
             assert np.all(np.isfinite(obs)), f"Non-finite obs on stormhaven/{difficulty}"
 
     def test_unknown_track_raises(self):
-        import pytest
         with pytest.raises(ValueError, match="Unknown track"):
             TimeTrialEnv(track="nonexistent-circuit")

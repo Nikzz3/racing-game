@@ -26,7 +26,7 @@ export class GarageStage {
   private readonly motion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   );
-  private slides: Slide[] = [];
+  private readonly slides: Slide[] = [];
   private variant?: Variant;
   private active = true;
   private disposed = false;
@@ -109,25 +109,20 @@ export class GarageStage {
     this.endDrag();
     this.yaw = null;
     const now = performance.now();
-    for (const slide of this.slides.filter((slide) => slide.retiring))
-      this.remove(slide);
-    this.slides = this.slides.filter((slide) => !slide.retiring);
+    this.retire((slide) => slide.retiring);
     const previous = this.slides[0];
-    if (previous && !this.motion.matches) {
+    const animate = previous !== undefined && !this.motion.matches;
+    if (animate) {
       previous.from = this.offset(previous, now);
       previous.to = -Math.sign(direction || 1) * 9;
       previous.started = now;
       previous.retiring = true;
-    } else if (previous) {
-      this.remove(previous);
-      this.slides = [];
-    }
+    } else this.retire(() => true);
     const mesh = createCarMesh("showroom", undefined, variant);
     this.scene.add(mesh);
     this.slides.push({
       mesh,
-      from:
-        previous && !this.motion.matches ? Math.sign(direction || 1) * 9 : 0,
+      from: animate ? Math.sign(direction || 1) * 9 : 0,
       to: 0,
       started: now,
       retiring: false,
@@ -209,12 +204,10 @@ export class GarageStage {
 
   private draw(now: number): void {
     if (!this.active || this.disposed || document.hidden) return;
-    const finished = this.slides.filter(
+    this.retire(
       (slide) =>
         slide.retiring && (this.motion.matches || now - slide.started >= 620),
     );
-    finished.forEach((slide) => this.remove(slide));
-    this.slides = this.slides.filter((slide) => !finished.includes(slide));
     for (const slide of this.slides) {
       const offset = this.offset(slide, now);
       slide.mesh.position.set(offset * 0.803, 0, -offset * 0.595);
@@ -255,9 +248,15 @@ export class GarageStage {
   private motionChanged = (): void => {
     this.setActive(this.active);
   };
-  private remove(slide: Slide): void {
-    this.scene.remove(slide.mesh);
-    disposeCarMesh(slide.mesh);
+  /** Drop and dispose every slide matching `done`, in place (this runs per frame). */
+  private retire(done: (slide: Slide) => boolean): void {
+    for (let i = this.slides.length - 1; i >= 0; i--) {
+      const slide = this.slides[i];
+      if (!done(slide)) continue;
+      this.slides.splice(i, 1);
+      this.scene.remove(slide.mesh);
+      disposeCarMesh(slide.mesh);
+    }
   }
   dispose(): void {
     if (this.disposed) return;
@@ -276,7 +275,7 @@ export class GarageStage {
     this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.visibility);
     this.motion.removeEventListener("change", this.motionChanged);
-    this.slides.forEach((slide) => this.remove(slide));
+    this.retire(() => true);
     this.floor.geometry.dispose();
     this.floor.material.dispose();
     this.light.shadow.dispose();

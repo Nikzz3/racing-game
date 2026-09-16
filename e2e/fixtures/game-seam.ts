@@ -5,8 +5,6 @@ import lapInputs from "../lap-inputs.json" with { type: "json" };
 import { expect, test as dbTest } from "./db";
 import { createRoom, type CreateRoomOptions } from "./lobby";
 
-export type CreateRaceOptions = CreateRoomOptions;
-
 export interface DrivenLap {
   state: E2eState;
   /** Distinct server-observed Checkpoints, including CP0 at both lap boundaries. */
@@ -14,14 +12,14 @@ export interface DrivenLap {
 }
 
 export interface GameSeamFixture {
-  createRace(options: CreateRaceOptions): Promise<void>;
+  createRace(options: CreateRoomOptions): Promise<void>;
   /** Replays the inputs in the browser and resolves with the recorded trajectory. */
   driveInputs(inputs: CarInput[]): Promise<E2eLocalState[]>;
   driveLap(): Promise<DrivenLap>;
   state(): Promise<E2eState>;
 }
 
-async function seamState(page: Page): Promise<E2eState> {
+function seamState(page: Page): Promise<E2eState> {
   return page.evaluate(() => {
     if (!window.__game) throw new Error("window.__game is not installed");
     return window.__game.state();
@@ -65,11 +63,10 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
           { timeout: 10_000 },
         );
 
-        const state = await seamState(page);
         const checkpoints = trajectory
           .map((sample) => sample.checkpoint)
           .filter((checkpoint, index, all) => index === 0 || checkpoint !== all[index - 1]);
-        return { state, checkpoints };
+        return { state: await seamState(page), checkpoints };
       },
 
       state: () => seamState(page),

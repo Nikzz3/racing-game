@@ -42,12 +42,11 @@ export class RemotePlayers {
     for (const [id, player] of others) {
       const variant = resolveVariant(id, player.variant);
       const existing = this.cars.get(id);
-      if (
-        existing &&
-        (existing.variant !== variant || existing.name !== player.name)
-      )
+      if (existing) {
+        if (existing.variant === variant && existing.name === player.name)
+          continue;
         this.removeCar(id);
-      if (this.cars.has(id)) continue;
+      }
       const mesh = createCarMesh(id, player.name, variant);
       mesh.position.set(player.x, 0, player.z);
       mesh.rotation.y = player.rot;

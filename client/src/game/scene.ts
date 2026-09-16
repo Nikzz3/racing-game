@@ -4,6 +4,7 @@ import {
   ROAD_HALF_WIDTH,
   type TrackSample,
 } from "@racing/shared";
+import { disposeMaterials } from "./car";
 import { getMaterial, getModel, instancedFromModel } from "./models";
 
 export interface SceneBundle {
@@ -148,10 +149,7 @@ export function disposeWorld({ scene, renderer, sun }: SceneBundle): void {
     if (part instanceof THREE.InstancedMesh) part.dispose();
     if (part instanceof THREE.Mesh && part.userData.owned) {
       part.geometry.dispose();
-      const materials = Array.isArray(part.material)
-        ? part.material
-        : [part.material];
-      materials.forEach((material) => material.dispose());
+      disposeMaterials(part.material);
     }
   });
   sun.shadow.dispose();
