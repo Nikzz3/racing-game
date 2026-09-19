@@ -11,7 +11,7 @@ a relative base (`vite build --base=./`) and is otherwise the same bundle the we
 ships. Packaging uses **electron-builder**, driven by a `v<version>` git tag. Publishing
 is deliberately *not* left to electron-builder: each platform job packages with
 `--publish never` and uploads its installers as a workflow artifact, and one `release`
-job assembles them into a single draft GitHub release with generated notes. Letting
+job assembles them into a single published GitHub release with generated notes. Letting
 each platform publish for itself raced and produced one draft per platform for the same
 tag. The tag must equal `v<version>` from `desktop/package.json` (the workflow checks),
 because that version is stamped into the installer names and updater metadata, and the
@@ -56,9 +56,11 @@ updater resolves `/releases/latest` by tag.
   out to all workspaces, so it is typechecked by the normal CI job with no ci.yml change;
   only packaging lives in the separate `desktop.yml` workflow.
 - **Updates only flow from published releases.** electron-updater reads
-  `/releases/latest`, which excludes drafts, so publishing the draft (manually, after
-  review) is the release act. Re-running the workflow on the same tag updates the draft
-  in place rather than creating another one. On macOS in-place install additionally
+  `/releases/latest`, which excludes drafts. The workflow creates the release as a draft
+  only while it attaches the assets, then publishes it in the same run, so pushing the
+  tag is the release act (an earlier revision left the draft for manual review).
+  Re-running the workflow on the same tag updates the release in place rather than
+  creating another one. On macOS in-place install additionally
   requires a signed bundle; unsigned mac builds fall back to opening the releases page.
 - **The `publish` block in `electron-builder.yml` stays even though nothing publishes
   through it.** It is what makes electron-builder emit `app-update.yml`, which tells

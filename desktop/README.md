@@ -74,12 +74,13 @@ Release checklist, since the updater is picky about names:
 2. Push the matching `v<version>` tag. Each platform job packages with
    `--publish never` and uploads its installers plus the updater metadata
    (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `*.blockmap`) as a workflow
-   artifact; the `release` job then creates **one draft** release from all of them,
-   with notes from `scripts/release-notes.mjs` (download table and the commits
-   since the previous tag). Re-running the workflow on the same tag replaces the
-   draft's assets and notes in place.
-3. Publish the draft. Installed apps only see published releases (the updater
-   reads `/releases/latest`), so nothing happens until this step.
+   artifact; the `release` job then creates **one** release from all of them, with
+   notes from `scripts/release-notes.mjs` (download table and the commits since the
+   previous tag), and publishes it once every asset is attached. Re-running the
+   workflow on the same tag replaces the release's assets and notes in place.
+3. There is no manual publish step: installed apps see the release (the updater
+   reads `/releases/latest`) as soon as the workflow finishes, so only push a tag
+   when the version is ready for players.
 
 Every asset follows `artifactName` in `electron-builder.yml`
 (`Sunset-Ridge-Racing-<version>-<os>-<arch>.<ext>`, no spaces). The notes script
