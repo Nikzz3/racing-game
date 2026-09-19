@@ -79,13 +79,13 @@ npm ci --prefer-offline
 
 - `defaultThreadEnvMode: "worktree"` — new threads start in a fresh worktree under
   `~/.t3/worktrees/racing-game/`, on a `t3code/<slug>` branch.
-- A **Setup worktree** action flagged `runOnWorktreeCreate` that copies the main
-  checkout's `.env` (if any) into the worktree, then runs `npm ci` and
-  `compose up -d --no-recreate` with Podman when it is installed, otherwise Docker. It is marked non-async, so the agent only starts once
-  dependencies are installed and the database is up.
-- **Dev** / **Dev (alt ports)** actions that open the client in the in-app preview. Use
-  the alt-ports one when another thread or your main checkout already runs `npm run dev`.
-- **Test**, **Typecheck**, **Build** and **E2E** actions mirroring the check commands.
+- A **Setup worktree** action flagged `runOnWorktreeCreate` that runs `npm ci` and
+  `podman compose up -d --no-recreate`. It is marked non-async, so the agent only starts
+  once dependencies are installed and the database is up. Copy `.env` by hand if you use
+  one; every variable has a working default, so it is optional.
+- A **Dev** action that opens the client in the in-app preview. When another thread or
+  your main checkout already runs `npm run dev`, start it by hand with
+  `PORT=8090 CLIENT_PORT=5183 npm run dev` instead.
 
 T3 Code does not apply `t3.json` automatically to an existing project: open
 *Settings → Projects → racing-game → Actions* and use **Import scripts → Import from
