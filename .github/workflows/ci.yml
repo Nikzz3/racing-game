@@ -54,16 +54,51 @@ jobs:
     runs-on: ubuntu-latest
     # docs/agents/e2e-testing.md budgets 15 minutes of CI wall time for this suite.
     timeout-minutes: 15
+    env:
+      # The runner image ships PostgreSQL (stopped). Starting it takes a second;
+      # pulling and booting the wrapper's throwaway container took ~14s per run.
+      # The suite creates racing_e2e_w* databases there and truncates only those.
+      E2E_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      E2E_DATABASE_ALLOW_TRUNCATE: "1"
+      # Wall time is bounded by the one full-lap journey (~55s). Pinned to 4 CPUs,
+      # three workers finished the rest alongside it about 10s sooner than two; four
+      # measured no faster than two, each test slowed by the contention.
+      E2E_WORKERS: "3"
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v7
+        id: node
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Restoring node_modules whole beats rebuilding it from the npm cache (~5s vs
+      # 15-25s). The key carries the Node version because native and .vite dep
+      # bundles are version-specific. A miss falls back to `npm ci` below.
+      - uses: actions/cache@v4
+        id: node-modules-cache
+        with:
+          path: |
+            node_modules
+            */node_modules
+          key: node-modules-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Start the runner's PostgreSQL
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+      # The browser download is the slow half of `playwright install`; keyed on the
+      # lockfile so a Playwright bump refreshes it. Headless mode only needs the
+      # headless shell, not the full Chromium build.
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps --only-shell chromium
       # No client build: Vite serves the client and the server readiness probe
       # hits /healthz, which does not need client/dist.
       - run: npm run test:e2e

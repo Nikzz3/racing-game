@@ -18,6 +18,7 @@ import {
 } from "@racing/shared";
 import { renderVariantThumbnails } from "./garage-thumbs";
 import { GarageStage } from "./garage-stage";
+import { CHEAP_RENDER } from "../game/scene";
 import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import type { ConnectionState } from "../net";
@@ -632,6 +633,18 @@ export class Lobby {
     badge.dataset.state = state;
   }
   paintGarageThumbnails(): boolean {
+    if (CHEAP_RENDER) {
+      // The e2e build skips the lobby's three WebGL contexts: the car thumbnails,
+      // the garage stage, and the circuit stage. Under software WebGL they cost
+      // about 8s per page load and over a second per carousel step, and no journey
+      // asserts on their pixels. The race scene still renders, so WebGL setup and
+      // the shared asset library stay exercised. Production is untouched:
+      // CHEAP_RENDER is a build-time constant there.
+      this.find(".showroom-loading").hidden = true;
+      this.paintTrack();
+      this.paintHero();
+      return true;
+    }
     this.images = renderVariantThumbnails(CAR_VARIANTS);
     for (const choice of CHOICES) {
       const url = this.images.get(
