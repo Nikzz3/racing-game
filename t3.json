@@ -16,16 +16,6 @@
       "icon": "play",
       "previewUrl": "http://localhost:5173",
       "autoOpenPreview": true
-    },
-    {
-      "name": "Typecheck",
-      "command": "npm run typecheck",
-      "icon": "lint"
-    },
-    {
-      "name": "E2E",
-      "command": "npm run test:e2e",
-      "icon": "test"
     }
   ]
 }
