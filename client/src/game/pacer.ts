@@ -14,8 +14,7 @@ import {
 import type { E2ePacerState } from "./e2e-seam";
 import { interpolatePose, type Pose } from "./pose-interpolation";
 
-const PACER_COLOR = 0x00e5ff;
-const PACER_OPACITY = 0.5;
+const PACER_OPACITY = 0.35;
 
 /** Null before playback starts and once the recording has ended. */
 export function pacerPoseAt(
@@ -179,12 +178,13 @@ export class PacerOverlay {
   }
 }
 
-function tinted(m: THREE.Material): THREE.Material {
+// The Pacer keeps its car's real colours and reads as a ghost purely through
+// translucency, so it never looks like a differently painted opponent.
+function ghosted(m: THREE.Material): THREE.Material {
   const cloned = m.clone();
   cloned.transparent = true;
   cloned.opacity = PACER_OPACITY;
   cloned.depthWrite = false;
-  if ("color" in cloned) (cloned as { color: THREE.Color }).color.setHex(PACER_COLOR);
   return cloned;
 }
 
@@ -193,14 +193,14 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
   group.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     obj.material = Array.isArray(obj.material)
-      ? obj.material.map(tinted)
-      : tinted(obj.material);
+      ? obj.material.map(ghosted)
+      : ghosted(obj.material);
     obj.castShadow = false;
     obj.receiveShadow = false;
   });
   group.add(
     labelSprite("REPLAY", {
-      background: "rgba(0, 180, 200, 0.75)",
+      background: "rgba(20, 20, 30, 0.6)",
       radius: 12,
       font: "bold 28px sans-serif",
       color: "#ffffff",
