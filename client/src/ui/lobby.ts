@@ -86,7 +86,10 @@ function desktopNotice(): string {
  */
 function updateNotice(): string {
   if (window.desktop?.updates === undefined) return "";
-  return `<button type="button" class="update-notice" data-status="idle" aria-live="polite"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.65M2.5 8a5.5 5.5 0 0 1 9.6-3.65"/><path d="M12.5 1.8v2.9h-2.9M3.5 14.2v-2.9h2.9"/></svg><span></span></button>`;
+  return `<button type="button" class="update-notice" data-status="unchecked" aria-live="polite"><svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.65M2.5 8a5.5 5.5 0 0 1 9.6-3.65"/><path d="M12.5 1.8v2.9h-2.9M3.5 14.2v-2.9h2.9"/></svg><span></span></button>`;
+}
+function installedVersion(): string {
+  return window.desktop?.version ?? "0.0.0";
 }
 function updateLabel(state: DesktopUpdateState): {
   text: string;
@@ -106,9 +109,13 @@ function updateLabel(state: DesktopUpdateState): {
       return { text: "Restart to update", busy: false };
     case "error":
       return { text: "Update check failed · Retry", busy: false };
+    case "unsupported":
+      return { text: `v${installedVersion()} · Get updates`, busy: false };
+    case "idle":
+      return { text: `v${installedVersion()} · Up to date`, busy: false };
     default:
       return {
-        text: `v${window.desktop?.version ?? "0.0.0"} · Up to date`,
+        text: `v${installedVersion()} · Check for updates`,
         busy: false,
       };
   }
@@ -161,7 +168,7 @@ export class Lobby {
   private entries: LeaderboardEntry[] = [];
   private eligible: LeaderboardEntry[] = [];
   private pacer: ArmedPacer | null = null;
-  private updateState: DesktopUpdateState = { status: "idle" };
+  private updateState: DesktopUpdateState = { status: "unchecked" };
   private reference: ReferenceLap | null | undefined;
   private images = new Map<Variant, string>();
   private readonly nameInput: HTMLInputElement;
@@ -299,9 +306,18 @@ export class Lobby {
     if (updates === undefined) return;
     this.find(".update-notice").addEventListener("click", () => {
       const { status } = this.updateState;
-      if (status === "available" || status === "downloaded")
+      if (
+        status === "available" ||
+        status === "downloaded" ||
+        status === "unsupported"
+      )
         void updates.install();
-      else if (status === "idle" || status === "error") void updates.check();
+      else if (
+        status === "unchecked" ||
+        status === "idle" ||
+        status === "error"
+      )
+        void updates.check();
     });
     updates.onState((state) => this.paintUpdate(state));
     this.paintUpdate(this.updateState);

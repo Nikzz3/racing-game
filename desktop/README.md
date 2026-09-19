@@ -54,13 +54,17 @@ deb, rpm, Flatpak and snap are intentionally not built.
 ## In-app updates
 
 `src/main.ts` wires `electron-updater` (GitHub provider, `publish` block in
-`electron-builder.yml`) in packaged builds only: it checks for a newer release ten
-seconds after launch and every six hours, and forwards the state to the renderer
-over IPC. The preload exposes it as `window.desktop.updates` (plus
+`electron-builder.yml`) in packaged builds only: it checks for a newer release as
+soon as the window is created and every six hours, and forwards the state to the
+renderer over IPC. The preload exposes it as `window.desktop.updates` (plus
 `window.desktop.version`); the lobby header renders an always-visible update button
-from it, showing the installed version when up to date and offering a manual check. The
-download starts only when the player clicks, and the app restarts into the new
-version on the next click (or installs on quit if they never do).
+from it. Until a check has completed it reads "Check for updates" (click to check);
+it only says "Up to date" once a check found nothing newer. The download starts
+only when the player clicks, and the app restarts into the new version on the next
+click (or installs on quit if they never do). When `electron-updater` declares itself
+inactive (Linux: the process was not started through the AppImage runtime, so
+`APPIMAGE` is unset, e.g. an extracted bundle or a snap) the button reads "Get
+updates" and opens the releases page.
 
 Release checklist, since the updater is picky about names:
 

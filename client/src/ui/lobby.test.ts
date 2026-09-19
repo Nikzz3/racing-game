@@ -955,7 +955,7 @@ describe("Lobby desktop update notice", () => {
   let updates: DesktopUpdates;
 
   function installBridge(
-    initial: DesktopUpdateState = { status: "idle" },
+    initial: DesktopUpdateState = { status: "unchecked" },
   ): void {
     onStateCb = undefined;
     updates = {
@@ -986,14 +986,14 @@ describe("Lobby desktop update notice", () => {
     expect(button()).toBeNull();
   });
 
-  it("is visible with the installed version while the updater is idle", async () => {
+  it("offers a check with the installed version before the first check completes", async () => {
     installBridge();
     await Promise.resolve();
     expect(button()).not.toBeNull();
     expect(button()!.hidden).toBe(false);
     expect(button()!.disabled).toBe(false);
-    expect(button()!.textContent).toContain("v0.1.0 · Up to date");
-    expect(button()!.dataset.status).toBe("idle");
+    expect(button()!.textContent).toContain("v0.1.0 · Check for updates");
+    expect(button()!.dataset.status).toBe("unchecked");
     expect(button()!.getAttribute("aria-live")).toBe("polite");
     expect(updates.onState).toHaveBeenCalledTimes(1);
     expect(updates.getState).toHaveBeenCalledTimes(1);
@@ -1007,6 +1007,14 @@ describe("Lobby desktop update notice", () => {
     await Promise.resolve();
     expect(button()!.textContent).toContain("Restart to update");
     expect(button()!.dataset.status).toBe("downloaded");
+  });
+
+  it("only claims to be up to date once a check has found nothing newer", () => {
+    installBridge();
+    expect(button()!.textContent).not.toContain("Up to date");
+    onStateCb!({ status: "idle" });
+    expect(button()!.textContent).toContain("v0.1.0 · Up to date");
+    expect(button()!.dataset.status).toBe("idle");
   });
 
   it.each<[DesktopUpdateState, string, boolean]>([
@@ -1031,6 +1039,7 @@ describe("Lobby desktop update notice", () => {
       "Update check failed · Retry",
       false,
     ],
+    [{ status: "unsupported" }, "v0.1.0 · Get updates", false],
   ])("reports %o as '%s'", (state, text, busy) => {
     installBridge();
     onStateCb!(state);
@@ -1041,11 +1050,27 @@ describe("Lobby desktop update notice", () => {
     expect(button()!.dataset.status).toBe(state.status);
   });
 
-  it("triggers a manual check when clicked while idle", () => {
+  it("triggers a manual check when clicked before the first check", () => {
     installBridge();
     button()!.click();
     expect(updates.check).toHaveBeenCalledTimes(1);
     expect(updates.install).not.toHaveBeenCalled();
+  });
+
+  it("triggers a manual check when clicked while idle", () => {
+    installBridge();
+    onStateCb!({ status: "idle" });
+    button()!.click();
+    expect(updates.check).toHaveBeenCalledTimes(1);
+    expect(updates.install).not.toHaveBeenCalled();
+  });
+
+  it("opens the releases page when clicked in an unsupported install", () => {
+    installBridge();
+    onStateCb!({ status: "unsupported" });
+    button()!.click();
+    expect(updates.install).toHaveBeenCalledTimes(1);
+    expect(updates.check).not.toHaveBeenCalled();
   });
 
   it("calls install when clicked with an update available", () => {
