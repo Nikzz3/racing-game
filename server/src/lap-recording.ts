@@ -1,7 +1,7 @@
 import type { ClientMessage, ReplayFrame, ServerMessage, Variant } from "@racing/shared";
 import { makeFrame, MAX_REPLAY_FRAMES } from "./replay";
 import type { Player, Room } from "./rooms";
-import { updateTiming } from "./timing";
+import { settleSpawn, updateTiming } from "./timing";
 
 export interface CompletedLap {
   room: Room;
@@ -32,6 +32,7 @@ export function recordState(
   player.speed = speed;
 
   const timing = player.timing;
+  settleSpawn(timing);
   const wasRunning = timing.lapStartT !== null;
   const lap = updateTiming(
     timing,

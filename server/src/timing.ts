@@ -20,6 +20,8 @@ export interface TimingState {
   lapImplausible: boolean;
   /** Respawns so far; lets clients tell a teleport from movement. */
   spawns: number;
+  /** A respawn happened but its position has not arrived yet. */
+  spawnPending: boolean;
 }
 
 export function createTiming(): TimingState {
@@ -32,6 +34,7 @@ export function createTiming(): TimingState {
     windowSamples: [],
     lapImplausible: false,
     spawns: 0,
+    spawnPending: false,
   };
 }
 
@@ -44,6 +47,14 @@ export function respawnTiming(t: TimingState): void {
   t.lapStartT = null;
   t.windowSamples = [];
   t.lapImplausible = false;
+  t.spawnPending = true;
+}
+
+/** Publish the respawn only once the spawn position is stored, so no snapshot
+ * pairs the new counter with the pre-respawn coordinates. */
+export function settleSpawn(t: TimingState): void {
+  if (!t.spawnPending) return;
+  t.spawnPending = false;
   t.spawns++;
 }
 

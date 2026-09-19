@@ -106,7 +106,9 @@ describe("updateTiming — plausibility state reset", () => {
     expect(t.lapImplausible).toBe(false);
     expect(t.windowSamples).toHaveLength(0);
     expect(t.lapStartT).toBeNull();
-    expect(t.spawns).toBe(1);
+    // The counter waits for the spawn position so a snapshot never pairs it with the old one.
+    expect(t.spawns).toBe(0);
+    expect(t.spawnPending).toBe(true);
 
     at(t, 0, now);
     expect(finishLap(t, now, 5000).result?.isPlausible).toBe(true);
