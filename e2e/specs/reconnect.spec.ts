@@ -26,8 +26,8 @@ test("automatically reconnects after a dropped connection and another failed att
   await expect(playerA.locator(".connect-error")).toHaveCount(0);
 
   await openRaceSettings(playerA);
-  await playerA.getByLabel("Driver").fill("Reconnected Driver");
+  await playerA.getByLabel("Driver").fill("Retry Driver");
   await playerA.getByPlaceholder("New room name").fill("Reconnected Room");
   await playerA.getByRole("button", { name: "Create & Race" }).click();
-  await expect(playerA.locator(".hud-standings tbody")).toContainText("Reconnected Driver");
+  await expect(playerA.locator(".hud-standings tbody")).toContainText("Retry Driver");
 });
