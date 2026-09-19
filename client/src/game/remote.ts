@@ -17,6 +17,11 @@ interface RemoteCar {
   variant: Variant;
   name: string;
 }
+export interface RemotePosition {
+  id: string;
+  x: number;
+  z: number;
+}
 const RENDER_DELAY_MS = 130;
 const SNAPSHOT_LIMIT = 30;
 
@@ -109,6 +114,15 @@ export class RemotePlayers {
 
   playerIds(): string[] {
     return [...this.cars.keys()];
+  }
+
+  /** Where each remote car is drawn this frame, after interpolation. */
+  positions(): RemotePosition[] {
+    return [...this.cars].map(([id, { mesh }]) => ({
+      id,
+      x: mesh.position.x,
+      z: mesh.position.z,
+    }));
   }
 
   resolvedVariants(): Record<string, Variant> {

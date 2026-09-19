@@ -1,5 +1,8 @@
 import { trackPath, type PlayerSnapshot, type Track } from "@racing/shared";
+import type { RemotePosition } from "../game/remote";
 import { escapeHtml, formatMs } from "../util";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Cosmetic gauge calibration; physics and network speeds remain in world units.
 const DISPLAY_SPEED_SCALE = 0.5;
@@ -12,6 +15,7 @@ export class Hud {
   private standings = "";
   private dial = "";
   private dot = "";
+  private readonly remoteDots = new Map<string, SVGCircleElement>();
   constructor(
     parent: HTMLElement,
     roomName: string,
@@ -25,7 +29,7 @@ export class Hud {
     <div class="hud-panel hud-timer"><div class="hud-timer-label">LAP TIME</div><div class="hud-cur-lap">--:--.---</div><div class="hud-lap-small"><span>LAST <b class="hud-last">--:--.---</b></span><span>BEST <b class="hud-best">--:--.---</b></span></div></div>
     <div class="hud-panel hud-standings"><h3>BEST LAPS</h3><table><tbody></tbody></table></div>
     <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
-    ${track ? `<div class="hud-map"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path d="${trackPath(track)}"/><circle class="hud-map-driver" r="10" cx="${track.samples[0].x}" cy="${track.samples[0].z}"/></svg><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
+    ${track ? `<div class="hud-map"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path d="${trackPath(track)}"/><g class="hud-map-remotes"></g><circle class="hud-map-driver" r="10" cx="${track.samples[0].x}" cy="${track.samples[0].z}"/></svg><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
     <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}</div>
     <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div><div class="toasts" role="status" aria-live="polite"></div>`;
     parent.append(this.root);
@@ -61,6 +65,32 @@ export class Hud {
     this.dot = cx + cy;
     dot.setAttribute("cx", cx);
     dot.setAttribute("cy", cy);
+  }
+  /** Mirror the other drivers in the room onto the circuit map. */
+  setRemotePositions(positions: RemotePosition[]): void {
+    const group = this.el(".hud-map-remotes");
+    if (!group) return;
+    const seen = new Set<string>();
+    for (const { id, x, z } of positions) {
+      seen.add(id);
+      let dot = this.remoteDots.get(id);
+      if (!dot) {
+        dot = document.createElementNS(SVG_NS, "circle");
+        dot.setAttribute("class", "hud-map-remote");
+        dot.setAttribute("r", "8");
+        this.remoteDots.set(id, dot);
+        group.append(dot);
+      }
+      const cx = x.toFixed(1),
+        cy = z.toFixed(1);
+      if (dot.getAttribute("cx") !== cx) dot.setAttribute("cx", cx);
+      if (dot.getAttribute("cy") !== cy) dot.setAttribute("cy", cy);
+    }
+    for (const [id, dot] of this.remoteDots) {
+      if (seen.has(id)) continue;
+      dot.remove();
+      this.remoteDots.delete(id);
+    }
   }
   setCurrentLap(time: number | null): void {
     this.text(".hud-cur-lap", formatMs(time));

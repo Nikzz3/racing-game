@@ -248,3 +248,30 @@ describe("RemotePlayers variants", () => {
     expect(rp.resolvedVariants()).toEqual({});
   });
 });
+
+describe("RemotePlayers positions", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("reports each remote car where its mesh is drawn, and forgets leavers", () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "me");
+    rp.onSnapshot([
+      { ...makeSnapshot("me"), x: 99, z: 99 },
+      { ...makeSnapshot("p1"), x: 10, z: -20 },
+      { ...makeSnapshot("p2"), x: 30, z: 40 },
+    ]);
+    expect(rp.positions()).toEqual([
+      { id: "p1", x: 10, z: -20 },
+      { id: "p2", x: 30, z: 40 },
+    ]);
+    now = 100;
+    rp.onSnapshot([{ ...makeSnapshot("p2"), x: 31, z: 41 }]);
+    now = 230; // render time lands exactly on the newest snapshot
+    rp.update(1 / 60);
+    expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41 }]);
+  });
+});
