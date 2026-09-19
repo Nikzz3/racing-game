@@ -18,26 +18,9 @@
       "autoOpenPreview": true
     },
     {
-      "name": "Dev (alt ports)",
-      "command": "PORT=8090 CLIENT_PORT=5183 npm run dev",
-      "icon": "play",
-      "previewUrl": "http://localhost:5183",
-      "autoOpenPreview": true
-    },
-    {
-      "name": "Test",
-      "command": "npm test",
-      "icon": "test"
-    },
-    {
       "name": "Typecheck",
       "command": "npm run typecheck",
       "icon": "lint"
-    },
-    {
-      "name": "Build",
-      "command": "npm run build",
-      "icon": "build"
     },
     {
       "name": "E2E",
