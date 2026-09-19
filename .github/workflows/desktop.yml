@@ -155,14 +155,17 @@ jobs:
       # uploads finish the draft is flipped to published in the same run, so
       # pushing the tag is the release act. Re-running the workflow on the same
       # tag updates the existing release in place instead of failing on
-      # "release already exists".
+      # "release already exists"; it is moved back to draft first for the same
+      # reason, so a rerun never exposes a half-replaced asset set (or, if an
+      # upload fails, a partial one) as the latest release.
       - name: Create or update the release, then publish it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -l release-assets
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists; replacing assets and notes"
+            echo "Release $TAG exists; unpublishing, then replacing assets and notes"
+            gh release edit "$TAG" --draft=true
             gh release upload "$TAG" release-assets/* --clobber
             gh release edit "$TAG" --notes-file notes.md
           else
