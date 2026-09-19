@@ -105,6 +105,7 @@ describe("room lifecycle", () => {
     const manager = new RoomManager();
     const room = manager.create("Race", "medium");
     expect(room.emptySince).toBe(room.createdAt);
+    expect(room.expired(room.createdAt + EMPTY_ROOM_TTL_MS)).toBe(true);
     const player = createPlayer("driver", {} as WebSocket);
     manager.join(player, room.id);
     expect(room.emptySince).toBeNull();
