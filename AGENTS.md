@@ -27,3 +27,10 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 
 Playwright is the outside-in bookend and Vitest is the feature-development inner loop.
 See `docs/agents/e2e-testing.md` for suite conventions, commands, and growth rules.
+
+### Worktrees
+
+T3 Code threads run in git worktrees; `t3.json` installs dependencies and starts the shared
+Postgres on creation. Ports 8080/5173 are shared with the main checkout — use
+`PORT=8090 CLIENT_PORT=5183 npm run dev` when another checkout is already serving. See
+"Working in git worktrees" in `CONTRIBUTING.md`.

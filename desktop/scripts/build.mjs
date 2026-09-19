@@ -3,11 +3,14 @@
 //
 // Usage: RACING_SERVER_URL=wss://play.example.com npm run build -w desktop
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
+// Repo-root `.env` may hold RACING_SERVER_URL; an explicit shell variable wins.
+const envFile = path.resolve(root, "../.env");
+if (existsSync(envFile)) process.loadEnvFile(envFile);
 const dist = path.join(root, "dist");
 
 // Resolved from typescript's own bin, so no PATH/npx games.
