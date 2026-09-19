@@ -30,7 +30,42 @@ beforeEach(() => {
   BrowserSocket.instances = [];
   vi.stubGlobal("WebSocket", BrowserSocket);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+it("times out a stalled connection and ignores its late events", async () => {
+  vi.useFakeTimers();
+  const net = new Net();
+  const status = vi.fn();
+  const receive = vi.fn();
+  net.onStatus(status);
+  net.onMessage(receive);
+  const rejected = vi.fn();
+  void net.connect("ws://stalled").catch(rejected);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(rejected).toHaveBeenCalledWith(expect.objectContaining({ message: "The connection timed out." }));
+  expect(status.mock.calls.at(-1)).toEqual(["offline"]);
+  expect(BrowserSocket.instances[0].readyState).toBe(2);
+  BrowserSocket.instances[0].open();
+  BrowserSocket.instances[0].message({ type: "welcome" });
+  expect(status.mock.calls.at(-1)).toEqual(["offline"]);
+  expect(receive).not.toHaveBeenCalled();
+});
+
+it("clears the connection deadline on success", async () => {
+  vi.useFakeTimers();
+  const net = new Net();
+  const status = vi.fn();
+  net.onStatus(status);
+  const connected = net.connect("ws://server");
+  BrowserSocket.instances[0].open();
+  await connected;
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(status.mock.calls).toEqual([["connecting"], ["connected"]]);
+  expect(BrowserSocket.instances[0].readyState).toBe(1);
+});
 
 describe("WebSocket replacement", () => {
   it("ignores messages queued by the old connection after reconnecting", async () => {

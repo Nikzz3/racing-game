@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RacingApp } from "./app";
+import type { ConnectionState } from "./net";
 
 const { connect, loadAssets, paintGarage } = vi.hoisted(() => ({
   connect: vi.fn<() => Promise<void>>(),
   loadAssets: vi.fn<() => Promise<void>>(),
   paintGarage: vi.fn<() => boolean>(),
 }));
+let reportStatus: (state: ConnectionState) => void;
 vi.mock("./net", () => ({
   Net: class {
     connect = connect;
     onMessage() {}
-    onStatus() {}
+    onStatus(callback: (state: ConnectionState) => void) { reportStatus = callback; }
   },
 }));
 vi.mock("./game/game", () => ({ Game: class {} }));
@@ -20,6 +22,8 @@ vi.mock("./game/models", () => ({ preloadModels: loadAssets }));
 vi.mock("./ui/lobby", () => ({
   Lobby: class {
     paintGarageThumbnails = paintGarage;
+    setConnection() {}
+    show() {}
   },
 }));
 
@@ -29,11 +33,65 @@ beforeEach(() => {
   paintGarage.mockReset().mockReturnValue(true);
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   document.body.replaceChildren();
 });
 
 describe("reconnect notices", () => {
+  beforeEach(() => vi.useFakeTimers());
+
+  it("automatically retries failures with exponential backoff capped at 30 seconds", async () => {
+    connect.mockRejectedValue(new Error("Server unavailable"));
+    const app = new RacingApp(document.body);
+    await app.start();
+    for (const [index, delay] of [1000, 2000, 4000, 8000, 16000, 30000, 30000].entries()) {
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(connect).toHaveBeenCalledTimes(index + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(connect).toHaveBeenCalledTimes(index + 2);
+    }
+  });
+
+  it("reconnects after a dropped connection and resets backoff after success", async () => {
+    connect.mockRejectedValueOnce(new Error("Server unavailable")).mockResolvedValue();
+    const app = new RacingApp(document.body);
+    await app.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(document.querySelector(".connect-error")).toBeNull();
+    reportStatus("offline");
+    expect(document.querySelector(".connect-error")?.textContent).toContain("automatically");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connect).toHaveBeenCalledTimes(3);
+    expect(document.querySelector(".connect-error")).toBeNull();
+  });
+
+  it("schedules only one retry when both offline status and rejection report a failure", async () => {
+    connect.mockImplementation(async () => {
+      reportStatus("offline");
+      throw new Error("Server unavailable");
+    });
+    const app = new RacingApp(document.body);
+    await app.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connect).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(connect).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(connect).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets a manual reconnect replace the scheduled retry", async () => {
+    connect.mockRejectedValueOnce(new Error("Server unavailable")).mockResolvedValue();
+    const app = new RacingApp(document.body);
+    await app.start();
+    document.querySelector<HTMLButtonElement>(".connect-error button")!.click();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(connect).toHaveBeenCalledTimes(2);
+    expect(document.querySelector(".connect-error")).toBeNull();
+  });
+
   it("ignores a failed connection superseded by a newer successful attempt", async () => {
     let failFirst!: (error: Error) => void;
     connect.mockImplementationOnce(
