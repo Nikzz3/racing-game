@@ -19,15 +19,27 @@ export class Net {
       const socket = new WebSocket(url);
       this.socket = socket;
       let settled = false;
+      const timeout = setTimeout(
+        () => fail(new Error("The connection timed out.")),
+        10_000,
+      );
       const settle = (error?: Error): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(timeout);
         if (this.cancelConnection === cancel) this.cancelConnection = null;
         if (error) reject(error);
         else resolve();
       };
       const cancel = (): void =>
         settle(new DOMException("Connection superseded", "AbortError"));
+      const fail = (error: Error): void => {
+        if (this.socket !== socket) return;
+        this.socket = null;
+        settle(error);
+        socket.close();
+        this.status("offline");
+      };
       this.cancelConnection = cancel;
       socket.addEventListener("open", () => {
         if (this.socket !== socket) return;
@@ -35,13 +47,10 @@ export class Net {
         this.status("connected");
       });
       socket.addEventListener("error", () => {
-        if (this.socket !== socket) return;
-        settle(new Error("The racing server is unavailable."));
+        fail(new Error("The racing server is unavailable."));
       });
       socket.addEventListener("close", () => {
-        if (this.socket !== socket) return;
-        settle(new Error("The connection closed."));
-        this.status("offline");
+        fail(new Error("The connection closed."));
       });
       socket.addEventListener("message", (event) => {
         if (this.socket !== socket || typeof event.data !== "string") return;

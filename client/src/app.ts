@@ -20,6 +20,8 @@ export class RacingApp {
   private playerId = "";
   private revision = 0;
   private connectionAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 1000;
   private joining = false;
   private notice: HTMLElement | null = null;
 
@@ -53,10 +55,7 @@ export class RacingApp {
       this.lobby.setConnection(state);
       if (state === "offline") {
         this.returnToLobby();
-        this.showError(
-          "Connection lost. Reconnect to return to the grid.",
-          true,
-        );
+        this.scheduleReconnect("Connection lost.");
       }
     });
     const loading = new LoadingScreen(root);
@@ -85,21 +84,29 @@ export class RacingApp {
   }
   async start(): Promise<void> {
     const attempt = ++this.connectionAttempt;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.notice?.remove();
     this.notice = null;
     try {
       await this.net.connect(resolveServerUrl());
+      if (attempt === this.connectionAttempt) this.reconnectDelay = 1000;
     } catch (error) {
       if (
         attempt !== this.connectionAttempt ||
         (error instanceof DOMException && error.name === "AbortError")
       )
         return;
-      this.showError(
-        "The racing server is unavailable. Try connecting again.",
-        true,
-      );
+      this.scheduleReconnect("The racing server is unavailable.");
     }
+  }
+  private scheduleReconnect(message: string): void {
+    // A failed attempt can report both an offline status and a rejected promise.
+    if (this.reconnectTimer !== null) return;
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(delay * 2, 30_000);
+    this.showError(`${message} Reconnecting automatically in ${delay / 1000} seconds.`, true);
+    this.reconnectTimer = setTimeout(() => void this.start(), delay);
   }
   private hello(): void {
     this.net.send({
