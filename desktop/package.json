@@ -11,6 +11,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test \"scripts/*.test.cjs\"",
     "start": "electron .",
     "dist": "electron-builder --publish never",
     "dist:dir": "electron-builder --dir"
