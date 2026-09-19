@@ -35,3 +35,11 @@ per machine via *Settings → Projects → Actions*) installs dependencies and s
 Postgres on creation. Ports 8080/5173 are shared with the main checkout — use
 `PORT=8090 CLIENT_PORT=5183 npm run dev` when another checkout is already serving. See
 "Working in git worktrees" in `CONTRIBUTING.md`.
+
+### Desktop releases
+
+The desktop installers bundle `client/`, `shared/` and `desktop/`, so a change landing on
+`master` that touches any of them ships to players only through a new release. Release it
+in the same task, without waiting to be asked: bump `version` in `desktop/package.json`,
+commit, push, then push the matching `v<version>` tag. Server-only, docs-only and CI-only
+changes need no release. Flow and what the tag triggers: `docs/releasing.md`.
