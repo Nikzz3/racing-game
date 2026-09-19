@@ -60,7 +60,12 @@ npm ci --prefer-offline
   restarts the container on every `up`, which drops the connections of whichever checkout
   is currently serving (data lives in the `racing-game_racing-db` volume and survives).
   All worktrees see the same rooms and leaderboard; run the e2e suite, which provisions
-  its own throwaway database, when you need isolation.
+  its own throwaway database, when you need isolation. If your main checkout directory is
+  not named `racing-game`, its container and volume still carry the old directory-derived
+  name: stop them once with `podman compose -p <directory-name> down` (port 5432 is
+  otherwise taken) and let the fixed name create a fresh dev database, or keep the old
+  data with `podman volume create racing-game_racing-db` followed by copying
+  `/var/lib/postgresql/data` between the two volumes.
 - **Ports** — only one checkout can hold 8080/5173 at a time. To run `npm run dev` in a
   second worktree, move both servers: `PORT=8090 CLIENT_PORT=5183 npm run dev`. `PORT` is
   read by the WebSocket server and mirrored into the client bundle so it dials the right
@@ -76,7 +81,7 @@ npm ci --prefer-offline
   `~/.t3/worktrees/racing-game/`, on a `t3code/<slug>` branch.
 - A **Setup worktree** action flagged `runOnWorktreeCreate` that copies the main
   checkout's `.env` (if any) into the worktree, then runs `npm ci` and
-  `podman compose up -d --no-recreate`. It is marked non-async, so the agent only starts once
+  `compose up -d --no-recreate` with Podman when it is installed, otherwise Docker. It is marked non-async, so the agent only starts once
   dependencies are installed and the database is up.
 - **Dev** / **Dev (alt ports)** actions that open the client in the in-app preview. Use
   the alt-ports one when another thread or your main checkout already runs `npm run dev`.

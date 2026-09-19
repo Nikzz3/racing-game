@@ -5,7 +5,7 @@
   "scripts": [
     {
       "name": "Setup worktree",
-      "command": "if [ -n \"$T3CODE_PROJECT_ROOT\" ] && [ -f \"$T3CODE_PROJECT_ROOT/.env\" ] && [ ! -e .env ]; then cp \"$T3CODE_PROJECT_ROOT/.env\" .env; fi && npm ci --prefer-offline --no-audit --no-fund && podman compose up -d --no-recreate",
+      "command": "if [ -n \"$T3CODE_PROJECT_ROOT\" ] && [ -f \"$T3CODE_PROJECT_ROOT/.env\" ] && [ ! -e .env ]; then cp \"$T3CODE_PROJECT_ROOT/.env\" .env; fi && npm ci --prefer-offline --no-audit --no-fund && if command -v podman >/dev/null 2>&1; then podman compose up -d --no-recreate; else docker compose up -d --no-recreate; fi",
       "icon": "configure",
       "runOnWorktreeCreate": true,
       "async": false
