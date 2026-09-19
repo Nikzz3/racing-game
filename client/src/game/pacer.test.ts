@@ -139,9 +139,15 @@ describe("pacerDelta", () => {
 });
 
 
+/** A car with distinctly non-default paint, so "keeps its colour" is a real assertion. */
+const CAR_PAINT = 0xc0392b;
+
 function makeCarGroup(): THREE.Group {
   const g = new THREE.Group();
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshLambertMaterial());
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(),
+    new THREE.MeshLambertMaterial({ color: CAR_PAINT }),
+  );
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   g.add(mesh);
@@ -219,7 +225,7 @@ describe("PacerOverlay Variant", () => {
     expect(material!.transparent).toBe(true);
     expect(material!.opacity).toBe(0.35);
     // No tint: the ghost keeps the car's own paint.
-    expect(material!.color.getHex()).toBe(0xffffff);
+    expect(material!.color.getHex()).toBe(CAR_PAINT);
     expect(castsShadows).toBe(false);
     expect(hasBadge).toBe(true);
     expect(overlay.resolvedVariant()).toBe("taxi");
