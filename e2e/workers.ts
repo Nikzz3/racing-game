@@ -6,7 +6,17 @@
  * databases, and the fixtures route each worker by its parallel index.
  */
 
-export const WORKERS = Number(process.env.E2E_WORKERS ?? 2);
+export const WORKERS = parseWorkerCount(process.env.E2E_WORKERS);
+
+/** A typo here would otherwise provision zero databases and surface as an unrelated failure. */
+function parseWorkerCount(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return 2;
+  const count = Number(raw);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`E2E_WORKERS must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return count;
+}
 
 const CLIENT_PORT_BASE = Number(process.env.E2E_CLIENT_PORT ?? 5174);
 const SERVER_PORT_BASE = Number(process.env.E2E_SERVER_PORT ?? 8081);

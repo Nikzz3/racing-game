@@ -8,13 +8,10 @@ interface PlayerFixtures {
 
 async function usePlayer(
   browser: Browser,
-  contextOptions: BrowserContextOptions,
+  options: BrowserContextOptions,
   use: (page: Page) => Promise<void>,
 ): Promise<void> {
-  // Same options as the default context: this worker's baseURL, the small
-  // viewport, and reduced motion. Two Rooms render under software WebGL at once,
-  // and a slow main thread stalls every locator action and assertion.
-  const context = await browser.newContext(contextOptions);
+  const context = await browser.newContext(options);
   try {
     await use(await context.newPage());
   } finally {
@@ -23,8 +20,14 @@ async function usePlayer(
 }
 
 export const test = base.extend<PlayerFixtures>({
-  playerA: async ({ browser, contextOptions }, use) => usePlayer(browser, contextOptions, use),
-  playerB: async ({ browser, contextOptions }, use) => usePlayer(browser, contextOptions, use),
+  // Playwright's `contextOptions` fixture is only the raw `use.contextOptions`
+  // value (reduced motion here), so this worker's baseURL and the project
+  // viewport are added explicitly. Two Rooms render under software WebGL at
+  // once, and a slow main thread stalls every locator action and assertion.
+  playerA: async ({ browser, baseURL, contextOptions, viewport }, use) =>
+    usePlayer(browser, { ...contextOptions, baseURL, viewport }, use),
+  playerB: async ({ browser, baseURL, contextOptions, viewport }, use) =>
+    usePlayer(browser, { ...contextOptions, baseURL, viewport }, use),
 });
 
 export { expect };
