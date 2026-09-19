@@ -22,8 +22,9 @@ set `DATABASE_URL` to override (this is how the deployed environment is configur
 
 Every variable has a working default, so no configuration is required. To change one
 persistently, copy [`.env.example`](.env.example) to `.env` (gitignored) and uncomment the
-line. The file is read by the server, the Vite dev server, the desktop build, and the
-unpackaged desktop app; variables already set in the shell always take precedence over it,
+line. The file is read by the server, the Vite dev server, the desktop build, the
+unpackaged desktop app, and the e2e wrapper (not by Vitest); variables already set in the
+shell always take precedence over it,
 so `PORT=8090 npm run dev`, CI, and the e2e wrapper behave the same with or without a
 `.env`. `.env.example` documents each variable and is the place to add new ones.
 

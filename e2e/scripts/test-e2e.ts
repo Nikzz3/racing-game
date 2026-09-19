@@ -1,6 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
+
+// Repo-root `.env` (see .env.example) for E2E_* and DOCKER_HOST. Shell variables win, and
+// DATABASE_URL is set explicitly for the Playwright process below, so a developer's
+// database URL in `.env` never leaks into the suite.
+const envFile = resolve(dirname(fileURLToPath(import.meta.url)), "../../.env");
+if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 let container: StartedTestContainer | undefined;
 let playwright: ChildProcess | undefined;
