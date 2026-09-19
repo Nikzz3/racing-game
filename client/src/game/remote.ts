@@ -1,11 +1,5 @@
 import * as THREE from "three";
-import {
-  DEFAULT_DIFFICULTY,
-  MAX_SPEED_MS,
-  type Difficulty,
-  type PlayerSnapshot,
-  type Variant,
-} from "@racing/shared";
+import type { PlayerSnapshot, Variant } from "@racing/shared";
 import {
   animateCar,
   createCarMesh,
@@ -34,7 +28,6 @@ export class RemotePlayers {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly myId: string,
-    private readonly difficulty: Difficulty = DEFAULT_DIFFICULTY,
   ) {}
 
   onSnapshot(players: PlayerSnapshot[]): void {
@@ -82,25 +75,16 @@ export class RemotePlayers {
       span > 0
         ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25)
         : 1;
-    // A respawn is a discontinuity, not a velocity to interpolate or
-    // extrapolate. Allow a buffer's worth of network jitter at top speed.
-    const maxDistance =
-      (MAX_SPEED_MS[this.difficulty] * (span + RENDER_DELAY_MS)) / 1000;
-    const maxDistanceSq = maxDistance * maxDistance;
     const settled = renderTime >= newer.receivedAt;
     for (const [id, { mesh }] of this.cars) {
       const before = older.players.get(id);
       const after = newer.players.get(id);
       let snap = after ?? before;
       if (before && after) {
-        const dx = after.x - before.x;
-        const dz = after.z - before.z;
-        snap =
-          dx * dx + dz * dz > maxDistanceSq
-            ? settled
-              ? after
-              : before
-            : undefined;
+        // A respawn is a discontinuity, not a velocity to interpolate or
+        // extrapolate: hold the old pose until it lands, then sit on spawn.
+        const teleported = before.spawns !== after.spawns;
+        snap = teleported ? (settled ? after : before) : undefined;
       }
       if (snap) {
         mesh.position.set(snap.x, 0, snap.z);

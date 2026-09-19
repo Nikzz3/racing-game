@@ -24,6 +24,7 @@ function makeSnapshot(id: string, name = "Player", variant?: Variant) {
     bestLapMs: null,
     lapStartT: null,
     nextCheckpoint: 0,
+    spawns: 0,
     variant,
   };
 }
@@ -58,20 +59,20 @@ describe("RemotePlayers movement", () => {
     vi.spyOn(performance, "now").mockImplementation(() => now);
     mesh = new THREE.Group();
     vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
-    remote = new RemotePlayers(makeMockScene(), "me", "hard");
+    remote = new RemotePlayers(makeMockScene(), "me");
   });
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("teleports a respawning car without sweeping across the track or overshooting spawn", () => {
-    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 100, speed: 50 }]);
+  it.each([100, 5])("teleports a respawning car from %i m out without sweeping or overshooting", (x) => {
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x, speed: 50 }]);
     now = 100;
-    remote.onSnapshot([makeSnapshot("p1")]);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), spawns: 1 }]);
 
     // Rendering is delayed by 130 ms; retain the old pose until the respawn.
     now = 180;
     remote.update(1 / 60);
-    expect(mesh.position.x).toBe(100);
+    expect(mesh.position.x).toBe(x);
     now = 240;
     remote.update(1 / 60);
     expect(mesh.position.x).toBe(0);
@@ -89,13 +90,13 @@ describe("RemotePlayers movement", () => {
     expect(mesh.position.x).toBeCloseTo(5.5);
   });
 
-  it("accounts for elapsed snapshot time when distinguishing movement from teleports", () => {
+  it("interpolates a long jump that is not a respawn, such as stall catch-up", () => {
     remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 100 }]);
-    now = 1000;
-    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 100, speed: 100 }]);
-    now = 1050;
+    now = 50;
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 60, speed: 100 }]);
+    now = 155;
     remote.update(1 / 60);
-    expect(mesh.position.x).toBeCloseTo(92);
+    expect(mesh.position.x).toBeCloseTo(30);
   });
 });
 

@@ -93,7 +93,7 @@ export class Game {
     parent.append(this.container);
     this.bundle = createScene(this.container, this.track.samples);
     buildTrack(this.bundle.scene, this.track);
-    this.remote = new RemotePlayers(this.bundle.scene, myId, difficulty);
+    this.remote = new RemotePlayers(this.bundle.scene, myId);
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
     this.hud = new Hud(
