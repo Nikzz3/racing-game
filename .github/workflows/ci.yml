@@ -54,10 +54,24 @@ jobs:
     runs-on: ubuntu-latest
     # docs/agents/e2e-testing.md budgets 15 minutes of CI wall time for this suite.
     timeout-minutes: 15
+    # Same Postgres major as production and the server tests. A service container
+    # starts before checkout in ~9s; letting the wrapper pull and boot its own
+    # testcontainer inside the test step took ~14s. The runner image's preinstalled
+    # PostgreSQL would be faster still, but it is 16.x.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     env:
-      # The runner image ships PostgreSQL (stopped). Starting it takes a second;
-      # pulling and booting the wrapper's throwaway container took ~14s per run.
-      # The suite creates racing_e2e_w* databases there and truncates only those.
+      # The suite creates racing_e2e_w* databases on this server and truncates only those.
       E2E_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
       E2E_DATABASE_ALLOW_TRUNCATE: "1"
       # Wall time is bounded by the one full-lap journey (~55s). Pinned to 4 CPUs,
@@ -85,10 +99,6 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json') }}
       - if: steps.node-modules-cache.outputs.cache-hit != 'true'
         run: npm ci
-      - name: Start the runner's PostgreSQL
-        run: |
-          sudo systemctl start postgresql.service
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
       # The browser download is the slow half of `playwright install`; keyed on the
       # lockfile so a Playwright bump refreshes it. Headless mode only needs the
       # headless shell, not the full Chromium build.
