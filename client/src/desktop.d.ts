@@ -13,8 +13,13 @@ interface DesktopBridge {
 
 /** Snapshot of the auto-updater, mirrored from `desktop/src/main.ts`. */
 type DesktopUpdateState =
+  /** No check has completed since launch; `check()` starts one. */
+  | { readonly status: "unchecked" }
+  /** The last completed check found nothing newer. */
   | { readonly status: "idle" }
   | { readonly status: "checking" }
+  /** The updater cannot run in this install; `install()` opens the releases page. */
+  | { readonly status: "unsupported" }
   | {
       readonly status: "available";
       readonly version: string;

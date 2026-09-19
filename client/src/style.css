@@ -178,7 +178,8 @@ a {
   flex-shrink: 0;
 }
 .update-notice[data-status="available"],
-.update-notice[data-status="downloaded"] {
+.update-notice[data-status="downloaded"],
+.update-notice[data-status="unsupported"] {
   color: var(--accent);
 }
 .update-notice[data-status="error"] {

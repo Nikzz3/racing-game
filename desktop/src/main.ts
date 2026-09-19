@@ -155,14 +155,21 @@ function installMenu(): void {
 // Mirrors `DesktopUpdateState` in client/src/desktop.d.ts. The renderer only ever
 // sees this snapshot; electron-updater's own events stay in the main process.
 type UpdateState =
+  // No check has completed yet; the control shows the version and offers a check.
+  | { status: "unchecked" }
+  // The last completed check found nothing newer.
   | { status: "idle" }
   | { status: "checking" }
+  // electron-updater refuses to run in this install (Linux: the AppImage runtime
+  // did not export APPIMAGE, e.g. an extracted bundle or a snap); the control links
+  // to the releases page instead.
+  | { status: "unsupported" }
   | { status: "available"; version: string; canInstall: boolean }
   | { status: "downloading"; version: string; percent: number }
   | { status: "downloaded"; version: string }
   | { status: "error"; message: string };
 
-let updateState: UpdateState = { status: "idle" };
+let updateState: UpdateState = { status: "unchecked" };
 
 function publishUpdateState(next: UpdateState): void {
   updateState = next;
@@ -250,14 +257,29 @@ function setupAutoUpdater(): void {
     // Never overwrite an in-flight download or a ready-to-install state with the
     // result of a routine re-check.
     if (updateBusy()) return;
-    updater.checkForUpdates().catch((err: unknown) => console.warn("desktop: update check failed:", err));
+    updater.checkForUpdates().then(
+      (result) => {
+        // electron-updater resolves null without emitting any event when it deems
+        // itself inactive (`isUpdaterActive`), which would otherwise leave the control
+        // stuck on its pre-check label forever.
+        if (result === null) {
+          console.warn("desktop: updater is inactive in this install; offering the releases page instead");
+          publishUpdateState({ status: "unsupported" });
+        }
+      },
+      // The `error` listener has already published the failure to the renderer.
+      (err: unknown) => console.warn("desktop: update check failed:", err),
+    );
   };
 
   ipcMain.handle("desktop:update:check", check);
   ipcMain.handle("desktop:update:install", async () => {
     if (updateState.status === "downloaded") {
       updater.quitAndInstall();
-    } else if (updateState.status === "available" && !updateState.canInstall) {
+    } else if (
+      updateState.status === "unsupported" ||
+      (updateState.status === "available" && !updateState.canInstall)
+    ) {
       await shell.openExternal(RELEASES_URL);
     } else if (updateState.status === "available") {
       publishUpdateState({ status: "downloading", version: updateState.version, percent: 0 });
@@ -267,7 +289,10 @@ function setupAutoUpdater(): void {
     }
   });
 
-  setTimeout(check, 10_000).unref();
+  // Check right away rather than on a delay: until a check completes the control can
+  // only say "check for updates", and a renderer that loads after the result lands
+  // catches up through `desktop:update:state`.
+  check();
   setInterval(check, UPDATE_CHECK_INTERVAL_MS).unref();
 }
 
