@@ -1,32 +1,10 @@
-import { randomUUID } from "node:crypto";
-import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { LEGACY_RECORD } from "../../tests/fixtures/legacy-replay";
+import { testDatabaseUrl, withTestSchema } from "./test-database";
 
-// Opt in with a disposable database. The test owns one randomly named schema;
-// it never truncates or alters the database's existing application tables.
-const databaseUrl = process.env.LEGACY_COMPAT_DATABASE_URL;
-
-describe.skipIf(!databaseUrl)("legacy PostgreSQL records", () => {
+describe.skipIf(!testDatabaseUrl)("legacy PostgreSQL records", () => {
   it("migrates old tables without losing records and preserves them during current reads and slower laps", async () => {
-    const url = new URL(databaseUrl!);
-    if (url.pathname === "/racing") {
-      throw new Error(
-        "Use a disposable database, not the developer racing database",
-      );
-    }
-    const schema = `legacy_compat_${randomUUID().replaceAll("-", "")}`;
-    const admin = new pg.Pool({ connectionString: url.toString(), max: 1 });
-    let applicationPool: pg.Pool | undefined;
-    let schemaCreated = false;
-    const previousUrl = process.env.DATABASE_URL;
-    try {
-      await admin.query(`CREATE SCHEMA ${schema}`);
-      schemaCreated = true;
-      url.searchParams.set("options", `-c search_path=${schema}`);
-      process.env.DATABASE_URL = url.toString();
-      const { pool, initDb } = await import("./db");
-      applicationPool = pool;
+    await withTestSchema(async ({ pool, initDb }) => {
       const { getReplay, submitLap } = await import("./replay");
       const { bestTime, topEntries } = await import("./leaderboard");
 
@@ -152,15 +130,6 @@ describe.skipIf(!databaseUrl)("legacy PostgreSQL records", () => {
       expect(
         await getReplay(LEGACY_RECORD.name, "stormhaven", "medium"),
       ).toBeNull();
-    } finally {
-      if (previousUrl === undefined) delete process.env.DATABASE_URL;
-      else process.env.DATABASE_URL = previousUrl;
-      try {
-        await applicationPool?.end();
-        if (schemaCreated) await admin.query(`DROP SCHEMA ${schema} CASCADE`);
-      } finally {
-        await admin.end();
-      }
-    }
+    });
   }, 15000);
 });

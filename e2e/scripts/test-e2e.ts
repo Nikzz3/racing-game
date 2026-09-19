@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { Client } from "pg";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
+import { WORKERS, workerDatabaseName } from "../workers";
 
 let container: StartedTestContainer | undefined;
 let playwright: ChildProcess | undefined;
@@ -32,13 +34,14 @@ function adoptPodmanSocket(): void {
 
 async function databaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
-    // The suite truncates rooms, best_laps, and replays between tests, so an
-    // external database must be explicitly marked disposable before we touch it.
+    // The suite creates racing_e2e_w* databases on that server and truncates
+    // rooms, best_laps, and replays in them between tests, so an external server
+    // must be explicitly marked disposable before we touch it.
     if (process.env.E2E_DATABASE_ALLOW_TRUNCATE !== "1") {
       throw new Error(
-        "E2E_DATABASE_URL is set, but the e2e suite erases the rooms, best_laps, and " +
-          "replays tables of whatever database it runs against. Set " +
-          "E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that database is disposable.",
+        "E2E_DATABASE_URL is set, but the e2e suite creates racing_e2e_w* databases on " +
+          "that Postgres server and erases their rooms, best_laps, and replays tables. " +
+          "Set E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that server is disposable.",
       );
     }
     return process.env.E2E_DATABASE_URL;
@@ -59,6 +62,25 @@ async function databaseUrl(): Promise<string> {
   // Docker picks a free host port, so a local Postgres (or anything else) on a
   // fixed port can never collide with the throwaway container.
   return `postgres://postgres:postgres@${container.getHost()}:${container.getMappedPort(5432)}/racing`;
+}
+
+/**
+ * Each worker gets its own database (workers.ts) so the per-test truncation in
+ * fixtures/db.ts only ever touches that worker's rows. The base URL is the admin
+ * connection; its role needs CREATEDB when it is an external E2E_DATABASE_URL.
+ */
+async function createWorkerDatabases(adminUrl: string): Promise<void> {
+  const admin = new Client({ connectionString: adminUrl });
+  await admin.connect();
+  try {
+    for (let worker = 0; worker < WORKERS; worker++) {
+      const name = workerDatabaseName(worker);
+      const existing = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [name]);
+      if (existing.rowCount === 0) await admin.query(`CREATE DATABASE ${name}`);
+    }
+  } finally {
+    await admin.end();
+  }
 }
 
 function runPlaywright(url: string): Promise<number> {
@@ -89,6 +111,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 let exitCode = 1;
 try {
   const url = await databaseUrl();
+  await createWorkerDatabases(url);
   exitCode = interrupted ? 1 : await runPlaywright(url);
 } finally {
   await stopContainer();
