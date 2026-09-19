@@ -51,13 +51,11 @@ async function databaseUrl(): Promise<string> {
   container = await new GenericContainer("postgres:17-alpine")
     .withEnvironment({ POSTGRES_USER: "postgres", POSTGRES_PASSWORD: "postgres", POSTGRES_DB: "racing" })
     .withExposedPorts(5432)
-    .withWaitStrategy(Wait.forHealthCheck())
-    .withHealthCheck({
-      test: ["CMD-SHELL", "pg_isready -U postgres -d racing"],
-      interval: 1_000,
-      timeout: 3_000,
-      retries: 30,
-    })
+    // The image's first boot initialises the cluster on a temporary server, stops
+    // it, then starts the real one. pg_isready passes against the temporary server
+    // too, and a connection made in that window dies with ECONNRESET, so wait for
+    // the second "ready to accept connections" line: the real server's.
+    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   // Docker picks a free host port, so a local Postgres (or anything else) on a
   // fixed port can never collide with the throwaway container.
@@ -70,8 +68,7 @@ async function databaseUrl(): Promise<string> {
  * connection; its role needs CREATEDB when it is an external E2E_DATABASE_URL.
  */
 async function createWorkerDatabases(adminUrl: string): Promise<void> {
-  const admin = new Client({ connectionString: adminUrl });
-  await admin.connect();
+  const admin = await connectWithRetry(adminUrl);
   try {
     for (let worker = 0; worker < WORKERS; worker++) {
       const name = workerDatabaseName(worker);
@@ -80,6 +77,25 @@ async function createWorkerDatabases(adminUrl: string): Promise<void> {
     }
   } finally {
     await admin.end();
+  }
+}
+
+/**
+ * A Postgres that has just started can still drop the first connection. Without an
+ * `error` listener that reset is an uncaught exception, so listen, and retry briefly.
+ */
+async function connectWithRetry(url: string, attempts = 10): Promise<Client> {
+  for (let attempt = 1; ; attempt++) {
+    const client = new Client({ connectionString: url });
+    client.on("error", (error) => console.error("e2e admin connection error:", error.message));
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      await client.end().catch(() => {});
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
   }
 }
 
