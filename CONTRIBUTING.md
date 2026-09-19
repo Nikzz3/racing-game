@@ -1,8 +1,9 @@
 # Contributing to Sunset Ridge Racing
 
 Everything you need to run, test, and ship the game locally. The player-facing overview
-is in [README.md](README.md); the domain glossary is in [CONTEXT.md](CONTEXT.md) and the
-architecture decisions in [docs/adr/](docs/adr/).
+is in [README.md](README.md); the domain glossary is in [CONTEXT.md](CONTEXT.md), the
+architecture decisions in [docs/adr/](docs/adr/), and the desktop release flow in
+[docs/releasing.md](docs/releasing.md).
 
 ## Running locally
 
