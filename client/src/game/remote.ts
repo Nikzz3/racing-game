@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import { MAX_SPEED_MS, type PlayerSnapshot, type Variant } from "@racing/shared";
+import {
+  DEFAULT_DIFFICULTY,
+  MAX_SPEED_MS,
+  type Difficulty,
+  type PlayerSnapshot,
+  type Variant,
+} from "@racing/shared";
 import {
   animateCar,
   createCarMesh,
@@ -19,7 +25,6 @@ interface RemoteCar {
 }
 const RENDER_DELAY_MS = 130;
 const SNAPSHOT_LIMIT = 30;
-const MAX_REMOTE_SPEED = Math.max(...Object.values(MAX_SPEED_MS));
 
 /** Buffer network updates so remote cars move continuously between snapshots. */
 export class RemotePlayers {
@@ -29,6 +34,7 @@ export class RemotePlayers {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly myId: string,
+    private readonly difficulty: Difficulty = DEFAULT_DIFFICULTY,
   ) {}
 
   onSnapshot(players: PlayerSnapshot[]): void {
@@ -76,22 +82,31 @@ export class RemotePlayers {
       span > 0
         ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25)
         : 1;
+    // A respawn is a discontinuity, not a velocity to interpolate or
+    // extrapolate. Allow a buffer's worth of network jitter at top speed.
+    const maxDistance =
+      (MAX_SPEED_MS[this.difficulty] * (span + RENDER_DELAY_MS)) / 1000;
+    const maxDistanceSq = maxDistance * maxDistance;
+    const settled = renderTime >= newer.receivedAt;
     for (const [id, { mesh }] of this.cars) {
       const before = older.players.get(id);
       const after = newer.players.get(id);
+      let snap = after ?? before;
       if (before && after) {
-        // A respawn is a discontinuity, not a velocity to interpolate or
-        // extrapolate. Allow a buffer's worth of network jitter at top speed.
-        const maxDistance = MAX_REMOTE_SPEED * (span + RENDER_DELAY_MS) / 1000;
         const dx = after.x - before.x;
         const dz = after.z - before.z;
-        if (dx * dx + dz * dz > maxDistance * maxDistance) {
-          const pose = renderTime < newer.receivedAt ? before : after;
-          mesh.position.set(pose.x, 0, pose.z);
-          mesh.rotation.y = pose.rot;
-          animateCar(mesh, pose.speed, 0, dt);
-          continue;
-        }
+        snap =
+          dx * dx + dz * dz > maxDistanceSq
+            ? settled
+              ? after
+              : before
+            : undefined;
+      }
+      if (snap) {
+        mesh.position.set(snap.x, 0, snap.z);
+        mesh.rotation.y = snap.rot;
+        animateCar(mesh, snap.speed, 0, dt);
+      } else if (before && after) {
         mesh.position.set(
           before.x + (after.x - before.x) * amount,
           0,
@@ -104,12 +119,6 @@ export class RemotePlayers {
           0,
           dt,
         );
-      } else {
-        const pose = after ?? before;
-        if (!pose) continue;
-        mesh.position.set(pose.x, 0, pose.z);
-        mesh.rotation.y = pose.rot;
-        animateCar(mesh, pose.speed, 0, dt);
       }
     }
   }

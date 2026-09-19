@@ -58,7 +58,7 @@ describe("RemotePlayers movement", () => {
     vi.spyOn(performance, "now").mockImplementation(() => now);
     mesh = new THREE.Group();
     vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
-    remote = new RemotePlayers(makeMockScene(), "me");
+    remote = new RemotePlayers(makeMockScene(), "me", "hard");
   });
 
   afterEach(() => vi.restoreAllMocks());

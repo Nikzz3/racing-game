@@ -96,12 +96,12 @@ describe("local car render cadence", () => {
   it("starts the respawn timeline at the keypress, discarding pre-respawn frame time", () => {
     throttle();
     tick(1000 / 60);
-    const firstDistance = carMesh.position.clone();
+    const beforeRespawn = carMesh.position.clone();
     respawn();
     const spawn = carMesh.position.clone();
     tick(1); // A sub-step frame must stay at spawn, never blend from the old lap.
     expect(carMesh.position.distanceTo(spawn)).toBe(0);
-    const expectedDistance = firstDistance.distanceTo(spawn);
+    const expectedDistance = beforeRespawn.distanceTo(spawn);
     now += 400; // A long frame before the keypress must not advance the new car.
     respawn();
     tick(1000 / 60);

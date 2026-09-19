@@ -8,7 +8,7 @@ import {
   type TrackSample,
 } from "@racing/shared";
 import type { CarInput } from "./input";
-import { interpolateHeading, type Pose } from "./pose-interpolation";
+import { lerpPose, type Pose } from "./pose-interpolation";
 
 interface SurfaceTuning {
   maxSpeed: number;
@@ -100,16 +100,7 @@ export class CarPhysics {
    */
   getRenderPose(): Readonly<Pose> {
     const amount = Math.min(1, this.stepAccumulator / PHYSICS_STEP);
-    const previous = this.previousPose;
-    this.renderPose.x = previous.x + (this.x - previous.x) * amount;
-    this.renderPose.z = previous.z + (this.z - previous.z) * amount;
-    this.renderPose.heading = interpolateHeading(
-      previous.heading,
-      this.heading,
-      amount,
-    );
-    this.renderPose.speed = previous.speed + (this.speed - previous.speed) * amount;
-    return this.renderPose;
+    return lerpPose(this.previousPose, this, amount, this.renderPose);
   }
 
   /** Pass the raw frame delta so ordinary stalls catch up to the lap clock. */

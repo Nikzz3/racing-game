@@ -56,19 +56,10 @@ export function registerLibrary(root: THREE.Group): void {
  * surfaces share one draw per spatial batch, in both the color and shadow passes.
  * The resulting geometry/material live with the reusable asset library. */
 function batchNatureSurfaces(model: THREE.Group): void {
-  const batches = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[]>();
+  const batches = new Map<string, BatchableMesh[]>();
   model.traverseVisible((part) => {
-    if (!(part instanceof THREE.Mesh) || part instanceof THREE.SkinnedMesh ||
-        !(part.material instanceof THREE.MeshStandardMaterial) || part.material.transparent ||
-        part.geometry.getAttribute("color")?.itemSize === 4 ||
-        Object.keys(part.geometry.morphAttributes).length || part.matrixWorld.determinant() <= 0)
-      return;
-    const { uuid, name, color, ...surface } = part.material.toJSON();
-    // Attribute layouts must also match for merging (UVs, normals, tangents, etc.).
-    const geometry: THREE.BufferGeometry = part.geometry;
-    const attributes = Object.entries(geometry.attributes).map(([name, attribute]) =>
-      [name, attribute.itemSize, attribute.normalized, attribute.array.constructor.name]);
-    const key = JSON.stringify([surface, Boolean(part.geometry.index), attributes]);
+    if (!isBatchable(part)) return;
+    const key = `${materialBatchKey(part.material)}|${geometryLayoutKey(part.geometry)}`;
     const batch = batches.get(key);
     if (batch) batch.push(part);
     else batches.set(key, [part]);
@@ -77,10 +68,11 @@ function batchNatureSurfaces(model: THREE.Group): void {
     if (parts.length < 2) continue;
     const geometries = parts.map((part) => {
       const geometry = part.geometry.clone().applyMatrix4(part.matrixWorld);
-      const colors = new Float32Array(geometry.attributes.position.count * 3);
+      const count = geometry.attributes.position.count;
+      const colors = new Float32Array(count * 3);
       const existing = part.material.vertexColors ? geometry.getAttribute("color") : undefined;
       const tint = part.material.color;
-      for (let index = 0; index < colors.length / 3; index++) {
+      for (let index = 0; index < count; index++) {
         colors[index * 3] = tint.r * (existing?.getX(index) ?? 1);
         colors[index * 3 + 1] = tint.g * (existing?.getY(index) ?? 1);
         colors[index * 3 + 2] = tint.b * (existing?.getZ(index) ?? 1);
@@ -100,8 +92,51 @@ function batchNatureSurfaces(model: THREE.Group): void {
     mesh.receiveShadow = true;
     for (const part of parts) part.removeFromParent();
     model.add(mesh);
+    mesh.updateMatrixWorld(true);
   }
-  model.updateMatrixWorld(true);
+}
+
+type BatchableMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+
+/** Only rigid, opaque, unmirrored standard surfaces merge cleanly into one draw. */
+function isBatchable(part: THREE.Object3D): part is BatchableMesh {
+  if (!(part instanceof THREE.Mesh) || part instanceof THREE.SkinnedMesh) return false;
+  if (!(part.material instanceof THREE.MeshStandardMaterial)) return false;
+  if (part.material.transparent) return false;
+  if (part.geometry.getAttribute("color")?.itemSize === 4) return false;
+  if (part.geometry.morphAttributes.position) return false;
+  return part.matrixWorld.determinant() > 0;
+}
+
+/** The shading inputs that must match for two surfaces to share a material.
+ * The diffuse colour is deliberately absent: it is baked into vertex colours. */
+function materialBatchKey(material: THREE.MeshStandardMaterial): string {
+  return [
+    material.roughness,
+    material.metalness,
+    material.emissive.getHex(),
+    material.emissiveIntensity,
+    material.opacity,
+    material.alphaTest,
+    material.side,
+    material.flatShading,
+    material.map?.uuid,
+    material.normalMap?.uuid,
+    material.roughnessMap?.uuid,
+    material.metalnessMap?.uuid,
+    material.emissiveMap?.uuid,
+    material.aoMap?.uuid,
+  ].join(",");
+}
+
+/** Attribute layouts must match for merging (UVs, normals, tangents, etc.). */
+function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
+  const layout = Object.entries(geometry.attributes)
+    .map(([name, attribute]) =>
+      `${name}:${attribute.itemSize}:${attribute.normalized}:${attribute.array.constructor.name}`)
+    .sort()
+    .join(";");
+  return `${Boolean(geometry.index)}|${layout}`;
 }
 
 /** The authored front lenses coincide with the enamel. Keep a physical gap so

@@ -93,7 +93,7 @@ export class Game {
     parent.append(this.container);
     this.bundle = createScene(this.container, this.track.samples);
     buildTrack(this.bundle.scene, this.track);
-    this.remote = new RemotePlayers(this.bundle.scene, myId);
+    this.remote = new RemotePlayers(this.bundle.scene, myId, difficulty);
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
     this.hud = new Hud(
@@ -133,8 +133,12 @@ export class Game {
     this.bundle.renderer.setSize(width, height);
   };
   private visibility = (): void => {
-    if (!document.hidden) this.previous = performance.now();
+    if (!document.hidden) this.restartFrameClock();
   };
+  /** Discard wall time that no longer belongs to the car being rendered. */
+  private restartFrameClock(): void {
+    this.previous = performance.now();
+  }
   private spawn(): void {
     this.car.spawnAtSample(
       this.track.samples.length - 14,
@@ -143,7 +147,7 @@ export class Game {
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
     snapBehindCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading);
-    this.previous = performance.now();
+    this.restartFrameClock();
   }
   private respawn(): void {
     this.net.send({ type: "respawn" });
@@ -241,10 +245,9 @@ export class Game {
     this.previous = now;
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
-    let injecting = false;
+    const injecting = Boolean(this.seam?.driving);
     if (this.seam?.driving) {
       dt = this.seam.advance(elapsed, 3);
-      injecting = true;
     } else {
       input = this.autopilot
         ? autopilotInput(this.car, this.track.samples, 12)

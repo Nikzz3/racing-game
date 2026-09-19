@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { getModel, preloadModels, registerLibrary } from "./models";
 
+function meshesOf(object: THREE.Object3D): THREE.Mesh[] {
+  const meshes: THREE.Mesh[] = [];
+  object.traverse((part) => { if (part instanceof THREE.Mesh) meshes.push(part); });
+  return meshes;
+}
+
 describe("preloadModels", () => {
   it("resolves when the library cannot be fetched, leaving every model absent", async () => {
     // The Node test environment has no server, so the GLTFLoader request fails.
@@ -37,8 +43,7 @@ it("batches static nature surfaces without changing their world positions or lin
   const originalBounds = new THREE.Box3().setFromObject(model, true);
   registerLibrary(root);
   const batched = getModel(model.name)!;
-  const meshes: THREE.Mesh[] = [];
-  batched.traverse((part) => { if (part instanceof THREE.Mesh) meshes.push(part); });
+  const meshes = meshesOf(batched);
   expect(meshes).toHaveLength(1);
   const bounds = new THREE.Box3().setFromObject(batched, true);
   expect(bounds.min.distanceTo(originalBounds.min)).toBeLessThan(1e-6);
@@ -70,7 +75,5 @@ it("keeps nature materials with different lighting or transparency separate", ()
   ];
   for (const material of materials) model.add(new THREE.Mesh(new THREE.BoxGeometry(), material));
   registerLibrary(root);
-  const meshes: THREE.Mesh[] = [];
-  getModel(model.name)!.traverse((part) => { if (part instanceof THREE.Mesh) meshes.push(part); });
-  expect(meshes.map((mesh) => mesh.material)).toEqual(materials);
+  expect(meshesOf(getModel(model.name)!).map((mesh) => mesh.material)).toEqual(materials);
 });
