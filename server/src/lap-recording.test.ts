@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 import { resolveTrack, type ClientMessage } from "@racing/shared";
 import { recordState } from "./lap-recording";
+import { respawnTiming } from "./timing";
 import { createPlayer, Room } from "./rooms";
 import { makeFrame, MAX_REPLAY_FRAMES } from "./replay";
 
@@ -24,6 +25,22 @@ function driver() {
   };
   return { player, state };
 }
+
+describe("respawn publication", () => {
+  it("advances the spawn counter together with the first post-respawn position", () => {
+    const { player, state } = driver();
+    recordState(player, { ...state, x: 100 }, 1_000);
+    respawnTiming(player.timing);
+    expect(player.timing.spawns).toBe(0);
+    expect(player.x).toBe(100);
+
+    recordState(player, state, 1_050);
+    expect(player.timing.spawns).toBe(1);
+    expect(player.x).toBe(state.x);
+    recordState(player, state, 1_100);
+    expect(player.timing.spawns).toBe(1);
+  });
+});
 
 describe("lap recording boundaries", () => {
   it("detaches completed frames and identity before the next position or room change", () => {
