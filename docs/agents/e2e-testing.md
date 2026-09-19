@@ -1,8 +1,8 @@
 # End-to-end testing
 
 The Playwright suite is the outside-in bookend for feature development. Use Vitest as
-the fast inner loop: driving a Plausible Lap through the browser and server takes roughly
-2–5 minutes.
+the fast inner loop: a Plausible Lap replays in real time, so the lap journeys take about
+a minute each and the whole suite a little over one.
 
 ## Suite layout and naming
 
@@ -49,10 +49,16 @@ between tests, which is safe only because no two workers share a database. Pass
 fails fast with that message. Tests in one spec file spread across workers
 (`fullyParallel`), so specs must not depend on each other or on ordering.
 
-The Playwright project runs with `reducedMotion: "reduce"` and a 640×480 viewport.
-Under software WebGL the garage stage's camera travel would otherwise redraw for
-seconds after every carousel click, and canvas cost scales with pixels. A test that
-asserts layout or captures a screenshot sets its own viewport.
+The Playwright project runs with `reducedMotion: "reduce"` and a 640×480 viewport;
+canvas cost under software WebGL scales with pixels. A test that asserts layout or
+captures a screenshot sets its own viewport.
+
+The client's e2e build (`VITE_E2E=1`, surfaced as `CHEAP_RENDER`) also skips the lobby's
+three WebGL contexts: the car thumbnails, the garage stage, and the circuit stage. Under
+software WebGL they cost about eight seconds per page load and over a second per carousel
+click, and no journey asserts on their pixels. The race scene still renders, so a journey
+that needs WebGL exercised should drive into a Room. Do not add e2e assertions about the
+garage or circuit stages' canvases; cover those with Vitest.
 
 A Docker-compatible container socket must be available. With rootless Podman, enable its socket
 (`systemctl --user enable --now podman.socket`) and the wrapper finds it at
@@ -109,9 +115,13 @@ being driven whenever it uses the same journey. A new spec is earned only by a n
 such as spectating or reconnecting after a disconnect—not by another feature within an
 existing Room or lap journey.
 
-The e2e CI wall-time budget is **15 minutes**. Every full lap costs about a minute of
-real time and cannot be sped up: the server times laps off its own wall clock, so a
-faster-than-real-time replay is rejected as implausible. If a change would exceed the
-budget, fold the assertion into a lap already being driven before adding a lap, and
-raise `E2E_WORKERS` in CI only after checking the runner has the CPU for another
-software-rendered Chromium.
+The e2e CI wall-time budget is **15 minutes**, and the job currently finishes in about
+two. Every full lap costs about 40 seconds of real time and cannot be sped up: the
+server times laps off its own wall clock, so a faster-than-real-time replay is rejected
+as implausible. Only one spec drives a full lap, and every assertion that needs a
+server-accepted lap hangs off it; fold a new assertion into that lap before adding
+another. CI runs `E2E_WORKERS=3`: pinned to 4 CPUs like the `ubuntu-latest` runner,
+three workers finished about 10s sooner than two, and four software-WebGL Chromiums
+measured no faster than two. CI also skips the wrapper's
+throwaway container in favour of the runner image's preinstalled PostgreSQL
+(`E2E_DATABASE_URL`), and caches the Playwright headless shell keyed on the lockfile.

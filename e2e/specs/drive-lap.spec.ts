@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { SUNSET_RIDGE } from "@racing/shared";
 import type { E2eLocalState } from "../../client/src/game/e2e-seam";
 import { expect, test } from "../fixtures/game-seam";
@@ -15,16 +16,32 @@ function motion(trajectory: E2eLocalState[]) {
   return trajectory.map(({ position, heading, speed }) => ({ position, heading, speed }));
 }
 
+/** Driver names in the lobby's Records panel, in rank order. */
+function leaderboardNames(page: Page): Promise<string[]> {
+  return page.locator(".lb-list .lb-name").allTextContents();
+}
+
+// One real-time lap carries every assertion that needs a server-accepted lap:
+// checkpoint order, the persisted Variant, leaderboard rank among seeded rivals
+// (segregated by Track and Difficulty), the Pacer picker, and reload persistence.
+// A second lap-driving spec would cost the suite another 40s of wall time.
 test("drives a server-accepted Plausible Lap through every Checkpoint in order", async ({
   db,
   game,
   page,
 }) => {
+  // Server truncates names to 16 chars (see server/src/index.ts), so stay within it.
   const playerName = "lap-driver";
+  // Rivals bracket the driven lap: Alpha is faster, Omega slower. Other Pair is
+  // faster than everyone but on another (Track, Difficulty) pair: never listed here.
+  await db.seedBestLap({ name: "Alpha", timeMs: 1_000 });
+  await db.seedBestLap({ name: "Omega", timeMs: 9_999_999 });
+  await db.seedBestLap({ name: "Other Pair", timeMs: 500, track: "stormhaven", difficulty: "hard" });
   // The session declares the taxi Variant in hello; the Garage picker (#125)
   // writes this same localStorage key.
   await page.addInitScript(() => localStorage.setItem("racer-variant", "taxi"));
   await game.createRace({ playerName, roomName: "valid-lap" });
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", "Omega"]);
 
   const result = await game.driveLap();
 
@@ -39,6 +56,8 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   );
   // The hello carried the taxi Variant; the persisted lap snapshots it.
   expect(accepted.rows).toEqual([{ name: playerName, variant: "taxi" }]);
+  expect((await db.bestLapFor(playerName)).map((lap) => lap.name)).toEqual([playerName]);
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
 
   // #127: a Pacer drives the Variant recorded with its lap. Leave the Room, arm a
   // Pacer from the picker, race again, and read the PacerOverlay seam.
@@ -56,7 +75,15 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   // The AI Record always drives police, its canonical car, not a recorded value.
   await raceAgainst("ai", "pacer-vs-ai");
   await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("police");
+
+  // The rank came from Postgres, not from client state: it survives a reload.
+  await page.reload();
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
 });
+
+// "A slower lap never overwrites a driver's better time" is a server/Postgres
+// concern: server/src/best-lap-persistence.test.ts proves it against a real
+// database in seconds, where a browser lap would cost the suite 40 seconds.
 
 test("replays the same inputs to an exactly equal trajectory in the browser", async ({ game }) => {
   // Same CarInput[], two fresh races in the same Chromium: the car's motion must
