@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { vi } from "vitest";
 
 /**
  * Opt-in Postgres for tests: `SERVER_TEST_DATABASE_URL` names a disposable
  * database. Each call owns one randomly named schema, points `DATABASE_URL` at
  * it, and hands back the freshly imported application modules bound to that
  * pool. It never truncates or alters the database's existing tables.
+ *
+ * Import the modules under test (`./replay`, `./leaderboard`, ...) inside `run`:
+ * the module registry is reset first so they bind to this call's pool, which
+ * is what lets one file call this more than once.
  */
 export const testDatabaseUrl = process.env.SERVER_TEST_DATABASE_URL;
 
@@ -32,7 +37,9 @@ export async function withTestSchema<T>(
     schemaCreated = true;
     url.searchParams.set("options", `-c search_path=${schema}`);
     process.env.DATABASE_URL = url.toString();
-    // Imported after DATABASE_URL is set: db.ts builds its pool at import time.
+    // db.ts builds its pool at import time, so import it fresh after DATABASE_URL
+    // is set; a cached copy from an earlier call would point at a dropped schema.
+    vi.resetModules();
     const { pool, initDb } = await import("./db");
     applicationPool = pool;
     return await run({ pool, initDb });

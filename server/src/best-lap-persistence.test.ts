@@ -26,4 +26,23 @@ describe.skipIf(!testDatabaseUrl)("best lap persistence", () => {
       ]);
     });
   }, 15_000);
+
+  it("a faster lap replaces the driver's time, replay, and variant", async () => {
+    await withTestSchema(async ({ initDb }) => {
+      await initDb();
+      const { getReplay, makeFrame, submitLap } = await import("./replay");
+      const { bestTime } = await import("./leaderboard");
+      const faster = [makeFrame(0, 0, 0, 0, 0), makeFrame(500, 5, 5, 0, 20)];
+
+      expect(await submitLap("Improving", "sunset-ridge", "medium", 2_000, null, "taxi")).toBe(true);
+      expect(await submitLap("Improving", "sunset-ridge", "medium", 1_000, faster, "police")).toBe(true);
+
+      expect(await bestTime("sunset-ridge", "medium")).toBe(1_000);
+      expect(await getReplay("Improving", "sunset-ridge", "medium")).toEqual({
+        timeMs: 1_000,
+        frames: faster,
+        variant: "police",
+      });
+    });
+  }, 15_000);
 });
