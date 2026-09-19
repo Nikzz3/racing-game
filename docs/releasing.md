@@ -18,13 +18,15 @@ GitHub releases. A release is a tag push; everything after that is automated by
 3. **Wait for the workflow.** Three `package` jobs build the installers on macOS, Windows
    and Ubuntu runners and upload them as artifacts. A final `release` job then downloads
    all of them, checks the tag matches the package version, generates the notes, and
-   creates **one draft release** named after the tag with every installer plus the
-   `latest*.yml` and `.blockmap` files the in-app updater reads.
-4. **Review and publish the draft** on the releases page. Until it is published, installed
-   apps cannot see it, so nothing reaches players by accident.
+   creates **one release** named after the tag with every installer plus the
+   `latest*.yml` and `.blockmap` files the in-app updater reads. It is created as a
+   draft only while the assets upload and is published in the same run.
+4. **Done.** Installed apps see the new version on their next update check, so only push
+   a tag when the version is ready for players. To pull a release back, mark it as a
+   draft on the releases page; the updater then falls back to the previous one.
 
 Re-running the workflow on the same tag (Actions → Desktop installers → Run workflow →
-choose the tag) rebuilds everything and updates the existing draft in place.
+choose the tag) rebuilds everything and updates the existing release in place.
 
 ## Where the release notes come from
 

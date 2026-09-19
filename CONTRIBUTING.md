@@ -200,17 +200,18 @@ The step-by-step release flow is in [docs/releasing.md](docs/releasing.md). In s
 `v<version>` tag (e.g. `v0.2.0`) to run `.github/workflows/desktop.yml`. A per-platform
 matrix builds the macOS (x64 + arm64 dmg/zip), Windows (x64 nsis) and Linux (x64 AppImage)
 installers and uploads them as workflow artifacts; a single `release` job then assembles
-them into **one draft** GitHub release with generated notes (download table plus the
-commits since the previous tag). Publish the draft manually once reviewed. Re-running the
-workflow on the same tag updates the draft in place. Set the `RACING_SERVER_URL`
+them into **one published** GitHub release with generated notes (download table plus
+the commits since the previous tag). Pushing the tag is the release act: installed apps
+pick the new version up as soon as the workflow finishes. Re-running the workflow on the
+same tag updates the release in place. Set the `RACING_SERVER_URL`
 repository variable so released installers point at the deployed server; manual
 `workflow_dispatch` runs stop at the artifacts and create no release.
 
 Installed apps check GitHub for a newer release on launch and every six hours. The update
 button in the lobby header is always visible: it shows the installed version when up to
 date (clicking it re-checks) and, when a newer release exists, clicking it downloads the
-update and restarts into it. Only **published** releases count (drafts are invisible to the updater),
-and in-place install on macOS needs a code-signed app: unsigned macOS builds show a
+update and restarts into it. Only **published** releases count (a release you manually turn back into a draft is
+invisible to the updater), and in-place install on macOS needs a code-signed app: unsigned macOS builds show a
 "Download" button that opens the releases page instead.
 
 Builds are unsigned unless the `CSC_LINK` / `CSC_KEY_PASSWORD` secrets (and, for macOS
