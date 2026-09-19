@@ -134,33 +134,42 @@ and materials are reused across live drivers, replays, and garage thumbnails.
 
 Run `npm test`, `npm run typecheck`, and `npm run build` for local checks.
 
-Compatibility tests use frames produced by the previous version's writer. To run
-the PostgreSQL migration check, set `LEGACY_COMPAT_DATABASE_URL` to a disposable
-database and run `npm run test -w server -- legacy-compatibility.test.ts`. The test
-creates and removes its own temporary schema; it refuses the developer `racing`
-database.
+Some server tests need a real Postgres: the migration check for legacy records and the
+SQL-level leaderboard rules (a slower lap never overwrites a personal best). They are
+skipped unless `SERVER_TEST_DATABASE_URL` points at a disposable database, and CI
+always sets it. Each test creates and removes its own temporary schema and refuses the
+developer `racing` database:
+
+```bash
+SERVER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/racing_test npm test -w server
+```
 
 ## End-to-end tests
 
 Install Chromium once, then run the Playwright suite. The test command starts its own
-throwaway Postgres container on a dynamically allocated host port, plus the server and
-client on dedicated ports 8081 and 5174:
+throwaway Postgres container on a dynamically allocated host port, then one server, one
+client, and one database per Playwright worker. Worker `n` uses server port `8081 + n`
+and client port `5174 + n`; two workers run by default, and `E2E_WORKERS` changes that
+(it is the only supported way to change the worker count, because the servers are
+provisioned before Playwright starts):
 
 ```bash
 npx playwright install chromium
 npm run test:e2e
+E2E_WORKERS=3 npm run test:e2e
 ```
 
 Docker must be running. Podman users must expose its Docker-compatible socket and set
 `DOCKER_HOST` to that socket before running the suite. If containers are unavailable, set
-`E2E_DATABASE_URL` to a Postgres connection URL; the wrapper will use it verbatim instead
-of starting a container. The suite erases the `rooms`, `best_laps`, and `replays` tables
-of whatever database it runs against, so you must also set
-`E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the database is disposable — the wrapper
+`E2E_DATABASE_URL` to a Postgres connection URL; the wrapper will use it as the admin
+connection instead of starting a container. The suite creates a `racing_e2e_w<n>`
+database per worker on that server (the role needs `CREATEDB`) and erases the `rooms`,
+`best_laps`, and `replays` tables in them, so you must also set
+`E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the server is disposable — the wrapper
 refuses to start without it.
 
-The browser suite also accepts `E2E_CLIENT_PORT` and `E2E_SERVER_PORT` when its default
-ports are occupied. It refuses to reuse an existing server process.
+The browser suite also accepts `E2E_CLIENT_PORT` and `E2E_SERVER_PORT` to move the base
+ports when the defaults are occupied. It refuses to reuse an existing server process.
 
 Suite conventions, growth rules, and the split between Playwright and Vitest are in
 [docs/agents/e2e-testing.md](docs/agents/e2e-testing.md).

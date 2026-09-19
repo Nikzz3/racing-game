@@ -1,12 +1,54 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
+import { clientPort, clientUrl, serverPort, WORKERS, workerDatabaseUrl } from "./workers";
 
-const clientPort = process.env.E2E_CLIENT_PORT ?? "5174";
-const serverPort = process.env.E2E_SERVER_PORT ?? "8081";
-const clientUrl = `http://127.0.0.1:${clientPort}`;
+type WebServer = Extract<NonNullable<PlaywrightTestConfig["webServer"]>, unknown[]>[number];
+
+const databaseUrl = process.env.DATABASE_URL ?? "";
+
+/**
+ * One server and one Vite dev server per worker (see workers.ts). Playwright's
+ * webServer handling owns their lifetime, readiness, and log capture; the fixtures
+ * only pick the pair that matches their worker's parallel index.
+ */
+function workerServers(worker: number): WebServer[] {
+  return [
+    {
+      command: "npm run start -w @racing/server",
+      env: {
+        DATABASE_URL: databaseUrl && workerDatabaseUrl(databaseUrl, worker),
+        PORT: String(serverPort(worker)),
+      },
+      // Not "/": the server falls back to client/dist/index.html and 404s until the
+      // client is built, which Playwright never accepts as ready. Nothing in this suite
+      // needs that build — Vite serves the client — so probe liveness directly.
+      url: `http://127.0.0.1:${serverPort(worker)}/healthz`,
+      // Surfaced in CI logs; a silent webServer timeout is undiagnosable otherwise.
+      stdout: "pipe",
+      stderr: "pipe",
+      // An existing process may use the developer's database, not this run's disposable one.
+      reuseExistingServer: false,
+    },
+    {
+      command:
+        `npm run dev:e2e -w @racing/client -- --port ${clientPort(worker)} --strictPort --host 127.0.0.1`,
+      env: {
+        VITE_SERVER_PORT: String(serverPort(worker)),
+      },
+      url: clientUrl(worker),
+      stdout: "pipe",
+      stderr: "pipe",
+      reuseExistingServer: false,
+    },
+  ];
+}
 
 export default defineConfig({
   testDir: "./specs",
-  workers: 1,
+  // Each worker has its own database and servers, so tests from one spec file can
+  // spread across workers; the long lap-driving tests then overlap instead of
+  // queueing behind each other.
+  workers: WORKERS,
+  fullyParallel: true,
   // A full injected lap runs under software WebGL; game-seam.ts budgets 240s for it,
   // which the 30s default test timeout would otherwise cut short.
   timeout: 300_000,
@@ -24,41 +66,25 @@ export default defineConfig({
     ? [["list"], ["html", { outputFolder: "playwright-report" }]]
     : [["html", { outputFolder: "playwright-report" }]],
   use: {
-    baseURL: clientUrl,
+    // Worker 0's client; fixtures/db.ts re-points each worker at its own.
+    baseURL: clientUrl(0),
     trace: "on-first-retry",
+    // The garage stage redraws at 30fps for as long as its camera is travelling
+    // between cars, and under software WebGL that stalls every carousel click for
+    // seconds. Reduced motion lands the camera immediately; nothing in the suite
+    // asserts on the animation.
+    contextOptions: { reducedMotion: "reduce" },
   },
-  webServer: [
-    {
-      command: "npm run start -w @racing/server",
-      env: {
-        DATABASE_URL: process.env.DATABASE_URL ?? "",
-        PORT: serverPort,
-      },
-      // Not "/": the server falls back to client/dist/index.html and 404s until the
-      // client is built, which Playwright never accepts as ready. Nothing in this suite
-      // needs that build — Vite serves the client — so probe liveness directly.
-      url: `http://127.0.0.1:${serverPort}/healthz`,
-      // Surfaced in CI logs; a silent webServer timeout is undiagnosable otherwise.
-      stdout: "pipe",
-      stderr: "pipe",
-      // An existing process may use the developer's database, not this run's disposable one.
-      reuseExistingServer: false,
-    },
-    {
-      command: `npm run dev:e2e -w @racing/client -- --port ${clientPort} --strictPort --host 127.0.0.1`,
-      env: {
-        VITE_SERVER_PORT: serverPort,
-      },
-      url: clientUrl,
-      stdout: "pipe",
-      stderr: "pipe",
-      reuseExistingServer: false,
-    },
-  ],
+  webServer: Array.from({ length: WORKERS }, (_, worker) => workerServers(worker)).flat(),
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Software WebGL cost scales with canvas size. Tests that assert on layout
+        // or take screenshots set the viewport they need themselves.
+        viewport: { width: 640, height: 480 },
+      },
     },
   ],
 });

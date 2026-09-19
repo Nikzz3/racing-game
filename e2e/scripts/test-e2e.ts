@@ -2,7 +2,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client } from "pg";
 import { GenericContainer, Wait, type StartedTestContainer } from "testcontainers";
+import { WORKERS, workerDatabaseName } from "../workers";
 
 // Repo-root `.env` (see .env.example) for E2E_* and DOCKER_HOST. Shell variables win, and
 // DATABASE_URL is set explicitly for the Playwright process below, so a developer's
@@ -40,13 +42,14 @@ function adoptPodmanSocket(): void {
 
 async function databaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
-    // The suite truncates rooms, best_laps, and replays between tests, so an
-    // external database must be explicitly marked disposable before we touch it.
+    // The suite creates racing_e2e_w* databases on that server and truncates
+    // rooms, best_laps, and replays in them between tests, so an external server
+    // must be explicitly marked disposable before we touch it.
     if (process.env.E2E_DATABASE_ALLOW_TRUNCATE !== "1") {
       throw new Error(
-        "E2E_DATABASE_URL is set, but the e2e suite erases the rooms, best_laps, and " +
-          "replays tables of whatever database it runs against. Set " +
-          "E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that database is disposable.",
+        "E2E_DATABASE_URL is set, but the e2e suite creates racing_e2e_w* databases on " +
+          "that Postgres server and erases their rooms, best_laps, and replays tables. " +
+          "Set E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that server is disposable.",
       );
     }
     return process.env.E2E_DATABASE_URL;
@@ -56,17 +59,52 @@ async function databaseUrl(): Promise<string> {
   container = await new GenericContainer("postgres:17-alpine")
     .withEnvironment({ POSTGRES_USER: "postgres", POSTGRES_PASSWORD: "postgres", POSTGRES_DB: "racing" })
     .withExposedPorts(5432)
-    .withWaitStrategy(Wait.forHealthCheck())
-    .withHealthCheck({
-      test: ["CMD-SHELL", "pg_isready -U postgres -d racing"],
-      interval: 1_000,
-      timeout: 3_000,
-      retries: 30,
-    })
+    // The image's first boot initialises the cluster on a temporary server, stops
+    // it, then starts the real one. pg_isready passes against the temporary server
+    // too, and a connection made in that window dies with ECONNRESET, so wait for
+    // the second "ready to accept connections" line: the real server's.
+    .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
   // Docker picks a free host port, so a local Postgres (or anything else) on a
   // fixed port can never collide with the throwaway container.
   return `postgres://postgres:postgres@${container.getHost()}:${container.getMappedPort(5432)}/racing`;
+}
+
+/**
+ * Each worker gets its own database (workers.ts) so the per-test truncation in
+ * fixtures/db.ts only ever touches that worker's rows. The base URL is the admin
+ * connection; its role needs CREATEDB when it is an external E2E_DATABASE_URL.
+ */
+async function createWorkerDatabases(adminUrl: string): Promise<void> {
+  const admin = await connectWithRetry(adminUrl);
+  try {
+    for (let worker = 0; worker < WORKERS; worker++) {
+      const name = workerDatabaseName(worker);
+      const existing = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [name]);
+      if (existing.rowCount === 0) await admin.query(`CREATE DATABASE ${name}`);
+    }
+  } finally {
+    await admin.end();
+  }
+}
+
+/**
+ * A Postgres that has just started can still drop the first connection. Without an
+ * `error` listener that reset is an uncaught exception, so listen, and retry briefly.
+ */
+async function connectWithRetry(url: string, attempts = 10): Promise<Client> {
+  for (let attempt = 1; ; attempt++) {
+    const client = new Client({ connectionString: url });
+    client.on("error", (error) => console.error("e2e admin connection error:", error.message));
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      await client.end().catch(() => {});
+      if (attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
+  }
 }
 
 function runPlaywright(url: string): Promise<number> {
@@ -97,6 +135,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 let exitCode = 1;
 try {
   const url = await databaseUrl();
+  await createWorkerDatabases(url);
   exitCode = interrupted ? 1 : await runPlaywright(url);
 } finally {
   await stopContainer();

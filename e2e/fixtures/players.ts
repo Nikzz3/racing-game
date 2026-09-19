@@ -1,4 +1,4 @@
-import type { Browser, Page } from "@playwright/test";
+import type { Browser, BrowserContextOptions, Page } from "@playwright/test";
 import { expect, test as base } from "./db";
 
 interface PlayerFixtures {
@@ -8,15 +8,10 @@ interface PlayerFixtures {
 
 async function usePlayer(
   browser: Browser,
-  baseURL: string | undefined,
+  options: BrowserContextOptions,
   use: (page: Page) => Promise<void>,
 ): Promise<void> {
-  // Two Rooms render under software WebGL at once; frame cost scales with the
-  // canvas, and a slow main thread stalls every locator action and assertion.
-  const context = await browser.newContext({
-    baseURL,
-    viewport: { width: 640, height: 480 },
-  });
+  const context = await browser.newContext(options);
   try {
     await use(await context.newPage());
   } finally {
@@ -25,8 +20,14 @@ async function usePlayer(
 }
 
 export const test = base.extend<PlayerFixtures>({
-  playerA: async ({ browser, baseURL }, use) => usePlayer(browser, baseURL, use),
-  playerB: async ({ browser, baseURL }, use) => usePlayer(browser, baseURL, use),
+  // Playwright's `contextOptions` fixture is only the raw `use.contextOptions`
+  // value (reduced motion here), so this worker's baseURL and the project
+  // viewport are added explicitly. Two Rooms render under software WebGL at
+  // once, and a slow main thread stalls every locator action and assertion.
+  playerA: async ({ browser, baseURL, contextOptions, viewport }, use) =>
+    usePlayer(browser, { ...contextOptions, baseURL, viewport }, use),
+  playerB: async ({ browser, baseURL, contextOptions, viewport }, use) =>
+    usePlayer(browser, { ...contextOptions, baseURL, viewport }, use),
 });
 
 export { expect };
