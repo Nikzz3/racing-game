@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { PlayerSnapshot, Variant } from "@racing/shared";
+import { MAX_SPEED_MS, type PlayerSnapshot, type Variant } from "@racing/shared";
 import {
   animateCar,
   createCarMesh,
@@ -19,6 +19,7 @@ interface RemoteCar {
 }
 const RENDER_DELAY_MS = 130;
 const SNAPSHOT_LIMIT = 30;
+const MAX_REMOTE_SPEED = Math.max(...Object.values(MAX_SPEED_MS));
 
 /** Buffer network updates so remote cars move continuously between snapshots. */
 export class RemotePlayers {
@@ -79,6 +80,18 @@ export class RemotePlayers {
       const before = older.players.get(id);
       const after = newer.players.get(id);
       if (before && after) {
+        // A respawn is a discontinuity, not a velocity to interpolate or
+        // extrapolate. Allow a buffer's worth of network jitter at top speed.
+        const maxDistance = MAX_REMOTE_SPEED * (span + RENDER_DELAY_MS) / 1000;
+        const dx = after.x - before.x;
+        const dz = after.z - before.z;
+        if (dx * dx + dz * dz > maxDistance * maxDistance) {
+          const pose = renderTime < newer.receivedAt ? before : after;
+          mesh.position.set(pose.x, 0, pose.z);
+          mesh.rotation.y = pose.rot;
+          animateCar(mesh, pose.speed, 0, dt);
+          continue;
+        }
         mesh.position.set(
           before.x + (after.x - before.x) * amount,
           0,

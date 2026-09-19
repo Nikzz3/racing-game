@@ -8,6 +8,7 @@ import {
   type TrackSample,
 } from "@racing/shared";
 import type { CarInput } from "./input";
+import { interpolateHeading, type Pose } from "./pose-interpolation";
 
 interface SurfaceTuning {
   maxSpeed: number;
@@ -62,6 +63,8 @@ export class CarPhysics {
 
   private touchingWall = false;
   private stepAccumulator = 0;
+  private readonly previousPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
+  private readonly renderPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly tuning: SurfaceTuning;
 
   constructor(
@@ -81,6 +84,32 @@ export class CarPhysics {
     this.stepAccumulator = 0;
     this.touchingWall = false;
     this.onTrack = Math.abs(lateralOffset) <= ROAD_HALF_WIDTH + 0.6;
+    this.rememberPose();
+  }
+
+  private rememberPose(): void {
+    this.previousPose.x = this.x;
+    this.previousPose.z = this.z;
+    this.previousPose.heading = this.heading;
+    this.previousPose.speed = this.speed;
+  }
+
+  /**
+   * Render one fixed step behind simulation, smoothly between completed steps.
+   * The returned object is reused; network and lap logic must use physical state.
+   */
+  getRenderPose(): Readonly<Pose> {
+    const amount = Math.min(1, this.stepAccumulator / PHYSICS_STEP);
+    const previous = this.previousPose;
+    this.renderPose.x = previous.x + (this.x - previous.x) * amount;
+    this.renderPose.z = previous.z + (this.z - previous.z) * amount;
+    this.renderPose.heading = interpolateHeading(
+      previous.heading,
+      this.heading,
+      amount,
+    );
+    this.renderPose.speed = previous.speed + (this.speed - previous.speed) * amount;
+    return this.renderPose;
   }
 
   /** Pass the raw frame delta so ordinary stalls catch up to the lap clock. */
@@ -102,6 +131,7 @@ export class CarPhysics {
 
   /** Direct integration is reserved for fixed-dt simulation and training callers. */
   update(dt: number, input: CarInput): void {
+    this.rememberPose();
     this.applyPedals(dt, input);
     this.applySurface(dt);
     this.move(dt, input.steer);

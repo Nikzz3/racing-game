@@ -36,6 +36,26 @@ function expectSameState(a: CarPhysics, b: CarPhysics, digits: number): void {
 }
 
 describe("CarPhysics.advance — fixed-step accumulator", () => {
+  it("does not extrapolate the rendered car while catching up after a stall", () => {
+    const car = spawned();
+    car.advance(0.4, FULL_THROTTLE);
+    const pose = car.getRenderPose();
+    expect(pose.x).toBe(car.x);
+    expect(pose.z).toBe(car.z);
+    expect(pose.speed).toBe(car.speed);
+  });
+
+  it("uses the last injected step when returning from the e2e seam to live rendering", () => {
+    const car = spawned();
+    for (let step = 0; step < 60; step++) car.update(1 / 60, FULL_THROTTLE);
+    const previous = { x: car.x, z: car.z };
+    car.update(1 / 60, FULL_THROTTLE);
+    car.advance(PHYSICS_STEP / 2, FULL_THROTTLE);
+    const pose = car.getRenderPose();
+    expect(pose.x).toBeCloseTo((previous.x + car.x) / 2, 10);
+    expect(pose.z).toBeCloseTo((previous.z + car.z) / 2, 10);
+  });
+
   it("throttle increases speed", () => {
     const car = spawned();
     car.advance(PHYSICS_STEP, FULL_THROTTLE);

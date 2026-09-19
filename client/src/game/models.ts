@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
@@ -43,9 +44,64 @@ export function registerLibrary(root: THREE.Group): void {
       for (const child of group.children) child.position.sub(offset);
       group.updateMatrixWorld(true);
       separateHeadlightLenses(group);
-    } else group.updateMatrixWorld(true);
+    } else {
+      group.updateMatrixWorld(true);
+      if (name.startsWith("nature:")) batchNatureSurfaces(group);
+    }
     library.set(name, group);
   });
+}
+
+/** Nature is static. Bake diffuse tints into linear vertex colors so equivalent
+ * surfaces share one draw per spatial batch, in both the color and shadow passes.
+ * The resulting geometry/material live with the reusable asset library. */
+function batchNatureSurfaces(model: THREE.Group): void {
+  const batches = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[]>();
+  model.traverseVisible((part) => {
+    if (!(part instanceof THREE.Mesh) || part instanceof THREE.SkinnedMesh ||
+        !(part.material instanceof THREE.MeshStandardMaterial) || part.material.transparent ||
+        part.geometry.getAttribute("color")?.itemSize === 4 ||
+        Object.keys(part.geometry.morphAttributes).length || part.matrixWorld.determinant() <= 0)
+      return;
+    const { uuid, name, color, ...surface } = part.material.toJSON();
+    // Attribute layouts must also match for merging (UVs, normals, tangents, etc.).
+    const geometry: THREE.BufferGeometry = part.geometry;
+    const attributes = Object.entries(geometry.attributes).map(([name, attribute]) =>
+      [name, attribute.itemSize, attribute.normalized, attribute.array.constructor.name]);
+    const key = JSON.stringify([surface, Boolean(part.geometry.index), attributes]);
+    const batch = batches.get(key);
+    if (batch) batch.push(part);
+    else batches.set(key, [part]);
+  });
+  for (const parts of batches.values()) {
+    if (parts.length < 2) continue;
+    const geometries = parts.map((part) => {
+      const geometry = part.geometry.clone().applyMatrix4(part.matrixWorld);
+      const colors = new Float32Array(geometry.attributes.position.count * 3);
+      const existing = part.material.vertexColors ? geometry.getAttribute("color") : undefined;
+      const tint = part.material.color;
+      for (let index = 0; index < colors.length / 3; index++) {
+        colors[index * 3] = tint.r * (existing?.getX(index) ?? 1);
+        colors[index * 3 + 1] = tint.g * (existing?.getY(index) ?? 1);
+        colors[index * 3 + 2] = tint.b * (existing?.getZ(index) ?? 1);
+      }
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return geometry;
+    });
+    const geometry = mergeGeometries(geometries);
+    for (const source of geometries) source.dispose();
+    if (!geometry) continue;
+    const material = parts[0].material.clone();
+    material.color.set(0xffffff);
+    material.vertexColors = true;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `${model.name}:batched`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    for (const part of parts) part.removeFromParent();
+    model.add(mesh);
+  }
+  model.updateMatrixWorld(true);
 }
 
 /** The authored front lenses coincide with the enamel. Keep a physical gap so
