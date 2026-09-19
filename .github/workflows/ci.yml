@@ -19,6 +19,24 @@ jobs:
     name: TypeScript typecheck + vitest
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The server's Postgres-backed tests (server/src/test-database.ts) are opt-in
+    # locally and always on here, so SQL-level rules such as "a slower lap never
+    # overwrites a personal best" are proven on every push without a browser.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: racing_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d racing_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      SERVER_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/racing_test
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,9 +64,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      # The server serves client/dist and 404s without it, so Playwright's
-      # readiness probe on / never passes until the client is built.
-      - run: npm run build
+      # No client build: Vite serves the client and the server readiness probe
+      # hits /healthz, which does not need client/dist.
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v7
         if: failure()

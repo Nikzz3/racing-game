@@ -37,8 +37,22 @@ npm run test:e2e -- specs/drive-lap.spec.ts -g "plausible"
 
 The wrapper forwards everything after `--` verbatim to Playwright. It starts one
 throwaway Postgres container for the invocation, then keeps that container alive for the
-whole invocation or UI session. The server and client use dedicated e2e ports, and the
-per-test database fixture truncates state between runs.
+whole invocation or UI session.
+
+The suite runs `E2E_WORKERS` Playwright workers (default 2), and every worker owns a
+server, a Vite dev server, and a Postgres database: `e2e/workers.ts` maps a worker's
+parallel index to its ports and database name, `playwright.config.ts` declares the
+processes as `webServer` entries, the wrapper creates the databases, and the fixtures
+route each worker to its own trio. The per-test database fixture truncates state
+between tests, which is safe only because no two workers share a database. Pass
+`E2E_WORKERS`, not `--workers`: a worker beyond the provisioned count has no server and
+fails fast with that message. Tests in one spec file spread across workers
+(`fullyParallel`), so specs must not depend on each other or on ordering.
+
+The Playwright project runs with `reducedMotion: "reduce"` and a 640×480 viewport.
+Under software WebGL the garage stage's camera travel would otherwise redraw for
+seconds after every carousel click, and canvas cost scales with pixels. A test that
+asserts layout or captures a screenshot sets its own viewport.
 
 A Docker-compatible container socket must be available. With rootless Podman, enable its socket
 (`systemctl --user enable --now podman.socket`) and the wrapper finds it at
@@ -79,7 +93,10 @@ the Sandcastle pipeline's proof that the feature is exercised.
 E2e tests assert integration, not logic. “The lap time reached Postgres and rendered at
 the correct rank” belongs here. “A lap that missed a Checkpoint is not a Plausible Lap”
 belongs in Vitest, even though a browser journey could demonstrate it. If a bug is
-reachable with a unit test, cover it with a unit test.
+reachable with a unit test, cover it with a unit test. A rule that lives in SQL (“a
+slower lap never overwrites a personal best”) belongs in a Postgres-backed server test
+(`server/src/test-database.ts`), which CI runs against a service container; it costs
+seconds there and a full real-time lap here.
 
 Leaderboard assertions use position and driver name. Never assert a numeric server lap
 time: server lap milliseconds follow wall-clock time and are intentionally
@@ -92,6 +109,9 @@ being driven whenever it uses the same journey. A new spec is earned only by a n
 such as spectating or reconnecting after a disconnect—not by another feature within an
 existing Room or lap journey.
 
-The e2e CI wall-time budget is **15 minutes**. If a change would exceed it, fold the
-assertion into an existing spec or invest in per-worker database isolation and
-parallelism.
+The e2e CI wall-time budget is **15 minutes**. Every full lap costs about a minute of
+real time and cannot be sped up: the server times laps off its own wall clock, so a
+faster-than-real-time replay is rejected as implausible. If a change would exceed the
+budget, fold the assertion into a lap already being driven before adding a lap, and
+raise `E2E_WORKERS` in CI only after checking the runner has the CPU for another
+software-rendered Chromium.

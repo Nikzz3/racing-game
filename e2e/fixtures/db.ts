@@ -6,6 +6,7 @@ import {
   type TrackSlug,
 } from "@racing/shared";
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
+import { assertWorkerProvisioned, clientUrl, workerDatabaseUrl } from "../workers";
 
 export interface BestLapRow extends QueryResultRow {
   name: string;
@@ -28,10 +29,19 @@ export interface DbFixture {
 const TRUNCATE = "TRUNCATE rooms, best_laps, replays";
 
 export const test = base.extend<{ db: DbFixture }, { databasePool: Pool }>({
+  // Each worker talks to its own client, and through it its own server and
+  // database (see ../workers.ts), so tests on different workers never share state.
+  baseURL: async ({}, use, testInfo) => {
+    assertWorkerProvisioned(testInfo.parallelIndex);
+    await use(clientUrl(testInfo.parallelIndex));
+  },
+
   databasePool: [
-    async ({}, use) => {
-      const connectionString = process.env.DATABASE_URL;
-      if (!connectionString) throw new Error("DATABASE_URL must be set by the e2e test runner");
+    async ({}, use, workerInfo) => {
+      const adminUrl = process.env.DATABASE_URL;
+      if (!adminUrl) throw new Error("DATABASE_URL must be set by the e2e test runner");
+      assertWorkerProvisioned(workerInfo.parallelIndex);
+      const connectionString = workerDatabaseUrl(adminUrl, workerInfo.parallelIndex);
       // scripts/test-e2e.ts grants the flag for the throwaway container it provisions (or
       // after the caller opts in for an external E2E_DATABASE_URL); this backstop catches
       // Playwright invocations that bypass the wrapper with a hand-set DATABASE_URL.
@@ -56,8 +66,7 @@ export const test = base.extend<{ db: DbFixture }, { databasePool: Pool }>({
   ],
 
   // Auto so every test starts from an empty database, whether or not it queries it.
-  // Shared-DB truncation relies on playwright.config.ts keeping workers at 1; if the
-  // suite becomes parallel, provision a separate database per worker.
+  // Safe under parallel workers only because the pool above is per worker.
   db: [
     async ({ databasePool }, use) => {
       await databasePool.query(TRUNCATE);
