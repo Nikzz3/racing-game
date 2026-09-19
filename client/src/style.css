@@ -409,7 +409,7 @@ a {
   background: linear-gradient(180deg, #101114b0, #10111455 45%, #101114ed);
 }
 .lobby-deck:has(.has-garage-environment) .settings-screen {
-  background: #101114bf;
+  background: #101114d9;
 }
 .lobby-deck:has(.has-garage-environment) :is(.stage-sun, .stage-horizon, .stage-grid, .stage-watermark, .stage-platform, .setup-scene) {
   display: none;

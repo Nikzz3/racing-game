@@ -2,7 +2,7 @@
   "name": "@racing/desktop",
   "private": true,
   "type": "module",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "productName": "Sunset Ridge Racing",
   "description": "Electron desktop wrapper for Sunset Ridge Racing (macOS, Windows and Linux installers)",
   "desktopName": "sunset-ridge-racing.desktop",
