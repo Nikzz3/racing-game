@@ -196,7 +196,7 @@ describe("PacerOverlay Variant", () => {
     expect(createCarMesh).toHaveBeenCalledWith(DRIVER, undefined, resolveVariant(DRIVER));
   });
 
-  it("keeps the Pacer styling on a Variant rebuild: tint, translucency, no shadows, badge", () => {
+  it("keeps the Pacer styling on a Variant rebuild: translucency, original colour, no shadows, badge", () => {
     const scene = makeScene();
     const overlay = new PacerOverlay(scene, DRIVER);
     overlay.setFrames(FRAMES, "taxi");
@@ -217,8 +217,9 @@ describe("PacerOverlay Variant", () => {
 
     expect(material).not.toBeNull();
     expect(material!.transparent).toBe(true);
-    expect(material!.opacity).toBe(0.5);
-    expect(material!.color.getHex()).toBe(0x00e5ff);
+    expect(material!.opacity).toBe(0.35);
+    // No tint: the ghost keeps the car's own paint.
+    expect(material!.color.getHex()).toBe(0xffffff);
     expect(castsShadows).toBe(false);
     expect(hasBadge).toBe(true);
     expect(overlay.resolvedVariant()).toBe("taxi");
