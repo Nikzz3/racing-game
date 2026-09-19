@@ -1919,6 +1919,10 @@ a {
   stroke: #1b1719;
   stroke-width: 4;
 }
+.hud-map .hud-map-remote {
+  fill: #9fd4ff;
+  stroke-width: 3;
+}
 .hud-map span {
   display: block;
   font: 9px var(--mono);

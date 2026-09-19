@@ -265,6 +265,7 @@ export class Game {
     updateSun(this.bundle.sun, pose.x, pose.z);
     this.hud.setSpeed(this.car.speed);
     this.hud.setPosition(this.car.x, this.car.z);
+    this.hud.setRemotePositions(this.remote.positions());
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
     this.hud.setCheckpointMissed(
       Boolean(
