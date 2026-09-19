@@ -69,12 +69,9 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   };
 
   // Value "0" is the single replay-bearing human entry: lap-driver's lap above.
+  // (The AI Record's canonical Variant needs no driven lap; pacer.spec.ts covers it.)
   await raceAgainst("0", "pacer-vs-taxi");
   await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("taxi");
-
-  // The AI Record always drives police, its canonical car, not a recorded value.
-  await raceAgainst("ai", "pacer-vs-ai");
-  await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("police");
 
   // The rank came from Postgres, not from client state: it survives a reload.
   await page.reload();

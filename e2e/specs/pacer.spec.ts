@@ -12,6 +12,9 @@ test("arms the AI Record and sees it pacing in a Room", async ({ game, page }) =
   await expect(chip).toBeVisible();
   await expect(chip).toContainText("AI Record");
 
+  // #127: the AI Record always drives police, its canonical car, not a recorded value.
+  await expect.poll(() => game.state().then((s) => s.pacerVariant), { timeout: 10_000 }).toBe("police");
+
   // The AI's frames are baked client-side and handed straight to the Game;
   // the overlay car stays hidden until the first start-line crossing.
   await expect.poll(() => game.state().then((s) => s.pacer?.frameCount)).toBeGreaterThan(0);
