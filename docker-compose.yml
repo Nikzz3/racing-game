@@ -1,3 +1,7 @@
+# Fixed project name: podman/docker compose otherwise derives it from the directory,
+# so every git worktree would try to start its own Postgres on the same port 5432.
+name: racing-game
+
 services:
   db:
     image: docker.io/library/postgres:17-alpine

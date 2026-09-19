@@ -1,0 +1,48 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "iconPath": "client/public/favicon.svg",
+  "defaultThreadEnvMode": "worktree",
+  "scripts": [
+    {
+      "name": "Setup worktree",
+      "command": "if [ -n \"$T3CODE_PROJECT_ROOT\" ] && [ -f \"$T3CODE_PROJECT_ROOT/.env\" ] && [ ! -e .env ]; then cp \"$T3CODE_PROJECT_ROOT/.env\" .env; fi && npm ci --prefer-offline --no-audit --no-fund && if command -v podman >/dev/null 2>&1; then podman compose up -d --no-recreate; else docker compose up -d --no-recreate; fi",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    },
+    {
+      "name": "Dev",
+      "command": "npm run dev",
+      "icon": "play",
+      "previewUrl": "http://localhost:5173",
+      "autoOpenPreview": true
+    },
+    {
+      "name": "Dev (alt ports)",
+      "command": "PORT=8090 CLIENT_PORT=5183 npm run dev",
+      "icon": "play",
+      "previewUrl": "http://localhost:5183",
+      "autoOpenPreview": true
+    },
+    {
+      "name": "Test",
+      "command": "npm test",
+      "icon": "test"
+    },
+    {
+      "name": "Typecheck",
+      "command": "npm run typecheck",
+      "icon": "lint"
+    },
+    {
+      "name": "Build",
+      "command": "npm run build",
+      "icon": "build"
+    },
+    {
+      "name": "E2E",
+      "command": "npm run test:e2e",
+      "icon": "test"
+    }
+  ]
+}

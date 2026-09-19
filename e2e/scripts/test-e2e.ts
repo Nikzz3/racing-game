@@ -1,3 +1,4 @@
+import "./load-env";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { Client } from "pg";

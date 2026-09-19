@@ -24,6 +24,13 @@ const CSP = [
   "worker-src 'self' blob:",
 ].join("; ");
 
+// During development (`npm run desktop:start`) honour the repo-root `.env` for
+// RACING_SERVER_URL / RACING_DEVTOOLS. Packaged apps never carry one. Shell variables win.
+if (!app.isPackaged) {
+  const envFile = path.resolve(import.meta.dirname, "../../.env");
+  if (existsSync(envFile)) process.loadEnvFile(envFile);
+}
+
 // Server URL precedence: CLI flag > env > dist/config.json baked by scripts/build.mjs > default.
 function bakedServerUrl(): string | undefined {
   const configPath = path.join(import.meta.dirname, "config.json");

@@ -18,6 +18,16 @@ npm run dev
 The server connects to `postgres://postgres:postgres@localhost:5432/racing` by default;
 set `DATABASE_URL` to override (this is how the deployed environment is configured).
 
+### Environment variables
+
+Every variable has a working default, so no configuration is required. To change one
+persistently, copy [`.env.example`](.env.example) to `.env` (gitignored) and uncomment the
+line. The file is read by the server, the Vite dev server, the desktop build, the
+unpackaged desktop app, and the e2e wrapper (not by Vitest); variables already set in the
+shell always take precedence over it,
+so `PORT=8090 npm run dev`, CI, and the e2e wrapper behave the same with or without a
+`.env`. `.env.example` documents each variable and is the place to add new ones.
+
 - Client: http://localhost:5173
 - WebSocket server: ws://localhost:8080
 
@@ -29,6 +39,59 @@ listed in the Room field.
 
 Node 24 or newer is required (`engines` in `package.json` says `>=24`). `.nvmrc` tracks
 the current LTS (`lts/*`), and both GitHub workflows read their Node version from it.
+
+### Working in git worktrees
+
+Each worktree is a separate checkout, so it needs its own `node_modules` and, if you use
+one, its own copy of the gitignored `.env`:
+
+```bash
+git worktree add ../racing-game-<topic> -b <topic>
+cd ../racing-game-<topic>
+cp ../racing-game/.env .env 2>/dev/null || true
+npm ci --prefer-offline
+```
+
+`npm ci` installs from the local npm cache in a few seconds. Everything else is shared:
+
+- **Postgres** — `docker-compose.yml` pins the compose project name to `racing-game`, so
+  `podman compose up -d --no-recreate` from any worktree reuses the one `racing-game_db_1`
+  container instead of fighting over port 5432. Without `--no-recreate`, podman-compose
+  restarts the container on every `up`, which drops the connections of whichever checkout
+  is currently serving (data lives in the `racing-game_racing-db` volume and survives).
+  All worktrees see the same rooms and leaderboard; run the e2e suite, which provisions
+  its own throwaway database, when you need isolation. If your main checkout directory is
+  not named `racing-game`, its container and volume still carry the old directory-derived
+  name: stop them once with `podman compose -p <directory-name> down` (port 5432 is
+  otherwise taken) and let the fixed name create a fresh dev database, or keep the old
+  data with `podman volume create racing-game_racing-db` followed by copying
+  `/var/lib/postgresql/data` between the two volumes.
+- **Ports** — only one checkout can hold 8080/5173 at a time. To run `npm run dev` in a
+  second worktree, move both servers: `PORT=8090 CLIENT_PORT=5183 npm run dev`. `PORT` is
+  read by the WebSocket server and mirrored into the client bundle so it dials the right
+  port; `CLIENT_PORT` moves Vite and makes it fail fast instead of auto-incrementing.
+- **The git stash** — it is shared across worktrees. Prefer a WIP commit over `git stash`
+  when several sessions are active.
+
+#### T3 Code
+
+[T3 Code](https://t3.codes) reads `t3.json` at the repo root. It declares:
+
+- `defaultThreadEnvMode: "worktree"` — new threads start in a fresh worktree under
+  `~/.t3/worktrees/racing-game/`, on a `t3code/<slug>` branch.
+- A **Setup worktree** action flagged `runOnWorktreeCreate` that copies the main
+  checkout's `.env` (if any) into the worktree, then runs `npm ci` and
+  `compose up -d --no-recreate` with Podman when it is installed, otherwise Docker. It is marked non-async, so the agent only starts once
+  dependencies are installed and the database is up.
+- **Dev** / **Dev (alt ports)** actions that open the client in the in-app preview. Use
+  the alt-ports one when another thread or your main checkout already runs `npm run dev`.
+- **Test**, **Typecheck**, **Build** and **E2E** actions mirroring the check commands.
+
+T3 Code does not apply `t3.json` automatically to an existing project: open
+*Settings → Projects → racing-game → Actions* and use **Import scripts → Import from
+t3.json**. The imported actions are stored per machine; the file in the repo is the source
+of truth for everyone else. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
+`T3CODE_WORKTREE_PATH` in their environment.
 
 ## Project layout
 

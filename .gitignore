@@ -19,3 +19,8 @@ __pycache__/
 
 # electron-builder output (desktop/dist is already covered by dist/ above).
 desktop/release/
+
+# Local environment (see .env.example, which stays tracked).
+.env
+.env.*
+!.env.example
