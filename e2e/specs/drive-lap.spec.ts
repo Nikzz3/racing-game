@@ -99,8 +99,10 @@ test("real keyboard input crosses the first Checkpoint", async ({ game, page }, 
   await game.createRace({ playerName: "key-driver", roomName: "keyboard-smoke" });
 
   await page.keyboard.down("KeyW");
-  // Software WebGL needs about six wall-clock seconds to simulate the launch.
-  await expect.poll(() => game.state().then((state) => state.checkpoint), { timeout: 15_000 }).toBe(1);
+  // Software WebGL needs about six wall-clock seconds to simulate the launch, and
+  // longer when workers contend for CPU: the frame loop caps each step at 50ms,
+  // so below 20fps simulated time runs slower than the wall clock.
+  await expect.poll(() => game.state().then((state) => state.checkpoint), { timeout: 40_000 }).toBe(1);
   await page.keyboard.up("KeyW");
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator(".hud-map")).toBeInViewport();
