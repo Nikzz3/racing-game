@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 import { pool } from "./db";
-import { createPlayer, RoomManager, ROOM_TTL_MS } from "./rooms";
+import {
+  createPlayer,
+  EMPTY_ROOM_TTL_MS,
+  RoomManager,
+  ROOM_TTL_MS,
+} from "./rooms";
 
 vi.mock("./db", () => ({ pool: { query: vi.fn() } }));
 
@@ -66,5 +71,44 @@ describe("room lifecycle", () => {
     expect(second.room).toBeNull();
     expect(room.players.size).toBe(0);
     expect(manager.list()).toEqual([]);
+  });
+
+  it("removes a restored room after five minutes without drivers", async () => {
+    vi.useFakeTimers();
+    try {
+      const restoredAt = Date.now();
+      vi.mocked(pool.query)
+        .mockResolvedValueOnce({ rows: [] } as never)
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: "abcd1234",
+              name: "Bot's race",
+              created_at: new Date(restoredAt - 10 * 60 * 1000),
+              difficulty: "medium",
+              track: "sunset-ridge",
+            },
+          ],
+        } as never);
+      const manager = new RoomManager();
+      await manager.load();
+      const room = manager.rooms.get("abcd1234")!;
+      expect(room.players.size).toBe(0);
+      expect(room.expired(restoredAt + EMPTY_ROOM_TTL_MS - 1)).toBe(false);
+      expect(room.expired(restoredAt + EMPTY_ROOM_TTL_MS)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an empty-room countdown from expiring a room someone is racing in", () => {
+    const manager = new RoomManager();
+    const room = manager.create("Race", "medium");
+    expect(room.emptySince).toBe(room.createdAt);
+    const player = createPlayer("driver", {} as WebSocket);
+    manager.join(player, room.id);
+    expect(room.emptySince).toBeNull();
+    expect(room.expired(room.createdAt + EMPTY_ROOM_TTL_MS)).toBe(false);
+    expect(room.expired(room.createdAt + ROOM_TTL_MS)).toBe(true);
   });
 });

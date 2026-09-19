@@ -19,6 +19,8 @@ import { createTiming, type TimingState } from "./timing";
 import { sendEncoded } from "./transport";
 
 export const ROOM_TTL_MS = 60 * 60 * 1000;
+/** How long a Room may sit with no drivers before it is removed. */
+export const EMPTY_ROOM_TTL_MS = 5 * 60 * 1000;
 
 export interface Player {
   id: string;
@@ -56,6 +58,8 @@ export class Room {
   readonly players = new Map<string, Player>();
   readonly maxSpeedMs: number;
   readonly minLapMs: number;
+  /** When the Room last became empty; null while someone is racing in it. */
+  emptySince: number | null;
 
   constructor(
     readonly id: string,
@@ -63,9 +67,11 @@ export class Room {
     readonly createdAt: number,
     readonly difficulty: Difficulty,
     readonly track: Track,
+    emptySince: number | null = createdAt,
   ) {
     this.maxSpeedMs = MAX_SPEED_MS[difficulty];
     this.minLapMs = minPlausibleLapMs(track, this.maxSpeedMs);
+    this.emptySince = emptySince;
   }
 
   info(): RoomInfo {
@@ -78,8 +84,10 @@ export class Room {
     };
   }
 
+  /** True once the Room has lived an hour, or has sat empty for five minutes. */
   expired(now: number): boolean {
-    return now >= this.createdAt + ROOM_TTL_MS;
+    if (now >= this.createdAt + ROOM_TTL_MS) return true;
+    return this.emptySince !== null && now >= this.emptySince + EMPTY_ROOM_TTL_MS;
   }
 
   broadcast(message: ServerMessage): void {
@@ -122,12 +130,14 @@ export class RoomManager {
       "SELECT id, name, created_at, difficulty, track FROM rooms",
     );
     for (const row of rows) {
+      // Restored rooms start empty, so give drivers the grace period from now.
       const room = new Room(
         row.id,
         row.name,
         new Date(row.created_at).getTime(),
         asDifficulty(row.difficulty),
         resolveTrack(row.track),
+        Date.now(),
       );
       this.rooms.set(room.id, room);
     }
@@ -159,6 +169,7 @@ export class RoomManager {
     player.lapFrames = [];
     player.room = room;
     room.players.set(player.id, player);
+    room.emptySince = null;
     return room;
   }
 

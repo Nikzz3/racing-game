@@ -9,7 +9,7 @@ A named racing circuit defined by a closed loop of control points. A Track is ch
 _Avoid_: Map, level, course
 
 **Room**:
-A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime.
+A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Room is removed when its last driver leaves, after one hour regardless of activity, or once it has sat with no drivers for five minutes (e.g. a Room restored after a server restart).
 _Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
 
 **Lobby**:
