@@ -123,5 +123,6 @@ server-accepted lap hangs off it; fold a new assertion into that lap before addi
 another. CI runs `E2E_WORKERS=3`: pinned to 4 CPUs like the `ubuntu-latest` runner,
 three workers finished about 10s sooner than two, and four software-WebGL Chromiums
 measured no faster than two. CI also skips the wrapper's
-throwaway container in favour of the runner image's preinstalled PostgreSQL
-(`E2E_DATABASE_URL`), and caches the Playwright headless shell keyed on the lockfile.
+throwaway container in favour of a Postgres 17 service container that starts before
+checkout (`E2E_DATABASE_URL`), and caches `node_modules` and the Playwright headless
+shell keyed on the lockfile.
