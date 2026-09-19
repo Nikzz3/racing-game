@@ -18,6 +18,8 @@ export interface TimingState {
   windowSamples: WindowSample[];
   /** Set once any window violates the speed bound; cleared on lap start and Respawn. */
   lapImplausible: boolean;
+  /** Respawns so far; lets clients tell a teleport from movement. */
+  spawns: number;
 }
 
 export function createTiming(): TimingState {
@@ -29,6 +31,7 @@ export function createTiming(): TimingState {
     bestLapMs: null,
     windowSamples: [],
     lapImplausible: false,
+    spawns: 0,
   };
 }
 
@@ -41,6 +44,7 @@ export function respawnTiming(t: TimingState): void {
   t.lapStartT = null;
   t.windowSamples = [];
   t.lapImplausible = false;
+  t.spawns++;
 }
 
 export interface LapResult {

@@ -34,6 +34,23 @@ beforeAll(async () => {
 });
 
 describe("Blender asset integration", () => {
+  it.each([
+    ["tree_default", 12684],
+    ["tree_detailed", 12684],
+    ["tree_oak", 12684],
+    ["tree_pineDefaultA", 3788],
+    ["tree_pineDefaultB", 3668],
+  ] as const)("renders %s as one surface without dropping authored triangles", (name, triangles) => {
+    const meshes: THREE.Mesh[] = [];
+    getModel(`nature:${name}`)!.traverse((part) => {
+      if (part instanceof THREE.Mesh) meshes.push(part);
+    });
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].geometry.index!.count / 3).toBe(triangles);
+    expect(meshes[0].geometry.getAttribute("color").count)
+      .toBe(meshes[0].geometry.getAttribute("position").count);
+  });
+
   it.each(CAR_VARIANTS)("connects both %s mirrors to the cabin", (variant) => {
     const car = getModel(`car:${variant}`)!;
     car.updateMatrixWorld(true);

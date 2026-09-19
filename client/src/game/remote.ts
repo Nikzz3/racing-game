@@ -75,10 +75,22 @@ export class RemotePlayers {
       span > 0
         ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25)
         : 1;
+    const settled = renderTime >= newer.receivedAt;
     for (const [id, { mesh }] of this.cars) {
       const before = older.players.get(id);
       const after = newer.players.get(id);
+      let snap = after ?? before;
       if (before && after) {
+        // A respawn is a discontinuity, not a velocity to interpolate or
+        // extrapolate: hold the old pose until it lands, then sit on spawn.
+        const teleported = before.spawns !== after.spawns;
+        snap = teleported ? (settled ? after : before) : undefined;
+      }
+      if (snap) {
+        mesh.position.set(snap.x, 0, snap.z);
+        mesh.rotation.y = snap.rot;
+        animateCar(mesh, snap.speed, 0, dt);
+      } else if (before && after) {
         mesh.position.set(
           before.x + (after.x - before.x) * amount,
           0,
@@ -91,12 +103,6 @@ export class RemotePlayers {
           0,
           dt,
         );
-      } else {
-        const pose = after ?? before;
-        if (!pose) continue;
-        mesh.position.set(pose.x, 0, pose.z);
-        mesh.rotation.y = pose.rot;
-        animateCar(mesh, pose.speed, 0, dt);
       }
     }
   }

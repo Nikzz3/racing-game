@@ -199,10 +199,18 @@ export function policyForward(obs: number[], policy: PolicyWeights): number[] {
   for (let i = 0; i < numLayers; i++) {
     const { weight, bias } = policy.layers[i];
     const prev = x;
-    x = weight.map(
-      (row, j) => row.reduce((s, w, k) => s + w * prev[k], 0) + bias[j],
-    );
-    if (i < numLayers - 1) x = x.map(Math.tanh);
+    x = new Array<number>(weight.length);
+    const hidden = i < numLayers - 1;
+    for (let j = 0; j < weight.length; j++) {
+      const row = weight[j];
+      // Keep the trained summation order: add the bias only after the dot
+      // product. Avoid per-neuron callbacks and the extra activation array
+      // while baking the full Reference Lap on the browser's main thread.
+      let sum = 0;
+      for (let k = 0; k < row.length; k++) sum += row[k] * prev[k];
+      const value = sum + bias[j];
+      x[j] = hidden ? Math.tanh(value) : value;
+    }
   }
   return x.map((v) => Math.max(-1, Math.min(1, v)));
 }

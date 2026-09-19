@@ -24,6 +24,8 @@ export interface PlayerSnapshot {
   /** Server timestamp when the current lap started, null if not yet crossed the line. */
   lapStartT: number | null;
   nextCheckpoint: number;
+  /** Respawns so far. A change between snapshots is a teleport, not movement. */
+  spawns: number;
   /** Cosmetic car choice; absent → clients fall back to hashing the player id. */
   variant?: Variant;
 }

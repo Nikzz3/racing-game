@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
@@ -43,9 +44,99 @@ export function registerLibrary(root: THREE.Group): void {
       for (const child of group.children) child.position.sub(offset);
       group.updateMatrixWorld(true);
       separateHeadlightLenses(group);
-    } else group.updateMatrixWorld(true);
+    } else {
+      group.updateMatrixWorld(true);
+      if (name.startsWith("nature:")) batchNatureSurfaces(group);
+    }
     library.set(name, group);
   });
+}
+
+/** Nature is static. Bake diffuse tints into linear vertex colors so equivalent
+ * surfaces share one draw per spatial batch, in both the color and shadow passes.
+ * The resulting geometry/material live with the reusable asset library. */
+function batchNatureSurfaces(model: THREE.Group): void {
+  const batches = new Map<string, BatchableMesh[]>();
+  model.traverseVisible((part) => {
+    if (!isBatchable(part)) return;
+    const key = `${materialBatchKey(part.material)}|${geometryLayoutKey(part.geometry)}`;
+    const batch = batches.get(key);
+    if (batch) batch.push(part);
+    else batches.set(key, [part]);
+  });
+  for (const parts of batches.values()) {
+    if (parts.length < 2) continue;
+    const geometries = parts.map((part) => {
+      const geometry = part.geometry.clone().applyMatrix4(part.matrixWorld);
+      const count = geometry.attributes.position.count;
+      const colors = new Float32Array(count * 3);
+      const existing = part.material.vertexColors ? geometry.getAttribute("color") : undefined;
+      const tint = part.material.color;
+      for (let index = 0; index < count; index++) {
+        colors[index * 3] = tint.r * (existing?.getX(index) ?? 1);
+        colors[index * 3 + 1] = tint.g * (existing?.getY(index) ?? 1);
+        colors[index * 3 + 2] = tint.b * (existing?.getZ(index) ?? 1);
+      }
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return geometry;
+    });
+    const geometry = mergeGeometries(geometries);
+    for (const source of geometries) source.dispose();
+    if (!geometry) continue;
+    const material = parts[0].material.clone();
+    material.color.set(0xffffff);
+    material.vertexColors = true;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `${model.name}:batched`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    for (const part of parts) part.removeFromParent();
+    model.add(mesh);
+    mesh.updateMatrixWorld(true);
+  }
+}
+
+type BatchableMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+
+/** Only rigid, opaque, unmirrored standard surfaces merge cleanly into one draw. */
+function isBatchable(part: THREE.Object3D): part is BatchableMesh {
+  if (!(part instanceof THREE.Mesh) || part instanceof THREE.SkinnedMesh) return false;
+  if (!(part.material instanceof THREE.MeshStandardMaterial)) return false;
+  if (part.material.transparent) return false;
+  if (part.geometry.getAttribute("color")?.itemSize === 4) return false;
+  if (part.geometry.morphAttributes.position) return false;
+  return part.matrixWorld.determinant() > 0;
+}
+
+/** The shading inputs that must match for two surfaces to share a material.
+ * The diffuse colour is deliberately absent: it is baked into vertex colours. */
+function materialBatchKey(material: THREE.MeshStandardMaterial): string {
+  return [
+    material.roughness,
+    material.metalness,
+    material.emissive.getHex(),
+    material.emissiveIntensity,
+    material.opacity,
+    material.alphaTest,
+    material.side,
+    material.flatShading,
+    material.map?.uuid,
+    material.normalMap?.uuid,
+    material.roughnessMap?.uuid,
+    material.metalnessMap?.uuid,
+    material.emissiveMap?.uuid,
+    material.aoMap?.uuid,
+  ].join(",");
+}
+
+/** Attribute layouts must match for merging (UVs, normals, tangents, etc.). */
+function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
+  const layout = Object.entries(geometry.attributes)
+    .map(([name, attribute]) =>
+      `${name}:${attribute.itemSize}:${attribute.normalized}:${attribute.array.constructor.name}`)
+    .sort()
+    .join(";");
+  return `${Boolean(geometry.index)}|${layout}`;
 }
 
 /** The authored front lenses coincide with the enamel. Keep a physical gap so

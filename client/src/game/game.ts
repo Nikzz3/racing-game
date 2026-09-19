@@ -133,8 +133,12 @@ export class Game {
     this.bundle.renderer.setSize(width, height);
   };
   private visibility = (): void => {
-    if (!document.hidden) this.previous = performance.now();
+    if (!document.hidden) this.restartFrameClock();
   };
+  /** Discard wall time that no longer belongs to the car being rendered. */
+  private restartFrameClock(): void {
+    this.previous = performance.now();
+  }
   private spawn(): void {
     this.car.spawnAtSample(
       this.track.samples.length - 14,
@@ -143,6 +147,7 @@ export class Game {
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
     snapBehindCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading);
+    this.restartFrameClock();
   }
   private respawn(): void {
     this.net.send({ type: "respawn" });
@@ -240,24 +245,24 @@ export class Game {
     this.previous = now;
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
-    let injecting = false;
+    const injecting = Boolean(this.seam?.driving);
     if (this.seam?.driving) {
       dt = this.seam.advance(elapsed, 3);
-      injecting = true;
     } else {
       input = this.autopilot
         ? autopilotInput(this.car, this.track.samples, 12)
         : this.input.read(dt);
       this.car.advance(elapsed, input);
     }
-    this.carMesh.position.set(this.car.x, 0, this.car.z);
-    this.carMesh.rotation.y = this.car.heading;
-    animateCar(this.carMesh, this.car.speed, input.steer, dt);
+    const pose = injecting ? this.car : this.car.getRenderPose();
+    this.carMesh.position.set(pose.x, 0, pose.z);
+    this.carMesh.rotation.y = pose.heading;
+    animateCar(this.carMesh, pose.speed, input.steer, dt);
     this.remote.update(dt);
     this.checkCrossing(now);
     this.pacer?.update(now, dt);
-    followCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading, dt);
-    updateSun(this.bundle.sun, this.car.x, this.car.z);
+    followCar(this.bundle.camera, pose.x, pose.z, pose.heading, dt);
+    updateSun(this.bundle.sun, pose.x, pose.z);
     this.hud.setSpeed(this.car.speed);
     this.hud.setPosition(this.car.x, this.car.z);
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);

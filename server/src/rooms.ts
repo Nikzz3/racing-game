@@ -102,6 +102,7 @@ export class Room {
       bestLapMs: player.timing.bestLapMs,
       lapStartT: player.timing.lapStartT,
       nextCheckpoint: player.timing.next,
+      spawns: player.timing.spawns,
     }));
   }
 }
