@@ -6,6 +6,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const RELEASES_URL = "https://github.com/Nikzz3/racing-game/releases";
+// Dropped into Contents/Resources by scripts/after-pack.cjs when the macOS bundle
+// was only ad-hoc signed.
+const UNSIGNED_MARKER = "unsigned-build";
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const APP_SCHEME = "app";
 const APP_ORIGIN = `${APP_SCHEME}://bundle`;
@@ -193,12 +196,14 @@ function updateBusy(): boolean {
  * code-signed, and electron-updater surfaces that as an `error` after the zip has
  * already been fetched (see MacUpdater.doDownloadUpdate, which rejects on the native
  * updater's error once `autoInstallOnAppQuit` triggers the native check). There is
- * no API that answers "is this bundle signed?", and a build-time flag would drift
- * from whatever certificate the CI run actually had. So on darwin we simply try:
- * if a download/install attempt fails we fall back to `available` with
- * `canInstall: false`, and the next click opens the releases page so the player
- * can grab the dmg by hand. Signed mac builds never hit that path and install
- * in place like Windows and Linux.
+ * no runtime API that answers "is this bundle signed?", but the afterPack hook
+ * knows whether a certificate was in play and leaves an `unsigned-build` marker
+ * when it had to ad-hoc sign. Such builds offer the release with `canInstall:
+ * false` straight away, skipping a download that could never be installed, and
+ * the click opens the releases page so the player can grab the dmg by hand. Should
+ * the marker be missing yet the install still fail (a mismatched certificate, say)
+ * the `error` listener falls back to the same state. Signed mac builds install in
+ * place like Windows and Linux.
  */
 function setupAutoUpdater(): void {
   ipcMain.handle("desktop:update:state", () => updateState);
@@ -207,6 +212,10 @@ function setupAutoUpdater(): void {
     ipcMain.handle("desktop:update:install", () => {});
     return;
   }
+
+  const canInstallInPlace =
+    process.platform !== "darwin" || !existsSync(path.join(process.resourcesPath, UNSIGNED_MARKER));
+  if (!canInstallInPlace) console.info("desktop: unsigned macOS build; updates are offered as downloads");
 
   const updater = electronUpdater.autoUpdater;
   updater.autoDownload = false;
@@ -222,7 +231,7 @@ function setupAutoUpdater(): void {
   });
   updater.on("update-available", (info) => {
     offered = info.version;
-    publishUpdateState({ status: "available", version: info.version, canInstall: true });
+    publishUpdateState({ status: "available", version: info.version, canInstall: canInstallInPlace });
   });
   updater.on("update-not-available", () => {
     offered = null;

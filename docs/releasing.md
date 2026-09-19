@@ -59,8 +59,9 @@ restarts.
 - **Windows and Linux** install in place, unsigned or not. A Linux install that was not
   started through the AppImage runtime (extracted bundle, snap) cannot self-update; the
   control then reads `Get updates` and opens the releases page.
-- **macOS** can only install in place when the app is code-signed. Unsigned builds detect the
-  update and open the releases page instead.
+- **macOS** can only install in place when the app is code-signed. Unsigned builds (no
+  `CSC_LINK` secret) are marked as such at package time; they show the new version as a
+  download and open the releases page instead of fetching an update they cannot install.
 
 ## Configuration that feeds a release
 

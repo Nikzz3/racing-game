@@ -86,8 +86,11 @@ Every asset follows `artifactName` in `electron-builder.yml`
 derives its download links from that template, so change both together.
 
 macOS can only install updates into a code-signed app (Squirrel.Mac rejects unsigned
-bundles). When the download or install fails on macOS the button falls back to
-"Download vX.Y.Z" and opens the releases page instead. Windows (NSIS) and Linux
+bundles). `scripts/after-pack.cjs` leaves an `unsigned-build` marker in
+`Contents/Resources` when it had to ad-hoc sign, and such builds skip the download:
+the button reads "Download vX.Y.Z" and opens the releases page. Signed builds (a
+`CSC_LINK` certificate in CI) carry no marker and install in place; if the install
+still fails the button falls back to the same download state. Windows (NSIS) and Linux
 (AppImage) install in place regardless of signing.
 
 To exercise the updater locally you need a packaged build (`npm run dist -w desktop`)
