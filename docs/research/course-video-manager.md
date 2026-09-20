@@ -91,19 +91,19 @@ jobs:
 
 ([agent-implement.yml](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/.github/workflows/agent-implement.yml))
 
-So in the production path there is **no `gh issue list` polling** — a label *event* fires a
+So in the production path there is **no `gh issue list` polling** — a label _event_ fires a
 single-issue run. The eight triggers:
 
-| Workflow file | Trigger label / event | Purpose |
-| --- | --- | --- |
-| `agent-to-issues-prd.yml` | issue `agent:to-issues` | Decompose PRD → flat native sub-issues |
-| `agent-implement.yml` | issue `agent:implement` (no sub-issues) | Implement one issue → draft PR |
-| `agent-implement-prd.yml` | issue `agent:implement` (has sub-issues) | Implement next sub-issue, chain until PRD done |
-| `agent-review.yml` | PR `agent:review` | Review **and improve** the PR |
-| `agent-implement-pr.yml` | PR `agent:implement` | Address unresolved review feedback |
-| `agent-update-branch.yml` | PR `agent:update-branch` | Merge base in (agent only if conflicts) |
-| `agent-promote-queued.yml` | issue **closed** | Promote `agent:queued` whose blockers cleared |
-| `architecture-review.yml` | daily `schedule` | Propose one improvement PRD per weekday |
+| Workflow file              | Trigger label / event                    | Purpose                                        |
+| -------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| `agent-to-issues-prd.yml`  | issue `agent:to-issues`                  | Decompose PRD → flat native sub-issues         |
+| `agent-implement.yml`      | issue `agent:implement` (no sub-issues)  | Implement one issue → draft PR                 |
+| `agent-implement-prd.yml`  | issue `agent:implement` (has sub-issues) | Implement next sub-issue, chain until PRD done |
+| `agent-review.yml`         | PR `agent:review`                        | Review **and improve** the PR                  |
+| `agent-implement-pr.yml`   | PR `agent:implement`                     | Address unresolved review feedback             |
+| `agent-update-branch.yml`  | PR `agent:update-branch`                 | Merge base in (agent only if conflicts)        |
+| `agent-promote-queued.yml` | issue **closed**                         | Promote `agent:queued` whose blockers cleared  |
+| `architecture-review.yml`  | daily `schedule`                         | Propose one improvement PRD per weekday        |
 
 (Triggers from the spec table and confirmed against `agent-implement.yml`;
 [afk-agent-platform-spec.md §1](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/docs/agents/afk-agent-platform-spec.md).)
@@ -124,7 +124,7 @@ single-issue run. The eight triggers:
   Branch names are **deterministic** (`sandcastle/issue-{number}-{slug}`), so re-planning the
   same issue reuses the same branch and accumulates progress rather than duplicating it
   ([plan-prompt.md](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/.sandcastle/plan-prompt.md)).
-  There is **no label to prevent re-processing** — an unclosed issue *will* be picked again.
+  There is **no label to prevent re-processing** — an unclosed issue _will_ be picked again.
 
 ### Production platform (variant B) — a full label state machine
 
@@ -138,7 +138,7 @@ seen live in `agent-implement.yml`):
 4. **On refusal (preflight):** remove trigger, add `agent:blocked`, comment why.
 
 **`agent:in-progress` doubles as a lock**, and idempotency is enforced by preflights: the
-implement workflow computes issue *shape* (sub-issues via REST `…/sub_issues`, parent via
+implement workflow computes issue _shape_ (sub-issues via REST `…/sub_issues`, parent via
 GraphQL) to route PRD vs standalone vs "refuse — label the parent," and refuses if an open PR
 already targets the issue
 ([agent-implement.yml](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/.github/workflows/agent-implement.yml)).
@@ -153,8 +153,8 @@ Two coexisting layers under
 
 **Variant A (planner loop):** `main.ts` + four prompt files — `plan-prompt.md`,
 `implement-prompt.md`, `review-prompt.md`, `merge-prompt.md`. Phases: **Plan** (1 agent) →
-**Execute+Review** (per issue: implement in a fresh Docker sandbox, then review *only if the
-implement produced commits*, up to `MAX_PARALLEL = 4`, `MAX_ITERATIONS = 10`) → **Merge** (1
+**Execute+Review** (per issue: implement in a fresh Docker sandbox, then review _only if the
+implement produced commits_, up to `MAX_PARALLEL = 4`, `MAX_ITERATIONS = 10`) → **Merge** (1
 agent). Model: **`claude-opus-4-6` for every stage**. Plan output parsed from `<plan>` tags by
 **regex** (`plan.stdout.match(/<plan>…<\/plan>/)`), not a schema. Implement commits use a
 **`RALPH:` prefix**
@@ -183,7 +183,7 @@ side effects), `parse-diff-lines.ts` (drops hallucinated inline anchors). Refere
 `@ai-hero/sandcastle` driving `claudeCode("claude-opus-4-6")` in a `noSandbox()` sandbox,
 `OUTPUT_DIR = runner.temp`
 ([spec §3.8, Appendix A](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/docs/agents/afk-agent-platform-spec.md)).
-**Core seam:** the runner *only emits files*; the orchestrator (Actions) owns **all** label /
+**Core seam:** the runner _only emits files_; the orchestrator (Actions) owns **all** label /
 comment / push / PR / close mutations — the agent never holds a GitHub token, which is what
 makes the runner swappable and unit-testable
 ([spec §0, §3.8](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/docs/agents/afk-agent-platform-spec.md)).
@@ -202,18 +202,18 @@ platform:
   `ready-for-agent` ("PRD ready for an implementing agent to pick up") — the same coexistence
   our repo has.
 - **Dispatch action:** the `agent:*` execution labels — `agent:implement` is the one that
-  *fires* a run; `agent:to-issues`, `agent:review`, `agent:queued`, `agent:in-progress`,
+  _fires_ a run; `agent:to-issues`, `agent:review`, `agent:queued`, `agent:in-progress`,
   `agent:blocked`, `agent:update-branch` carry the rest of the state machine
   ([triage-labels.md](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/docs/agents/triage-labels.md)).
 
 The triage label **triggers nothing** on its own. A human (or the Promote-Queued workflow)
-applies `agent:implement` to dispatch. In other words: *classification and dispatch are
-decoupled* — a human marks an issue ready (`Sandcastle`/`ready-for-agent`), and a separate,
+applies `agent:implement` to dispatch. In other words: _classification and dispatch are
+decoupled_ — a human marks an issue ready (`Sandcastle`/`ready-for-agent`), and a separate,
 deliberate act (`agent:implement`) starts the agent. `agent:queued` is the buffer between them:
 human-applied, auto-promoted to `agent:implement` only when native blockers clear
 ([queued-promotion.md](https://github.com/mattpocock/course-video-manager/blob/80a8f30cb3e665bd3826170d4335229e81d3563e/docs/agents/queued-promotion.md)).
 
-**Note the wrinkle:** his *planner-loop template* (variant A) collapses this — no label at all,
+**Note the wrinkle:** his _planner-loop template_ (variant A) collapses this — no label at all,
 every open issue is fair game. The two-label separation is a property of the **mature platform**,
 not the template. Our repo currently sits in between: we run the template but bolted a single
 `ready-for-agent` gate onto the planner's `gh issue list`.
@@ -223,17 +223,17 @@ not the template. Our repo currently sits in between: we run the template but bo
 Since he owns the tool, differences are signal. Comparing his repo to ours
 (`/var/home/nick/Code/racing-game/.sandcastle/`, `docs/agents/`, live `gh label list`):
 
-| Dimension | His planner template | His production platform | Our racing-game |
-| --- | --- | --- | --- |
-| Dispatch | `pnpm sandcastle` batch loop | `issues:[labeled]` events | batch loop (`main.ts`) |
-| Trigger label | **none** (all open issues) | `agent:implement` | **`ready-for-agent`** filter on `gh issue list` |
-| Ready/triage label | — | `Sandcastle` (=`ready-for-agent`) | `ready-for-agent` **and** `Sandcastle` both exist |
-| `agent:*` state labels | none | full set (`in-progress` lock, `blocked`, `review`, `queued`, …) | **none** |
-| Model per stage | opus-4-6 everywhere | opus-4-6 | opus-4-8 (plan/review/merge), **sonnet-4-6** (implement) |
-| Plan parsing | `<plan>` regex | schema-validated JSON | `Output.object` + Zod schema |
-| Sandbox | Docker | `noSandbox()` (CI) | **podman** |
-| Integration | merge to **current/main**, self-close | **nothing auto-merges** (human gate) | **`integration/sandcastle` branch**, "do NOT merge to master" |
-| Idempotency | deterministic branch name + close-on-merge | `agent:in-progress` lock + PR preflight | `ready-for-agent` gate + close-on-merge |
+| Dimension              | His planner template                       | His production platform                                         | Our racing-game                                               |
+| ---------------------- | ------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| Dispatch               | `pnpm sandcastle` batch loop               | `issues:[labeled]` events                                       | batch loop (`main.ts`)                                        |
+| Trigger label          | **none** (all open issues)                 | `agent:implement`                                               | **`ready-for-agent`** filter on `gh issue list`               |
+| Ready/triage label     | —                                          | `Sandcastle` (=`ready-for-agent`)                               | `ready-for-agent` **and** `Sandcastle` both exist             |
+| `agent:*` state labels | none                                       | full set (`in-progress` lock, `blocked`, `review`, `queued`, …) | **none**                                                      |
+| Model per stage        | opus-4-6 everywhere                        | opus-4-6                                                        | opus-4-8 (plan/review/merge), **sonnet-4-6** (implement)      |
+| Plan parsing           | `<plan>` regex                             | schema-validated JSON                                           | `Output.object` + Zod schema                                  |
+| Sandbox                | Docker                                     | `noSandbox()` (CI)                                              | **podman**                                                    |
+| Integration            | merge to **current/main**, self-close      | **nothing auto-merges** (human gate)                            | **`integration/sandcastle` branch**, "do NOT merge to master" |
+| Idempotency            | deterministic branch name + close-on-merge | `agent:in-progress` lock + PR preflight                         | `ready-for-agent` gate + close-on-merge                       |
 
 (Our-side facts from `/var/home/nick/Code/racing-game/.sandcastle/main.ts`, `plan-prompt.md`,
 `merge-prompt.md`, and `gh label list`.)

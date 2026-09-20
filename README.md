@@ -15,12 +15,12 @@ The same game is also packaged as a desktop app. Grab the installer for your pla
 from the [latest release](https://github.com/Nikzz3/racing-game/releases/latest); files
 are named `Sunset-Ridge-Racing-<version>-<os>-<arch>.<ext>`.
 
-| Platform | File |
-|---|---|
-| macOS (Apple Silicon) | `Sunset-Ridge-Racing-<version>-mac-arm64.dmg` |
-| macOS (Intel) | `Sunset-Ridge-Racing-<version>-mac-x64.dmg` |
-| Windows (x64) | `Sunset-Ridge-Racing-<version>-win-x64.exe` |
-| Linux (x64) | `Sunset-Ridge-Racing-<version>-linux-x86_64.AppImage` |
+| Platform              | File                                                  |
+| --------------------- | ----------------------------------------------------- |
+| macOS (Apple Silicon) | `Sunset-Ridge-Racing-<version>-mac-arm64.dmg`         |
+| macOS (Intel)         | `Sunset-Ridge-Racing-<version>-mac-x64.dmg`           |
+| Windows (x64)         | `Sunset-Ridge-Racing-<version>-win-x64.exe`           |
+| Linux (x64)           | `Sunset-Ridge-Racing-<version>-linux-x86_64.AppImage` |
 
 The installers are unsigned, so the first launch needs one extra step:
 
@@ -30,6 +30,7 @@ The installers are unsigned, so the first launch needs one extra step:
   ```bash
   xattr -cr "/Applications/Sunset Ridge Racing.app"
   ```
+
 - **Windows**: in the SmartScreen dialog, click "More info", then "Run anyway".
 - **Linux**: `chmod +x` the AppImage, then run it (or add it to Steam as a non-Steam game).
 

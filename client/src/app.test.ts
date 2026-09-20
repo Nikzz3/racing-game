@@ -13,7 +13,9 @@ vi.mock("./net", () => ({
   Net: class {
     connect = connect;
     onMessage() {}
-    onStatus(callback: (state: ConnectionState) => void) { reportStatus = callback; }
+    onStatus(callback: (state: ConnectionState) => void) {
+      reportStatus = callback;
+    }
   },
 }));
 vi.mock("./game/game", () => ({ Game: class {} }));
@@ -34,7 +36,9 @@ beforeEach(() => {
 });
 afterEach(async () => {
   vi.useRealTimers();
-  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
   document.body.replaceChildren();
 });
 
@@ -110,9 +114,7 @@ describe("reconnect notices", () => {
   });
 
   it("suppresses deliberate cancellation while showing genuine connection failures", async () => {
-    connect.mockRejectedValueOnce(
-      new DOMException("Connection superseded", "AbortError"),
-    );
+    connect.mockRejectedValueOnce(new DOMException("Connection superseded", "AbortError"));
     const app = new RacingApp(document.body);
     await app.start();
     expect(document.querySelector(".connect-error")).toBeNull();
@@ -128,7 +130,11 @@ describe("reconnect notices", () => {
 describe("initial garage loading", () => {
   it("covers the lobby until assets resolve and the garage has initialized", async () => {
     let complete!: () => void;
-    loadAssets.mockReturnValue(new Promise<void>((resolve) => { complete = resolve; }));
+    loadAssets.mockReturnValue(
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+    );
     new RacingApp(document.body);
     expect(document.querySelector(".game-loading")).not.toBeNull();
     expect(paintGarage).not.toHaveBeenCalled();
@@ -140,8 +146,12 @@ describe("initial garage loading", () => {
   it("keeps recovery controls available when the garage cannot initialize", async () => {
     paintGarage.mockReturnValue(false);
     new RacingApp(document.body);
-    await vi.waitFor(() => expect(document.querySelector<HTMLElement>(".game-loading")?.dataset.state).toBe("error"));
+    await vi.waitFor(() =>
+      expect(document.querySelector<HTMLElement>(".game-loading")?.dataset.state).toBe("error"),
+    );
     expect(document.querySelector(".game-loading.is-ready")).toBeNull();
-    expect(document.querySelector(".loading-status")!.textContent).toContain("could not start on this device");
+    expect(document.querySelector(".loading-status")!.textContent).toContain(
+      "could not start on this device",
+    );
   });
 });

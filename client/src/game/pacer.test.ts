@@ -13,7 +13,7 @@ import { createCarMesh, resolveVariant } from "./car";
 import { pacerPoseAt, pacerCheckpointTimes, pacerDelta, PacerOverlay } from "./pacer";
 
 const frames: ReplayFrame[] = [
-  [0,   0,  0,  0, 0],
+  [0, 0, 0, 0, 0],
   [100, 10, 20, 1, 5],
   [200, 30, 40, 2, 10],
 ];
@@ -43,10 +43,12 @@ describe("pacerPoseAt", () => {
   });
 });
 
-
 describe("pacerCheckpointTimes", () => {
   it("returns an array of nulls when frames are empty", () => {
-    const cps = [{ x: 0, z: 0 }, { x: 50, z: 0 }];
+    const cps = [
+      { x: 0, z: 0 },
+      { x: 50, z: 0 },
+    ];
     expect(pacerCheckpointTimes([], cps)).toEqual([null, null]);
   });
 
@@ -61,7 +63,7 @@ describe("pacerCheckpointTimes", () => {
 
   it("returns the first frame's time when the scan starts inside the radius", () => {
     const f: ReplayFrame[] = [
-      [0,   0, 0, 0, 5],
+      [0, 0, 0, 0, 5],
       [100, 20, 0, 0, 5],
     ];
     const times = pacerCheckpointTimes(f, [{ x: 0, z: 0 }]);
@@ -71,8 +73,8 @@ describe("pacerCheckpointTimes", () => {
   it("interpolates the entry time when the Pacer crosses the radius boundary between frames", () => {
     // (-20,0) → (4,0) over 200 ms enters the default radius 8 at x=-8: half way.
     const f: ReplayFrame[] = [
-      [0,  -20, 0, 0, 5],
-      [200,  4, 0, 0, 5],
+      [0, -20, 0, 0, 5],
+      [200, 4, 0, 0, 5],
     ];
     const times = pacerCheckpointTimes(f, [{ x: 0, z: 0 }]);
     expect(times[0]).not.toBeNull();
@@ -81,11 +83,15 @@ describe("pacerCheckpointTimes", () => {
 
   it("returns monotonically non-decreasing times for checkpoints in lap order", () => {
     const f: ReplayFrame[] = [
-      [0,   0,   0, 0, 5],
-      [500, 50,  0, 0, 5],
+      [0, 0, 0, 0, 5],
+      [500, 50, 0, 0, 5],
       [1000, 100, 0, 0, 5],
     ];
-    const cps = [{ x: 0, z: 0 }, { x: 50, z: 0 }, { x: 100, z: 0 }];
+    const cps = [
+      { x: 0, z: 0 },
+      { x: 50, z: 0 },
+      { x: 100, z: 0 },
+    ];
     const times = pacerCheckpointTimes(f, cps);
 
     const nonNull = times.filter((t): t is number => t !== null);
@@ -101,7 +107,10 @@ describe("pacerCheckpointTimes", () => {
       [500, 100, 0, 0, 5],
       [1000, 200, 0, 0, 5],
     ];
-    const cps = [{ x: 100, z: 0 }, { x: 0, z: 0 }];
+    const cps = [
+      { x: 100, z: 0 },
+      { x: 0, z: 0 },
+    ];
     // Enters radius 8 around x=100 at x=92: 92% of the first segment.
     expect(pacerCheckpointTimes(f, cps)).toEqual([460, null]);
   });
@@ -113,14 +122,13 @@ describe("pacerCheckpointTimes", () => {
       [0, -50, 0, 0, 5],
       [500, 0, 0, 0, 5],
     ];
-    const cps = [{ x: 0, z: 0 }, { x: 3, z: 0 }];
-    expect(pacerCheckpointTimes(f, cps)).toEqual([
-      expect.any(Number),
-      500,
-    ]);
+    const cps = [
+      { x: 0, z: 0 },
+      { x: 3, z: 0 },
+    ];
+    expect(pacerCheckpointTimes(f, cps)).toEqual([expect.any(Number), 500]);
   });
 });
-
 
 describe("pacerDelta", () => {
   const pacerTimes: (number | null)[] = [0, 500, 1000, null];
@@ -137,7 +145,6 @@ describe("pacerDelta", () => {
     expect(pacerDelta(pacerTimes, 99, 1000)).toBeNull();
   });
 });
-
 
 /** A car with distinctly non-default paint, so "keeps its colour" is a real assertion. */
 const CAR_PAINT = 0xc0392b;

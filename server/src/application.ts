@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { WebSocket } from "ws";
-import {
-  parseClientMessage,
-  type ClientMessage,
-  type ServerMessage,
-} from "@racing/shared";
+import { WebSocket, type RawData } from "ws";
+import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -14,6 +10,13 @@ import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
 
 const MAX_NAME_LENGTH = 16;
+
+/** ws hands text frames over as a Buffer, but its `RawData` type also admits an
+ *  ArrayBuffer (whose `toString()` is "[object ArrayBuffer]") and Buffer chunks. */
+function rawToString(raw: RawData): string {
+  if (Array.isArray(raw)) return Buffer.concat(raw).toString();
+  return Buffer.isBuffer(raw) ? raw.toString() : Buffer.from(raw).toString();
+}
 
 export class RacingApplication {
   readonly rooms = new RoomManager();
@@ -35,7 +38,7 @@ export class RacingApplication {
 
     socket.on("message", (raw) => {
       try {
-        const message = parseClientMessage(JSON.parse(raw.toString()));
+        const message = parseClientMessage(JSON.parse(rawToString(raw)));
         if (!message) return;
         if (ready) this.receive(player, message);
         else if (pending.length < 128) pending.push(message);
@@ -170,7 +173,7 @@ export class RacingApplication {
     }
     // The lap is broadcast only after the record comparison so isTrackRecord
     // is right; position snapshots keep flowing meanwhile.
-    this.boardWrites.enqueue(`${room.track.id}:${room.difficulty}`, async () => {
+    void this.boardWrites.enqueue(`${room.track.id}:${room.difficulty}`, async () => {
       try {
         const record = await bestTime(room.track.id, room.difficulty);
         const changed = await submitLap(

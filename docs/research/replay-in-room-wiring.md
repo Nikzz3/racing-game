@@ -94,8 +94,8 @@ in this game at all — the only collision in `CarPhysics` is against track barr
 ### ADR / glossary position
 
 - `docs/adr/0002-ai-reference-lap-viewer.md:9-10, 18-20` — only the **AI Reference
-  Lap** is barred from Rooms ("a *viewer*, not a driver in a Room"; the rejected option
-  was running the *policy* live as a Room bot/ghost). Issue #27 is right that a persisted
+  Lap** is barred from Rooms ("a _viewer_, not a driver in a Room"; the rejected option
+  was running the _policy_ live as a Room bot/ghost). Issue #27 is right that a persisted
   human Replay overlay is not covered by that restriction.
 - `CONTEXT.md:31-33` — the glossary defines Replay as "rendered as a single car
   following a chase camera", which the new feature changes; the entry (and its and

@@ -9,7 +9,7 @@ preload scripts are otherwise compiled TypeScript, and it never runs Vite or a d
 `extraResources` and served over a custom `app://` protocol, so the client is built with
 a relative base (`vite build --base=./`) and is otherwise the same bundle the web deploy
 ships. Packaging uses **electron-builder**, driven by a `v<version>` git tag. Publishing
-is deliberately *not* left to electron-builder: each platform job packages with
+is deliberately _not_ left to electron-builder: each platform job packages with
 `--publish never` and uploads its installers as a workflow artifact, and one `release`
 job assembles them into a single published GitHub release with generated notes. Letting
 each platform publish for itself raced and produced one draft per platform for the same

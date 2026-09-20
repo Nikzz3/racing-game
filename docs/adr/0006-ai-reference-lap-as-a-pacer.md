@@ -4,12 +4,12 @@ Partially supersedes ADR-0004.
 
 ADR-0004 admitted persisted human **Replays** as **Pacers** in live Rooms and kept the AI
 **Reference Lap** out — recording that exclusion as "a scoping choice, not a physics
-constraint", and explicitly reserving the reopening: *"a later effort to run an AI Pacer can
-reopen it cleanly by superseding this ADR, without relitigating physics."* This is that
+constraint", and explicitly reserving the reopening: _"a later effort to run an AI Pacer can
+reopen it cleanly by superseding this ADR, without relitigating physics."_ This is that
 effort, and this ADR replaces only that scope line. ADR-0004's human-Pacer decision stands.
 ADR-0002, which governs the standalone Reference Lap viewer, stands untouched.
 
-What PRD #7 and ADR-0002 rejected was AI decisions made *in the race loop* — running the
+What PRD #7 and ADR-0002 rejected was AI decisions made _in the race loop_ — running the
 policy live as a Room bot, where variable browser `dt` diverges the driven lap from the
 validated record. Pacer playback never does that: it is pose interpolation of a fixed
 record, identical in kind to a human Replay's playback.
@@ -21,7 +21,7 @@ policy at the Difficulty that policy was trained at. It is armed from the lobby'
 picker exactly as a human Replay is, and plays back through the same overlay.
 
 The boundary: **no policy forward pass at race time.** The deterministic fixed-1/60s bake
-(`runPolicyLap` → `ReplayFrame[]`) runs at *selection time* — specifically, when the lobby
+(`runPolicyLap` → `ReplayFrame[]`) runs at _selection time_ — specifically, when the lobby
 board first renders in a context where the AI is eligible — and its output is memoized for
 the page. In a running race, only pose interpolation of those baked frames occurs.
 
@@ -42,7 +42,7 @@ the page. In a running race, only pose interpolation of those baked frames occur
    bake at selection time; in a running race, only pose interpolation.
 2. **Baked-pose only.** The AI Pacer plays exactly the `ReplayFrame[]` the validated record
    produces — identical every time, immune to frame rate.
-3. **Never a leaderboard row.** The AI's lap renders *among* leaderboard rows but is
+3. **Never a leaderboard row.** The AI's lap renders _among_ leaderboard rows but is
    synthesized client-side, is never a `LeaderboardEntry`, is never persisted, and is never
    sent by the server. ADR-0001's honest-human-records line stands: the AI Pacer writes
    nothing and ranks nothing, and consumes no rank number.

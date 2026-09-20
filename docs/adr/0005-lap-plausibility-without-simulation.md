@@ -5,7 +5,7 @@ client-side), yet lap timing and leaderboard writes are driven entirely by
 client-reported positions, so a hostile client can fabricate an arbitrarily fast
 lap and overwrite Track Records (issue #38). We decided to gate **persistence
 only** (`best_laps`/`replays` — everything downstream: Track Record, Replay,
-Pacer) on the lap being a *Plausible Lap*, checked with physics **bounds**, not
+Pacer) on the lap being a _Plausible Lap_, checked with physics **bounds**, not
 physics **simulation**: the reported trajectory may not cover more distance in
 any ~1-second window than the Room Difficulty's max speed allows (×1.1
 tolerance for network burst delivery), and the lap time may not beat a floor of
@@ -19,7 +19,7 @@ and the RL harness); the rest of the tuning stays client-private.
   the no-simulation stance and roughly doubles the physics surface to keep in
   sync.
 - **Do nothing / defer to identity (claim codes, #31)** — identity stops
-  *impersonation* but not fabricated laps under your own name.
+  _impersonation_ but not fabricated laps under your own name.
 - **Plausibility bounds (chosen)** — bounds what a cheater can gain to roughly
   10–20% over honest pace (sustained-cap driving through corners), rather than
   making cheating impossible. This residual is accepted.

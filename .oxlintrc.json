@@ -1,0 +1,66 @@
+{
+  // oxlint config (JSONC). Docs: https://oxc.rs/docs/guide/usage/linter/config
+  // Type-aware rules (`--type-aware`, via oxlint-tsgolint) read each workspace's tsconfig.json.
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    // `window.__game` / `__autopilot` are deliberate seams; ESM tests recreate `__dirname`.
+    "no-underscore-dangle": "off",
+    // `el.onclick = fn` is used where re-showing a widget must replace the handler, not stack one.
+    "unicorn/prefer-add-event-listener": "off",
+    // Both tsconfigs target lib ES2022, which has no `toSorted`; the code copies before sorting.
+    "unicorn/no-array-sort": "off",
+    // Side-effect imports are how CSS and dotenv are loaded.
+    "import/no-unassigned-import": "off",
+    // Parsed JSON and DOM datasets are narrowed with `as` on purpose throughout.
+    "typescript/no-unsafe-type-assertion": "off",
+    // Flags the `find<T extends HTMLElement>(selector)` querySelector wrapper pattern.
+    "typescript/no-unnecessary-type-parameters": "off",
+    // Top-level `test()` from node:test is not meant to be awaited (desktop/scripts/*.test.cjs).
+    "typescript/no-floating-promises": [
+      "error",
+      { "allowForKnownSafeCalls": [{ "from": "package", "name": "test", "package": "node:test" }] }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["e2e/fixtures/**"],
+      "rules": {
+        // Playwright requires fixture functions to destructure their first argument (`{}` when unused).
+        "no-empty-pattern": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        // `vi.mocked(pool.query)` / `expect(obj.method)` are the vitest mocking idiom.
+        "typescript/unbound-method": "off",
+        // `vi.mock(..., () => ({ Game: class {} }))` stubs and `new App(root)` under test.
+        "typescript/no-extraneous-class": "off",
+        "no-new": "off"
+      }
+    }
+  ],
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/release/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "rl/**",
+    "assets/**",
+    "**/*.json",
+    ".sandcastle/worktrees/**",
+    ".sandcastle/logs/**"
+  ]
+}

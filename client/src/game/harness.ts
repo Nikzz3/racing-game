@@ -62,8 +62,7 @@ export class CheckpointTracker {
 
     let lapMs: number | null = null;
     if (this.next === 0) {
-      if (this.lapStartStep !== null)
-        lapMs = (step - this.lapStartStep) * DT * 1000;
+      if (this.lapStartStep !== null) lapMs = (step - this.lapStartStep) * DT * 1000;
       this.lapStartStep = step;
     }
     this.next = (this.next + 1) % this.checkpoints.length;
@@ -105,8 +104,7 @@ function runLap(
     car.update(DT, input);
     trajectory.push(snapshot(car));
     const lapMs = tracker.update(car.x, car.z, step);
-    if (lapMs !== null)
-      return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
+    if (lapMs !== null) return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
   }
   return null;
 }
@@ -181,9 +179,7 @@ function computePolicyObs(car: CarPhysics, samples: TrackSample[]): number[] {
     const aheadH = Math.atan2(ahead.dirX, ahead.dirZ);
     return normalizeAngle(aheadH - trackHeading) / Math.PI;
   });
-  return [lateral, headingErr, speedNorm, ...curvatures].map((v) =>
-    Math.max(-3, Math.min(3, v)),
-  );
+  return [lateral, headingErr, speedNorm, ...curvatures].map((v) => Math.max(-3, Math.min(3, v)));
 }
 
 /** VecNormalize stats, then tanh-MLP, then the action-space clip. */
@@ -191,15 +187,14 @@ export function policyForward(obs: number[], policy: PolicyWeights): number[] {
   // Clamp to [-5, 5] like VecNormalize clip_obs=5.0 in train.py; without it the
   // network sees out-of-distribution values when the car deviates sharply.
   let x = obs.map((v, i) => {
-    const normalized =
-      (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
+    const normalized = (v - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
     return Math.max(-5, Math.min(5, normalized));
   });
   const numLayers = policy.layers.length;
   for (let i = 0; i < numLayers; i++) {
     const { weight, bias } = policy.layers[i];
     const prev = x;
-    x = new Array<number>(weight.length);
+    x = Array.from<number>({ length: weight.length });
     const hidden = i < numLayers - 1;
     for (let j = 0; j < weight.length; j++) {
       const row = weight[j];
@@ -216,15 +211,9 @@ export function policyForward(obs: number[], policy: PolicyWeights): number[] {
 }
 
 /** Runs the exported policy against the real CarPhysics from the fixed spawn. */
-export function runPolicyLap(
-  policy: PolicyWeights,
-  options: RunOptions = {},
-): RunResult | null {
+export function runPolicyLap(policy: PolicyWeights, options: RunOptions = {}): RunResult | null {
   return runLap(options, (car, samples) => {
-    const [steer, longitudinal] = policyForward(
-      computePolicyObs(car, samples),
-      policy,
-    );
+    const [steer, longitudinal] = policyForward(computePolicyObs(car, samples), policy);
     return {
       steer,
       throttle: Math.max(0, longitudinal),

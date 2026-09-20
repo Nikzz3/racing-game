@@ -4,7 +4,9 @@ import { getModel, preloadModels, registerLibrary } from "./models";
 
 function meshesOf(object: THREE.Object3D): THREE.Mesh[] {
   const meshes: THREE.Mesh[] = [];
-  object.traverse((part) => { if (part instanceof THREE.Mesh) meshes.push(part); });
+  object.traverse((part) => {
+    if (part instanceof THREE.Mesh) meshes.push(part);
+  });
   return meshes;
 }
 
@@ -34,7 +36,7 @@ it("batches static nature surfaces without changing their world positions or lin
   for (const [index, color] of colors.entries()) {
     const branch = new THREE.Group();
     branch.position.set(index * 3, 1, 2);
-    branch.rotation.y = index * Math.PI / 4;
+    branch.rotation.y = (index * Math.PI) / 4;
     const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color }));
     mesh.scale.set(1, 2, 3);
     branch.add(mesh);

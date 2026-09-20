@@ -53,6 +53,14 @@ The Playwright project runs with `reducedMotion: "reduce"` and a 640×480 viewpo
 canvas cost under software WebGL scales with pixels. A test that asserts layout or
 captures a screenshot sets its own viewport.
 
+The Chromium project also launches with `--enable-unsafe-swiftshader --use-gl=angle
+--use-angle=swiftshader-webgl`. There is no GPU in CI, and Chromium's
+`docs/gpu/swiftshader.md` deprecates the silent WebGL-to-SwiftShader fallback ("WebGL
+context creation will soon fail instead of falling back to SwiftShader"), naming that
+switch triple as the opt-in; the flags make the software backend an explicit choice
+instead of a fallback. `pacer.spec.ts` asserts the resulting WebGL renderer string is
+non-empty and logs it, so a broken context fails there rather than as a stalled frame loop.
+
 The client's e2e build (`VITE_E2E=1`, surfaced as `CHEAP_RENDER`) also skips the lobby's
 three WebGL contexts: the car thumbnails, the garage stage, and the circuit stage. Under
 software WebGL they cost about eight seconds per page load and over a second per carousel

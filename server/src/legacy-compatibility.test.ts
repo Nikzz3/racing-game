@@ -37,9 +37,7 @@ describe.skipIf(!testDatabaseUrl)("legacy PostgreSQL records", () => {
           LEGACY_RECORD.date,
         ],
       );
-      await pool.query(
-        "INSERT INTO rooms (id, name) VALUES ('legacy-room', 'Old room')",
-      );
+      await pool.query("INSERT INTO rooms (id, name) VALUES ('legacy-room', 'Old room')");
 
       await initDb();
       await initDb();
@@ -49,12 +47,8 @@ describe.skipIf(!testDatabaseUrl)("legacy PostgreSQL records", () => {
         frames: LEGACY_RECORD.frames,
         variant: undefined,
       };
-      expect(
-        await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium"),
-      ).toEqual(originalReplay);
-      expect(await bestTime("sunset-ridge", "medium")).toBe(
-        LEGACY_RECORD.time_ms,
-      );
+      expect(await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium")).toEqual(originalReplay);
+      expect(await bestTime("sunset-ridge", "medium")).toBe(LEGACY_RECORD.time_ms);
       expect(await topEntries()).toEqual([
         {
           name: LEGACY_RECORD.name,
@@ -74,36 +68,22 @@ describe.skipIf(!testDatabaseUrl)("legacy PostgreSQL records", () => {
         },
       ]);
       expect(
-        (
-          await pool.query(
-            "SELECT track, difficulty FROM rooms WHERE id = 'legacy-room'",
-          )
-        ).rows,
+        (await pool.query("SELECT track, difficulty FROM rooms WHERE id = 'legacy-room'")).rows,
       ).toEqual([{ track: "sunset-ridge", difficulty: "medium" }]);
       expect(
         (
-          await pool.query(
-            "SELECT created_at, variant FROM replays WHERE name = $1",
-            [LEGACY_RECORD.name],
-          )
+          await pool.query("SELECT created_at, variant FROM replays WHERE name = $1", [
+            LEGACY_RECORD.name,
+          ])
         ).rows,
       ).toEqual([{ created_at: new Date(LEGACY_RECORD.date), variant: null }]);
 
       // A slower new lap must not replace the historical time, date, replay,
       // or unknown car variant with today's selected car.
       expect(
-        await submitLap(
-          LEGACY_RECORD.name,
-          "sunset-ridge",
-          "medium",
-          80000,
-          null,
-          "taxi",
-        ),
+        await submitLap(LEGACY_RECORD.name, "sunset-ridge", "medium", 80000, null, "taxi"),
       ).toBe(false);
-      expect(
-        await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium"),
-      ).toEqual(originalReplay);
+      expect(await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium")).toEqual(originalReplay);
       expect((await topEntries())[0].date).toBe(LEGACY_RECORD.date);
 
       // The same old driver can now record another difficulty without touching
@@ -118,18 +98,14 @@ describe.skipIf(!testDatabaseUrl)("legacy PostgreSQL records", () => {
           "police",
         ),
       ).toBe(true);
-      expect(
-        await getReplay(LEGACY_RECORD.name, "sunset-ridge", "hard"),
-      ).toEqual({ ...originalReplay, timeMs: 55000, variant: "police" });
-      expect(
-        await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium"),
-      ).toEqual(originalReplay);
-      expect(await bestTime("sunset-ridge", "medium")).toBe(
-        LEGACY_RECORD.time_ms,
-      );
-      expect(
-        await getReplay(LEGACY_RECORD.name, "stormhaven", "medium"),
-      ).toBeNull();
+      expect(await getReplay(LEGACY_RECORD.name, "sunset-ridge", "hard")).toEqual({
+        ...originalReplay,
+        timeMs: 55000,
+        variant: "police",
+      });
+      expect(await getReplay(LEGACY_RECORD.name, "sunset-ridge", "medium")).toEqual(originalReplay);
+      expect(await bestTime("sunset-ridge", "medium")).toBe(LEGACY_RECORD.time_ms);
+      expect(await getReplay(LEGACY_RECORD.name, "stormhaven", "medium")).toBeNull();
     });
   }, 15000);
 });

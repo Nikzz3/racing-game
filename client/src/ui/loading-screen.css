@@ -8,43 +8,172 @@
   opacity: 1;
   transition: opacity 300ms ease;
 }
-.game-loading.is-ready { opacity: 0; pointer-events: none; }
-.loading-landscape, .loading-shade { position: absolute; inset: 0; width: 100%; height: 100%; }
-.loading-shade { background: linear-gradient(90deg, rgba(12, 28, 35, .68), transparent 77%), linear-gradient(0deg, rgba(9, 24, 31, .98), transparent 49%); }
-.loading-title { position: absolute; left: 8%; top: 15%; }
-.loading-title img { margin-bottom: 25px; }
-.loading-title h1 { font-family: "Barlow Condensed", Impact, sans-serif; font-size: clamp(86px, 12vw, 180px); line-height: .79; font-weight: 800; text-transform: uppercase; letter-spacing: -.035em; }
-.loading-footer { position: absolute; bottom: max(7%, env(safe-area-inset-bottom)); left: 8%; right: 8%; display: flex; align-items: end; justify-content: flex-end; gap: 48px; }
-.loading-activity { width: min(370px, 44%); }
-.loading-status-row { display: flex; justify-content: flex-end; gap: 18px; align-items: end; margin-bottom: 15px; font-size: 14px; line-height: 1.5; }
-.loading-amount { color: #f4b46d; font-variant-numeric: tabular-nums; }
-.loading-meter { display: block; width: 100%; height: 4px; border: 0; border-radius: 0; overflow: hidden; appearance: none; background: #516169; color: #f4b46d; }
-.loading-meter::-webkit-progress-bar { background: #516169; }
-.loading-meter::-webkit-progress-value { background: #f4b46d; transition: width 100ms linear; }
-.loading-meter::-moz-progress-bar { background: #f4b46d; }
-.loading-meter:indeterminate { background: linear-gradient(90deg, #516169 0 25%, #f4b46d 45% 55%, #516169 75%); background-size: 220% 100%; animation: loading-sweep 1.8s linear infinite; }
-.loading-meter:indeterminate::-webkit-progress-bar { background: transparent; }
-.loading-error-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.loading-error-actions button { padding: 10px 14px; border: 1px solid #adbbb9; border-radius: 3px; background: #263c45; font-size: 13px; }
-.loading-error-actions button:first-child { background: #f4b46d; color: #172e35; border-color: #f4b46d; font-weight: 700; }
-@keyframes loading-sweep { to { background-position: -220% 0; } }
+.game-loading.is-ready {
+  opacity: 0;
+  pointer-events: none;
+}
+.loading-landscape,
+.loading-shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.loading-shade {
+  background:
+    linear-gradient(90deg, rgba(12, 28, 35, 0.68), transparent 77%),
+    linear-gradient(0deg, rgba(9, 24, 31, 0.98), transparent 49%);
+}
+.loading-title {
+  position: absolute;
+  left: 8%;
+  top: 15%;
+}
+.loading-title img {
+  margin-bottom: 25px;
+}
+.loading-title h1 {
+  font-family: "Barlow Condensed", Impact, sans-serif;
+  font-size: clamp(86px, 12vw, 180px);
+  line-height: 0.79;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.035em;
+}
+.loading-footer {
+  position: absolute;
+  bottom: max(7%, env(safe-area-inset-bottom));
+  left: 8%;
+  right: 8%;
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 48px;
+}
+.loading-activity {
+  width: min(370px, 44%);
+}
+.loading-status-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  align-items: end;
+  margin-bottom: 15px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.loading-amount {
+  color: #f4b46d;
+  font-variant-numeric: tabular-nums;
+}
+.loading-meter {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  appearance: none;
+  background: #516169;
+  color: #f4b46d;
+}
+.loading-meter::-webkit-progress-bar {
+  background: #516169;
+}
+.loading-meter::-webkit-progress-value {
+  background: #f4b46d;
+  transition: width 100ms linear;
+}
+.loading-meter::-moz-progress-bar {
+  background: #f4b46d;
+}
+.loading-meter:indeterminate {
+  background: linear-gradient(90deg, #516169 0 25%, #f4b46d 45% 55%, #516169 75%);
+  background-size: 220% 100%;
+  animation: loading-sweep 1.8s linear infinite;
+}
+.loading-meter:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+.loading-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.loading-error-actions button {
+  padding: 10px 14px;
+  border: 1px solid #adbbb9;
+  border-radius: 3px;
+  background: #263c45;
+  font-size: 13px;
+}
+.loading-error-actions button:first-child {
+  background: #f4b46d;
+  color: #172e35;
+  border-color: #f4b46d;
+  font-weight: 700;
+}
+@keyframes loading-sweep {
+  to {
+    background-position: -220% 0;
+  }
+}
 @media (max-width: 640px) {
-  .loading-title { top: 13%; left: 8%; }
-  .loading-title img { width: 36px; height: 36px; margin-bottom: 23px; }
-  .loading-title h1 { font-size: clamp(84px, 20vw, 125px); }
-  .loading-footer { flex-direction: column; align-items: stretch; gap: 27px; bottom: max(6%, env(safe-area-inset-bottom)); }
-  .loading-activity { width: 100%; }
-  .loading-status-row { font-size: 13px; }
+  .loading-title {
+    top: 13%;
+    left: 8%;
+  }
+  .loading-title img {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 23px;
+  }
+  .loading-title h1 {
+    font-size: clamp(84px, 20vw, 125px);
+  }
+  .loading-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 27px;
+    bottom: max(6%, env(safe-area-inset-bottom));
+  }
+  .loading-activity {
+    width: 100%;
+  }
+  .loading-status-row {
+    font-size: 13px;
+  }
 }
 @media (max-height: 500px) and (min-width: 641px) {
-  .loading-title { top: 8%; }
-  .loading-title img { display: none; }
-  .loading-title h1 { font-size: 88px; }
-  .loading-footer { bottom: 7%; }
+  .loading-title {
+    top: 8%;
+  }
+  .loading-title img {
+    display: none;
+  }
+  .loading-title h1 {
+    font-size: 88px;
+  }
+  .loading-footer {
+    bottom: 7%;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .game-loading, .loading-meter::-webkit-progress-value { transition: none; }
-  .loading-meter:indeterminate { animation: none; }
+  .game-loading,
+  .loading-meter::-webkit-progress-value {
+    transition: none;
+  }
+  .loading-meter:indeterminate {
+    animation: none;
+  }
 }
 
-.game-loading:not([data-state="error"]) .loading-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.game-loading:not([data-state="error"]) .loading-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

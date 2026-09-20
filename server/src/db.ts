@@ -1,6 +1,6 @@
-import pg from "pg";
+import { Pool } from "pg";
 
-export const pool = new pg.Pool({
+export const pool = new Pool({
   connectionString:
     process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/racing",
 });

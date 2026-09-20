@@ -69,7 +69,7 @@ function sampleTrack(controlPoints: readonly [number, number][]): TrackSample[] 
 export function nearestCenterline(
   x: number,
   z: number,
-  samples: TrackSample[]
+  samples: TrackSample[],
 ): { index: number; dist: number } {
   let best = 0;
   let bestD2 = Infinity;
@@ -154,35 +154,35 @@ export const SUNSET_RIDGE: Track = {
  *   S4: Long curving top straight → fast top-right sweep back onto the main straight
  */
 const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
-  [232, 30],     // T0 – start/finish, mid main straight (right edge)
-  [228, -60],    // main straight sweeping down
-  [218, -150],   // T1 turn-in
-  [188, -202],   // T1 exit onto the bottom
-  [110, -220],   // long curving back straight (bottom)
-  [25, -220],    // back straight continuing
-  [-65, -208],   // back straight approach to the hairpin
-  [-150, -188],  // hairpin braking zone
-  [-198, -150],  // T2 – heavy-braking hairpin apex (far bottom-left, eased open)
-  [-190, -102],  // hairpin exit
-  [-150, -72],   // into the infield
-  [-110, -100],  // T3 – esse snake (swing 1, amplitude eased)
-  [-70, -73],    // esse swing 2
-  [-30, -100],   // esse swing 3
-  [10, -70],     // esse swing 4
-  [45, -94],     // esse swing 5
-  [95, -70],     // esse snake exit
-  [135, -20],    // T4 – triple-apex spiral entry
-  [140, 40],     // spiral apex 1
-  [110, 80],     // spiral apex 2 (tightening)
-  [60, 95],      // spiral apex 3
-  [0, 80],       // spiral exit
-  [-70, 112],    // sweep out toward the top-left (rounds the entry)
-  [-140, 150],   // top-left apex of the outer loop
-  [-95, 172],    // rounds the exit onto the top straight
-  [-40, 178],    // long curving top straight
-  [90, 175],     // top straight → top-right sweep
-  [185, 140],    // fast top-right sweeper
-  [225, 90],     // sweep exit → loop closes back to T0
+  [232, 30], // T0 – start/finish, mid main straight (right edge)
+  [228, -60], // main straight sweeping down
+  [218, -150], // T1 turn-in
+  [188, -202], // T1 exit onto the bottom
+  [110, -220], // long curving back straight (bottom)
+  [25, -220], // back straight continuing
+  [-65, -208], // back straight approach to the hairpin
+  [-150, -188], // hairpin braking zone
+  [-198, -150], // T2 – heavy-braking hairpin apex (far bottom-left, eased open)
+  [-190, -102], // hairpin exit
+  [-150, -72], // into the infield
+  [-110, -100], // T3 – esse snake (swing 1, amplitude eased)
+  [-70, -73], // esse swing 2
+  [-30, -100], // esse swing 3
+  [10, -70], // esse swing 4
+  [45, -94], // esse swing 5
+  [95, -70], // esse snake exit
+  [135, -20], // T4 – triple-apex spiral entry
+  [140, 40], // spiral apex 1
+  [110, 80], // spiral apex 2 (tightening)
+  [60, 95], // spiral apex 3
+  [0, 80], // spiral exit
+  [-70, 112], // sweep out toward the top-left (rounds the entry)
+  [-140, 150], // top-left apex of the outer loop
+  [-95, 172], // rounds the exit onto the top straight
+  [-40, 178], // long curving top straight
+  [90, 175], // top straight → top-right sweep
+  [185, 140], // fast top-right sweeper
+  [225, 90], // sweep exit → loop closes back to T0
 ];
 
 const stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
@@ -235,7 +235,7 @@ export function minPlausibleLapMs(track: Track, maxSpeedMs: number): number {
     const next = s[(i + 1) % s.length];
     len += Math.hypot(next.x - s[i].x, next.z - s[i].z);
   }
-  return Math.floor((MIN_LAP_FRACTION * len) / maxSpeedMs * 1000);
+  return Math.floor(((MIN_LAP_FRACTION * len) / maxSpeedMs) * 1000);
 }
 
 /**

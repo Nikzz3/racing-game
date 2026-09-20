@@ -36,7 +36,12 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   // faster than everyone but on another (Track, Difficulty) pair: never listed here.
   await db.seedBestLap({ name: "Alpha", timeMs: 1_000 });
   await db.seedBestLap({ name: "Omega", timeMs: 9_999_999 });
-  await db.seedBestLap({ name: "Other Pair", timeMs: 500, track: "stormhaven", difficulty: "hard" });
+  await db.seedBestLap({
+    name: "Other Pair",
+    timeMs: 500,
+    track: "stormhaven",
+    difficulty: "hard",
+  });
   // The session declares the taxi Variant in hello; the Garage picker (#125)
   // writes this same localStorage key.
   await page.addInitScript(() => localStorage.setItem("racer-variant", "taxi"));
@@ -102,7 +107,9 @@ test("real keyboard input crosses the first Checkpoint", async ({ game, page }, 
   // Software WebGL needs about six wall-clock seconds to simulate the launch, and
   // longer when workers contend for CPU: the frame loop caps each step at 50ms,
   // so below 20fps simulated time runs slower than the wall clock.
-  await expect.poll(() => game.state().then((state) => state.checkpoint), { timeout: 40_000 }).toBe(1);
+  await expect
+    .poll(() => game.state().then((state) => state.checkpoint), { timeout: 40_000 })
+    .toBe(1);
   await page.keyboard.up("KeyW");
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator(".hud-map")).toBeInViewport();

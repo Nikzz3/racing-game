@@ -41,26 +41,43 @@ describe("parseClientMessage", () => {
 
   it("coerces unknown difficulty and track on createRoom instead of trusting them", () => {
     expect(
-      parseClientMessage({ type: "createRoom", roomName: "R", difficulty: "impossible", track: "atlantis" })
+      parseClientMessage({
+        type: "createRoom",
+        roomName: "R",
+        difficulty: "impossible",
+        track: "atlantis",
+      }),
     ).toEqual({ type: "createRoom", roomName: "R", difficulty: "medium", track: "sunset-ridge" });
   });
 
   it("accepts finite-number state frames", () => {
-    expect(
-      parseClientMessage({ type: "state", x: 1, y: 2, z: 3, rot: 0.5, speed: 40 })
-    ).toEqual({ type: "state", x: 1, y: 2, z: 3, rot: 0.5, speed: 40 });
+    expect(parseClientMessage({ type: "state", x: 1, y: 2, z: 3, rot: 0.5, speed: 40 })).toEqual({
+      type: "state",
+      x: 1,
+      y: 2,
+      z: 3,
+      rot: 0.5,
+      speed: 40,
+    });
   });
 
   it("rejects NaN / Infinity / non-number state coordinates", () => {
     expect(parseClientMessage({ type: "state", x: NaN, y: 0, z: 0, rot: 0, speed: 0 })).toBeNull();
-    expect(parseClientMessage({ type: "state", x: 0, y: 0, z: Infinity, rot: 0, speed: 0 })).toBeNull();
+    expect(
+      parseClientMessage({ type: "state", x: 0, y: 0, z: Infinity, rot: 0, speed: 0 }),
+    ).toBeNull();
     expect(parseClientMessage({ type: "state", x: "0", y: 0, z: 0, rot: 0, speed: 0 })).toBeNull();
     expect(parseClientMessage({ type: "state", x: 0, y: 0, z: 0, rot: 0 })).toBeNull();
   });
 
   it("validates getReplay and joinRoom string fields", () => {
     expect(
-      parseClientMessage({ type: "getReplay", name: "Ada", difficulty: "hard", track: "stormhaven" })
+      parseClientMessage({
+        type: "getReplay",
+        name: "Ada",
+        difficulty: "hard",
+        track: "stormhaven",
+      }),
     ).toEqual({ type: "getReplay", name: "Ada", difficulty: "hard", track: "stormhaven" });
     expect(parseClientMessage({ type: "getReplay" })).toBeNull();
     expect(parseClientMessage({ type: "joinRoom", roomId: "abc123" })).toEqual({

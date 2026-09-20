@@ -57,11 +57,7 @@ function barrierMatrices(samples: TrackSample[]): THREE.Matrix4[] {
     rotation = new THREE.Quaternion(),
     scale = new THREE.Vector3(1, 1, 1);
   const edge = (s: TrackSample, side: number, out: THREE.Vector3) =>
-    out.set(
-      s.x - s.dirZ * BARRIER_DIST * side,
-      0,
-      s.z + s.dirX * BARRIER_DIST * side,
-    );
+    out.set(s.x - s.dirZ * BARRIER_DIST * side, 0, s.z + s.dirX * BARRIER_DIST * side);
   for (const side of [-1, 1]) {
     for (let i = 0; i < samples.length; i += 2) {
       edge(samples[i], side, a);
@@ -75,9 +71,7 @@ function barrierMatrices(samples: TrackSample[]): THREE.Matrix4[] {
         dz = b.z - a.z;
       rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, Math.atan2(dx, dz));
       scale.z = Math.hypot(dx, dz) + 0.12;
-      matrices.push(
-        new THREE.Matrix4().compose(a.add(b).multiplyScalar(0.5), rotation, scale),
-      );
+      matrices.push(new THREE.Matrix4().compose(a.add(b).multiplyScalar(0.5), rotation, scale));
     }
   }
   return matrices;
@@ -99,10 +93,7 @@ function emergencyRoad(samples: TrackSample[]): THREE.Mesh {
     indices.push(a, a + 1, b + 1, a, b + 1, b);
   });
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(vertices, 3),
-  );
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(

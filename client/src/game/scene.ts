@@ -1,9 +1,5 @@
 import * as THREE from "three";
-import {
-  nearestCenterline,
-  ROAD_HALF_WIDTH,
-  type TrackSample,
-} from "@racing/shared";
+import { nearestCenterline, ROAD_HALF_WIDTH, type TrackSample } from "@racing/shared";
 import { disposeMaterials } from "./car";
 import { getMaterial, getModel, instancedFromModel } from "./models";
 
@@ -25,10 +21,7 @@ const EYE_HEIGHT = 4.6;
 const look = new THREE.Vector3();
 const eye = new THREE.Vector3();
 
-export function createScene(
-  container: HTMLElement,
-  samples: TrackSample[],
-): SceneBundle {
+export function createScene(container: HTMLElement, samples: TrackSample[]): SceneBundle {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(HORIZON);
   scene.fog = new THREE.Fog(HORIZON, 190, 820);
@@ -156,11 +149,7 @@ export function disposeWorld({ scene, renderer, sun }: SceneBundle): void {
   disposeRenderer(renderer);
   scene.clear();
 }
-export function updateSun(
-  sun: THREE.DirectionalLight,
-  x: number,
-  z: number,
-): void {
+export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): void {
   sun.position.set(x + SUN.x, SUN.y, z + SUN.z);
   sun.target.position.set(x, 0, z);
 }
@@ -234,33 +223,19 @@ function scatterEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
     rotation = new THREE.Quaternion(),
     scale = new THREE.Vector3();
   for (const spec of categories) {
-    const placements = new Map(
-      spec.names.map((name) => [name, [] as THREE.Matrix4[]]),
-    );
-    for (
-      let placed = 0, attempt = 0;
-      placed < spec.count && attempt < spec.count * 25;
-      attempt++
-    ) {
+    const placements = new Map(spec.names.map((name) => [name, [] as THREE.Matrix4[]]));
+    for (let placed = 0, attempt = 0; placed < spec.count && attempt < spec.count * 25; attempt++) {
       const x = (random() - 0.5) * 820,
         z = (random() - 0.5) * 820;
-      if (
-        nearestCenterline(x, z, samples).dist <
-        ROAD_HALF_WIDTH + spec.clearance
-      )
-        continue;
+      if (nearestCenterline(x, z, samples).dist < ROAD_HALF_WIDTH + spec.clearance) continue;
       const start = samples[0],
         dx = x - start.x,
         dz = z - start.z;
       const alongStart = dx * start.dirX + dz * start.dirZ;
       const besideStart = -dx * start.dirZ + dz * start.dirX;
-      if (Math.abs(alongStart) < 65 && besideStart > 10 && besideStart < 48)
-        continue;
+      if (Math.abs(alongStart) < 65 && besideStart > 10 && besideStart < 48) continue;
       position.set(x, 0, z);
-      rotation.setFromAxisAngle(
-        THREE.Object3D.DEFAULT_UP,
-        random() * Math.PI * 2,
-      );
+      rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, random() * Math.PI * 2);
       scale.setScalar(spec.min + random() * spec.range);
       placements
         .get(spec.names[Math.floor(random() * spec.names.length)])!

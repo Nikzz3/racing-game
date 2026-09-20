@@ -21,10 +21,7 @@ const UNSIGNED_MARKER = "unsigned-build";
 module.exports = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
   if (process.env.CSC_LINK || process.env.CSC_NAME) return; // real identity in play
-  const appPath = path.join(
-    context.appOutDir,
-    `${context.packager.appInfo.productFilename}.app`,
-  );
+  const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   console.log(`  • ad-hoc signing (no certificate configured)  file=${appPath}`);
   // Written before signing so the seal covers it.
   writeFileSync(path.join(appPath, "Contents", "Resources", UNSIGNED_MARKER), "");

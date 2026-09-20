@@ -41,7 +41,11 @@ function context(appOutDir, platform = "darwin") {
 }
 
 async function withEnv(overrides, fn) {
-  const saved = { PATH: process.env.PATH, CSC_LINK: process.env.CSC_LINK, CSC_NAME: process.env.CSC_NAME };
+  const saved = {
+    PATH: process.env.PATH,
+    CSC_LINK: process.env.CSC_LINK,
+    CSC_NAME: process.env.CSC_NAME,
+  };
   delete process.env.CSC_LINK;
   delete process.env.CSC_NAME;
   Object.assign(process.env, overrides);
@@ -58,16 +62,23 @@ async function withEnv(overrides, fn) {
 test("writes the marker before ad-hoc signing when no certificate is configured", async () => {
   const { appOutDir, appPath, marker } = fakeBundle();
   const { bin, log } = stubCodesign(appPath);
-  await withEnv({ PATH: `${bin}${path.delimiter}${process.env.PATH}` }, () => afterPack(context(appOutDir)));
+  await withEnv({ PATH: `${bin}${path.delimiter}${process.env.PATH}` }, () =>
+    afterPack(context(appOutDir)),
+  );
   assert.ok(existsSync(marker), "marker file should exist");
-  assert.equal(readFileSync(log, "utf8").trim(), "marker-present", "codesign must run after the marker is written");
+  assert.equal(
+    readFileSync(log, "utf8").trim(),
+    "marker-present",
+    "codesign must run after the marker is written",
+  );
 });
 
 test("leaves signed builds unmarked", async () => {
   const { appOutDir, appPath, marker } = fakeBundle();
   const { bin, log } = stubCodesign(appPath);
-  await withEnv({ PATH: `${bin}${path.delimiter}${process.env.PATH}`, CSC_LINK: "/certs/dev-id.p12" }, () =>
-    afterPack(context(appOutDir)),
+  await withEnv(
+    { PATH: `${bin}${path.delimiter}${process.env.PATH}`, CSC_LINK: "/certs/dev-id.p12" },
+    () => afterPack(context(appOutDir)),
   );
   assert.ok(!existsSync(marker), "signed builds must not carry the marker");
   assert.ok(!existsSync(log), "codesign is electron-builder's job for signed builds");
@@ -76,7 +87,9 @@ test("leaves signed builds unmarked", async () => {
 test("does nothing for non-mac platforms", async () => {
   const { appOutDir, appPath, marker } = fakeBundle();
   const { bin, log } = stubCodesign(appPath);
-  await withEnv({ PATH: `${bin}${path.delimiter}${process.env.PATH}` }, () => afterPack(context(appOutDir, "linux")));
+  await withEnv({ PATH: `${bin}${path.delimiter}${process.env.PATH}` }, () =>
+    afterPack(context(appOutDir, "linux")),
+  );
   assert.ok(!existsSync(marker));
   assert.ok(!existsSync(log));
 });

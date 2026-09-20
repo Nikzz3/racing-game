@@ -1,4 +1,10 @@
-import { asVariant, type Difficulty, type ReplayFrame, type TrackSlug, type Variant } from "@racing/shared";
+import {
+  asVariant,
+  type Difficulty,
+  type ReplayFrame,
+  type TrackSlug,
+  type Variant,
+} from "@racing/shared";
 import { pool } from "./db";
 
 /** 20 Hz × 5 minutes; longer laps drop their replay. */
@@ -9,7 +15,13 @@ const round = (n: number, digits: number): number => {
   return Math.round(n * f) / f;
 };
 
-export function makeFrame(t: number, x: number, z: number, rot: number, speed: number): ReplayFrame {
+export function makeFrame(
+  t: number,
+  x: number,
+  z: number,
+  rot: number,
+  speed: number,
+): ReplayFrame {
   return [Math.round(t), round(x, 2), round(z, 2), round(rot, 3), round(speed, 2)];
 }
 

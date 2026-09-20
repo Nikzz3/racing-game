@@ -5,9 +5,7 @@ import { createCarMesh } from "../game/car";
 import { disposeRenderer } from "../game/scene";
 
 /** Render the same Blender cars used on the track, sharing a single temporary context. */
-export function renderVariantThumbnails(
-  variants: readonly Variant[],
-): Map<Variant, string> {
+export function renderVariantThumbnails(variants: readonly Variant[]): Map<Variant, string> {
   const images = new Map<Variant, string>();
   let renderer: THREE.WebGLRenderer;
   try {

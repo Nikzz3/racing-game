@@ -246,12 +246,7 @@ a {
   display: grid;
   grid-template-rows: auto minmax(120px, 1fr) auto auto;
   padding: 28px 4.5vw 25px;
-  background: radial-gradient(
-    ellipse at 50% 44%,
-    #3a3028 0,
-    #1c1c21 40%,
-    #111215 74%
-  );
+  background: radial-gradient(ellipse at 50% 44%, #3a3028 0, #1c1c21 40%, #111215 74%);
 }
 .garage-heading {
   position: relative;
@@ -295,12 +290,7 @@ a {
   left: 32.5%;
   top: 0;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    #ecab6514,
-    #ecab6508 50%,
-    transparent 70%
-  );
+  background: radial-gradient(circle, #ecab6514, #ecab6508 50%, transparent 70%);
   filter: blur(10px);
 }
 .stage-horizon {
@@ -411,10 +401,12 @@ a {
 .lobby-deck:has(.has-garage-environment) .settings-screen {
   background: #101114d9;
 }
-.lobby-deck:has(.has-garage-environment) :is(.stage-sun, .stage-horizon, .stage-grid, .stage-watermark, .stage-platform, .setup-scene) {
+.lobby-deck:has(.has-garage-environment)
+  :is(.stage-sun, .stage-horizon, .stage-grid, .stage-watermark, .stage-platform, .setup-scene) {
   display: none;
 }
-.lobby-deck:has(.has-garage-environment) :is(.garage-heading, .track-heading, .selected-car-copy, .selected-track-copy) {
+.lobby-deck:has(.has-garage-environment)
+  :is(.garage-heading, .track-heading, .selected-car-copy, .selected-track-copy) {
   text-shadow: 0 2px 14px #000b;
 }
 .showroom-loading {
@@ -590,12 +582,7 @@ a {
   display: grid;
   grid-template-rows: auto minmax(100px, 1fr) auto auto;
   padding: 28px 4.5vw 25px;
-  background: radial-gradient(
-    ellipse at 50% 48%,
-    #393129 0,
-    #1b1d21 45%,
-    #111215 78%
-  );
+  background: radial-gradient(ellipse at 50% 48%, #393129 0, #1b1d21 45%, #111215 78%);
   transform: translateX(100%);
   visibility: hidden;
 }
@@ -1724,12 +1711,7 @@ a {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    #0b0c1270,
-    transparent 24%,
-    transparent 70%,
-    #0b0c1280
-  );
+  background: linear-gradient(#0b0c1270, transparent 24%, transparent 70%, #0b0c1280);
   pointer-events: none;
 }
 .hud-panel {

@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
-import {
-  CarPhysics,
-  PHYSICS_STEP,
-  MAX_STEPS_PER_FRAME,
-  MAX_ACCUMULATED_TIME,
-} from "./physics";
+import { CarPhysics, PHYSICS_STEP, MAX_STEPS_PER_FRAME, MAX_ACCUMULATED_TIME } from "./physics";
 import type { CarInput } from "./input";
 
 const FULL_THROTTLE: CarInput = { throttle: 1, brake: 0, steer: 0 };
@@ -24,8 +19,7 @@ function runSteps(car: CarPhysics, n: number, input: CarInput): void {
 
 function driveAt(fps: number, durationS: number, input: CarInput): CarPhysics {
   const car = spawned();
-  for (let i = 0; i < Math.round(durationS * fps); i++)
-    car.advance(1 / fps, input);
+  for (let i = 0; i < Math.round(durationS * fps); i++) car.advance(1 / fps, input);
   return car;
 }
 
@@ -70,8 +64,7 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
 
   it("ignores invalid frame deltas without poisoning later simulation", () => {
     const car = spawned();
-    for (const elapsed of [NaN, Infinity, -1])
-      car.advance(elapsed, FULL_THROTTLE);
+    for (const elapsed of [NaN, Infinity, -1]) car.advance(elapsed, FULL_THROTTLE);
     car.advance(PHYSICS_STEP, FULL_THROTTLE);
     const expected = spawned();
     expected.advance(PHYSICS_STEP, FULL_THROTTLE);

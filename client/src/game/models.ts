@@ -21,17 +21,11 @@ export function registerLibrary(root: THREE.Group): void {
       if (!(part instanceof THREE.Mesh)) return;
       part.castShadow = true;
       part.receiveShadow = true;
-      const meshMaterials = Array.isArray(part.material)
-        ? part.material
-        : [part.material];
+      const meshMaterials = Array.isArray(part.material) ? part.material : [part.material];
       for (const material of meshMaterials) {
         if (!(material instanceof THREE.MeshStandardMaterial)) continue;
         materials.set(material.name, material);
-        for (const texture of [
-          material.map,
-          material.normalMap,
-          material.roughnessMap,
-        ]) {
+        for (const texture of [material.map, material.normalMap, material.roughnessMap]) {
           if (texture) texture.anisotropy = 8;
         }
       }
@@ -132,8 +126,10 @@ function materialBatchKey(material: THREE.MeshStandardMaterial): string {
 /** Attribute layouts must match for merging (UVs, normals, tangents, etc.). */
 function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
   const layout = Object.entries(geometry.attributes)
-    .map(([name, attribute]) =>
-      `${name}:${attribute.itemSize}:${attribute.normalized}:${attribute.array.constructor.name}`)
+    .map(
+      ([name, attribute]) =>
+        `${name}:${attribute.itemSize}:${attribute.normalized}:${attribute.array.constructor.name}`,
+    )
     .sort()
     .join(";");
   return `${Boolean(geometry.index)}|${layout}`;
@@ -145,16 +141,13 @@ function separateHeadlightLenses(car: THREE.Group): void {
   const front = new THREE.Box3().setFromObject(car, true).max.z;
   const point = new THREE.Vector3();
   car.traverse((part) => {
-    if (!(part instanceof THREE.Mesh) || !part.name.includes("Warm_headlights"))
-      return;
+    if (!(part instanceof THREE.Mesh) || !part.name.includes("Warm_headlights")) return;
     // The taxi roof sign shares this material/mesh; only move the front lenses.
     const geometry = part.geometry.clone();
     const positions = geometry.getAttribute("position");
     const inverse = part.matrixWorld.clone().invert();
     for (let index = 0; index < positions.count; index++) {
-      point
-        .fromBufferAttribute(positions, index)
-        .applyMatrix4(part.matrixWorld);
+      point.fromBufferAttribute(positions, index).applyMatrix4(part.matrixWorld);
       if (point.z < front - 0.2) continue;
       point.z += 0.012;
       point.applyMatrix4(inverse);
@@ -185,9 +178,13 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
     if (!ready) loadObservers.add(onProgress);
   }
   return (pending ??= new GLTFLoader()
-    .loadAsync(ASSET_LIBRARY_URL, (event) => reportLoad({
-      phase: "loading", loaded: event.loaded, total: event.lengthComputable ? event.total : 0,
-    }))
+    .loadAsync(ASSET_LIBRARY_URL, (event) =>
+      reportLoad({
+        phase: "loading",
+        loaded: event.loaded,
+        total: event.lengthComputable ? event.total : 0,
+      }),
+    )
     .then(({ scene }) => {
       reportLoad({ ...loadProgress, phase: "preparing" });
       registerLibrary(scene);
@@ -233,16 +230,9 @@ export function instancedFromModel(
   model.traverse((part) => {
     if (!(part instanceof THREE.Mesh)) return;
     for (const placements of cells.values()) {
-      const mesh = new THREE.InstancedMesh(
-        part.geometry,
-        part.material,
-        placements.length,
-      );
+      const mesh = new THREE.InstancedMesh(part.geometry, part.material, placements.length);
       placements.forEach((placement, index) =>
-        mesh.setMatrixAt(
-          index,
-          matrix.multiplyMatrices(placement, part.matrixWorld),
-        ),
+        mesh.setMatrixAt(index, matrix.multiplyMatrices(placement, part.matrixWorld)),
       );
       mesh.castShadow = shadows;
       mesh.receiveShadow = true;

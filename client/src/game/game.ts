@@ -16,12 +16,7 @@ import type { Net } from "../net";
 import type { ArmedPacer } from "../ui/lobby";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
-import {
-  animateCar,
-  createCarMesh,
-  disposeCarMesh,
-  resolveVariant,
-} from "./car";
+import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import { Input, type CarInput } from "./input";
 import { TouchControls } from "./touch";
 import { CarPhysics } from "./physics";
@@ -200,10 +195,7 @@ export class Game {
           message.isTrackRecord,
         );
       } else if (message.isTrackRecord)
-        this.hud.toast(
-          `${message.name} set a track record: ${formatMs(message.lapTimeMs)}`,
-          true,
-        );
+        this.hud.toast(`${message.name} set a track record: ${formatMs(message.lapTimeMs)}`, true);
     }
   }
   private sendState(): void {
@@ -219,8 +211,7 @@ export class Game {
   private checkCrossing(now: number): void {
     if (!this.pacer) return;
     const cp = this.track.checkpoints[this.nextCheckpoint];
-    if (Math.hypot(this.car.x - cp.x, this.car.z - cp.z) > CHECKPOINT_RADIUS)
-      return;
+    if (Math.hypot(this.car.x - cp.x, this.car.z - cp.z) > CHECKPOINT_RADIUS) return;
     const crossed = this.nextCheckpoint;
     this.nextCheckpoint = (crossed + 1) % this.track.checkpoints.length;
     if (crossed === 0) {
@@ -229,15 +220,9 @@ export class Game {
       return;
     }
     if (this.localLapStart === null || !this.pacer.isPlaying()) return;
-    const delta = pacerDelta(
-      this.pacerTimes,
-      crossed,
-      now - this.localLapStart,
-    );
+    const delta = pacerDelta(this.pacerTimes, crossed, now - this.localLapStart);
     if (delta !== null)
-      this.hud.toast(
-        `vs Pacer ${delta < 0 ? "−" : "+"}${Math.round(Math.abs(delta))}ms`,
-      );
+      this.hud.toast(`vs Pacer ${delta < 0 ? "−" : "+"}${Math.round(Math.abs(delta))}ms`);
   }
   private frame = (now: number): void => {
     if (this.disposed) return;
@@ -270,27 +255,24 @@ export class Game {
     this.hud.setCheckpointMissed(
       Boolean(
         this.clock &&
-          this.progress &&
-          checkpointMissed(
-            this.car.centerIndex,
-            this.checkpoints[this.progress.nextCheckpoint],
-            this.track.samples.length,
-            8,
-          ),
+        this.progress &&
+        checkpointMissed(
+          this.car.centerIndex,
+          this.checkpoints[this.progress.nextCheckpoint],
+          this.track.samples.length,
+          8,
+        ),
       ),
     );
     this.hud.setCurrentLap(
-      this.clock
-        ? this.clock.elapsed + performance.now() - this.clock.received
-        : null,
+      this.clock ? this.clock.elapsed + performance.now() - this.clock.received : null,
     );
     // While the e2e seam replays inputs, skip the draw: under software WebGL a
     // frame costs 100ms+, and the seam's per-frame step cap (which keeps state
     // sends from bursting past the server's speed window) would turn that into a
     // lap several times slower than real time. Nothing asserts on pixels while
     // inputs are injected; rendering resumes once the recording is spent.
-    if (!injecting)
-      this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
+    if (!injecting) this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animation = requestAnimationFrame(this.frame);
   };
   private installSeam(): void {

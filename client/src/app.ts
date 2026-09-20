@@ -1,9 +1,4 @@
-import type {
-  ReplayFrame,
-  ServerMessage,
-  TrackSlug,
-  Variant,
-} from "@racing/shared";
+import type { ReplayFrame, ServerMessage, TrackSlug, Variant } from "@racing/shared";
 import { Net } from "./net";
 import { Game } from "./game/game";
 import { ReplayViewer } from "./game/replay";
@@ -40,14 +35,7 @@ export class RacingApp {
       onVariantChange: () => this.hello(),
       onReferenceLap: () => {
         const lap = this.lobby.getReferenceLap();
-        if (lap)
-          void this.openReplay(
-            lap.name,
-            lap.track,
-            lap.timeMs,
-            lap.frames,
-            lap.variant,
-          );
+        if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
       },
     });
     this.net.onMessage((message) => void this.receive(message));
@@ -70,8 +58,10 @@ export class RacingApp {
       try {
         const garageReady = this.lobby.paintGarageThumbnails();
         if (assetFailure) return;
-        if (garageReady === false) {
-          loading.fail("The 3D garage could not start on this device. You can still choose a car and race.");
+        if (!garageReady) {
+          loading.fail(
+            "The 3D garage could not start on this device. You can still choose a car and race.",
+          );
           return;
         }
         // GarageStage draws synchronously. Reveal it after the browser presents it.
@@ -159,8 +149,7 @@ export class RacingApp {
         const revision = this.revision;
         const choice = this.lobby.armedPacer;
         const pacer =
-          choice?.track === message.track &&
-          choice.difficulty === message.difficulty
+          choice?.track === message.track && choice.difficulty === message.difficulty
             ? choice
             : null;
         await this.assets;
@@ -180,8 +169,7 @@ export class RacingApp {
           );
           this.view = game;
           this.joining = false;
-          if (pacer?.kind === "ai")
-            game.receiveReplayFrames(pacer.frames, pacer.variant);
+          if (pacer?.kind === "ai") game.receiveReplayFrames(pacer.frames, pacer.variant);
           if (pacer?.kind === "replay")
             this.net.send({
               type: "getReplay",
@@ -216,14 +204,8 @@ export class RacingApp {
     if (revision !== this.revision) return;
     try {
       this.lobby.hide();
-      this.view = new ReplayViewer(
-        this.root,
-        name,
-        track,
-        time,
-        frames,
-        variant,
-        () => this.returnToLobby(),
+      this.view = new ReplayViewer(this.root, name, track, time, frames, variant, () =>
+        this.returnToLobby(),
       );
     } catch (error) {
       console.error("Replay view could not start", error);

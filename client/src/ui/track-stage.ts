@@ -12,9 +12,7 @@ export class TrackStage {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
   private readonly observer: ResizeObserver;
-  private readonly motion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)",
-  );
+  private readonly motion = window.matchMedia("(prefers-reduced-motion: reduce)");
   private readonly light = new THREE.DirectionalLight(0xffd2a2, 3.2);
   private model?: THREE.Group;
   private slug?: TrackSlug;
@@ -25,9 +23,7 @@ export class TrackStage {
   private direction = 1;
 
   constructor(private readonly host: HTMLElement) {
-    this.renderer.setPixelRatio(
-      CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5),
-    );
+    this.renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5));
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -35,8 +31,7 @@ export class TrackStage {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
     canvas.setAttribute("aria-hidden", "true");
-    canvas.style.cssText =
-      "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
     host.append(canvas);
     this.camera.position.set(0, 7.5, 9.5);
     this.camera.lookAt(0, 0, 0);
@@ -52,10 +47,7 @@ export class TrackStage {
       near: 0.1,
       far: 30,
     });
-    this.scene.add(
-      this.light,
-      new THREE.HemisphereLight(0xe5e7fa, 0x342319, 1.3),
-    );
+    this.scene.add(this.light, new THREE.HemisphereLight(0xe5e7fa, 0x342319, 1.3));
     this.observer = new ResizeObserver(this.resize);
     this.observer.observe(host);
     document.addEventListener("visibilitychange", this.visibility);
@@ -93,13 +85,7 @@ export class TrackStage {
   }
 
   private resize = (): void => {
-    if (
-      !this.active ||
-      this.disposed ||
-      !this.host.clientWidth ||
-      !this.host.clientHeight
-    )
-      return;
+    if (!this.active || this.disposed || !this.host.clientWidth || !this.host.clientHeight) return;
     this.renderer.setSize(this.host.clientWidth, this.host.clientHeight, false);
     this.camera.aspect = this.host.clientWidth / this.host.clientHeight;
     this.camera.fov = this.camera.aspect < 1 ? 52 : 34;
@@ -111,9 +97,7 @@ export class TrackStage {
     cancelAnimationFrame(this.animation);
     this.animation = 0;
     if (!this.active || this.disposed || document.hidden) return;
-    const progress = this.motion.matches
-      ? 1
-      : Math.min(1, (now - this.started) / 750);
+    const progress = this.motion.matches ? 1 : Math.min(1, (now - this.started) / 750);
     const remaining = Math.pow(1 - progress, 3);
     if (this.model) {
       this.model.position.x = remaining * 7 * this.direction;

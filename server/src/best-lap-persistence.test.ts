@@ -12,8 +12,12 @@ describe.skipIf(!testDatabaseUrl)("best lap persistence", () => {
       const { bestTime, topEntries } = await import("./leaderboard");
       const frames = [makeFrame(0, 0, 0, 0, 0), makeFrame(1000, 5, 5, 0, 10)];
 
-      expect(await submitLap("Already Faster", "sunset-ridge", "medium", 1_000, frames, "taxi")).toBe(true);
-      expect(await submitLap("Already Faster", "sunset-ridge", "medium", 2_000, null, "police")).toBe(false);
+      expect(
+        await submitLap("Already Faster", "sunset-ridge", "medium", 1_000, frames, "taxi"),
+      ).toBe(true);
+      expect(
+        await submitLap("Already Faster", "sunset-ridge", "medium", 2_000, null, "police"),
+      ).toBe(false);
 
       expect(await bestTime("sunset-ridge", "medium")).toBe(1_000);
       expect(await getReplay("Already Faster", "sunset-ridge", "medium")).toEqual({
@@ -21,9 +25,9 @@ describe.skipIf(!testDatabaseUrl)("best lap persistence", () => {
         frames,
         variant: "taxi",
       });
-      expect((await topEntries()).map(({ name, timeMs, hasReplay }) => ({ name, timeMs, hasReplay }))).toEqual([
-        { name: "Already Faster", timeMs: 1_000, hasReplay: true },
-      ]);
+      expect(
+        (await topEntries()).map(({ name, timeMs, hasReplay }) => ({ name, timeMs, hasReplay })),
+      ).toEqual([{ name: "Already Faster", timeMs: 1_000, hasReplay: true }]);
     });
   }, 15_000);
 
@@ -34,8 +38,12 @@ describe.skipIf(!testDatabaseUrl)("best lap persistence", () => {
       const { bestTime } = await import("./leaderboard");
       const faster = [makeFrame(0, 0, 0, 0, 0), makeFrame(500, 5, 5, 0, 20)];
 
-      expect(await submitLap("Improving", "sunset-ridge", "medium", 2_000, null, "taxi")).toBe(true);
-      expect(await submitLap("Improving", "sunset-ridge", "medium", 1_000, faster, "police")).toBe(true);
+      expect(await submitLap("Improving", "sunset-ridge", "medium", 2_000, null, "taxi")).toBe(
+        true,
+      );
+      expect(await submitLap("Improving", "sunset-ridge", "medium", 1_000, faster, "police")).toBe(
+        true,
+      );
 
       expect(await bestTime("sunset-ridge", "medium")).toBe(1_000);
       expect(await getReplay("Improving", "sunset-ridge", "medium")).toEqual({

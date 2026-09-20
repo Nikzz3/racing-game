@@ -20,9 +20,7 @@ class BrowserSocket extends EventTarget {
     this.dispatchEvent(new Event("open"));
   }
   message(value: unknown): void {
-    this.dispatchEvent(
-      new MessageEvent("message", { data: JSON.stringify(value) }),
-    );
+    this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) }));
   }
 }
 
@@ -45,7 +43,9 @@ it("times out a stalled connection and ignores its late events", async () => {
   const rejected = vi.fn();
   void net.connect("ws://stalled").catch(rejected);
   await vi.advanceTimersByTimeAsync(10_000);
-  expect(rejected).toHaveBeenCalledWith(expect.objectContaining({ message: "The connection timed out." }));
+  expect(rejected).toHaveBeenCalledWith(
+    expect.objectContaining({ message: "The connection timed out." }),
+  );
   expect(status.mock.calls.at(-1)).toEqual(["offline"]);
   expect(BrowserSocket.instances[0].readyState).toBe(2);
   BrowserSocket.instances[0].open();
@@ -104,9 +104,7 @@ describe("WebSocket replacement", () => {
     void net.connect("ws://first").catch(rejected);
     const second = net.connect("ws://second");
     await Promise.resolve();
-    expect(rejected).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "AbortError" }),
-    );
+    expect(rejected).toHaveBeenCalledWith(expect.objectContaining({ name: "AbortError" }));
     BrowserSocket.instances[1].open();
     await second;
   });
