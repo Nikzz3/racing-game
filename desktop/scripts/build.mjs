@@ -15,7 +15,9 @@ const dist = path.join(root, "dist");
 
 // Resolved from typescript's own bin, so no PATH/npx games.
 const tscBin = createRequire(import.meta.url).resolve("typescript/bin/tsc");
-const tsc = spawnSync(process.execPath, [tscBin, "-p", path.join(root, "tsconfig.json")], { stdio: "inherit" });
+const tsc = spawnSync(process.execPath, [tscBin, "-p", path.join(root, "tsconfig.json")], {
+  stdio: "inherit",
+});
 if (tsc.status !== 0) process.exit(tsc.status ?? 1);
 
 mkdirSync(dist, { recursive: true });

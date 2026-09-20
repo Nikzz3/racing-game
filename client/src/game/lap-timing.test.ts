@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  CheckpointTracker,
-  runAutopilotLap,
-  replayInputs,
-} from "./harness";
+import { CheckpointTracker, runAutopilotLap, replayInputs } from "./harness";
 import { NUM_CHECKPOINTS, STORMHAVEN, SUNSET_RIDGE } from "@racing/shared";
 
 const TRACKS = [
@@ -19,8 +15,7 @@ describe.each(TRACKS)("CheckpointTracker on $track.id", ({ track }) => {
   it("records a lap time when all checkpoints are passed in order", () => {
     const tracker = new CheckpointTracker(cps);
     expect(at(tracker, 0, 0)).toBeNull();
-    for (let k = 1; k < cps.length; k++)
-      expect(at(tracker, k, k * 60)).toBeNull();
+    for (let k = 1; k < cps.length; k++) expect(at(tracker, k, k * 60)).toBeNull();
     // One second (60 steps) per checkpoint.
     expect(at(tracker, 0, cps.length * 60)).toBeCloseTo(cps.length * 1000, 0);
   });
@@ -46,16 +41,13 @@ describe("CheckpointTracker track isolation", () => {
   const sh = STORMHAVEN.checkpoints;
 
   it("the two tracks have geometrically distinct checkpoints", () => {
-    const same = sh.every(
-      (cp, i) => Math.abs(cp.x - sr[i].x) < 1 && Math.abs(cp.z - sr[i].z) < 1,
-    );
+    const same = sh.every((cp, i) => Math.abs(cp.x - sr[i].x) < 1 && Math.abs(cp.z - sr[i].z) < 1);
     expect(same).toBe(false);
   });
 
   it("Sunset Ridge checkpoint positions do not complete a Stormhaven lap", () => {
     const tracker = new CheckpointTracker(sh);
-    for (let k = 0; k < NUM_CHECKPOINTS; k++)
-      tracker.update(sr[k].x, sr[k].z, k * 60);
+    for (let k = 0; k < NUM_CHECKPOINTS; k++) tracker.update(sr[k].x, sr[k].z, k * 60);
     expect(tracker.update(sr[0].x, sr[0].z, NUM_CHECKPOINTS * 60)).toBeNull();
   });
 
@@ -71,31 +63,21 @@ describe("CheckpointTracker track isolation", () => {
         i * 60,
       );
     }
-    for (let k = 20; k < sh.length; k++)
-      tracker.update(sh[k].x, sh[k].z, (11 + k - 20) * 60);
+    for (let k = 20; k < sh.length; k++) tracker.update(sh[k].x, sh[k].z, (11 + k - 20) * 60);
     expect(tracker.update(sh[0].x, sh[0].z, (sh.length + 11) * 60)).toBeNull();
   });
 });
 
-describe.each(TRACKS)(
-  "autopilot baseline lap on $track.id",
-  ({ track, maxSteps, maxLapMs }) => {
-    it(
-      "completes a valid lap from the fixed spawn",
-      () => {
-        const result = runAutopilotLap({ track, maxSteps });
-        expect(result).not.toBeNull();
-        expect(result!.lapTimeMs).toBeGreaterThan(20_000);
-        expect(result!.lapTimeMs).toBeLessThan(maxLapMs);
-        expect(result!.trajectory.length).toBeGreaterThan(0);
-        console.log(
-          `Autopilot ${track.id} lap time: ${(result!.lapTimeMs / 1000).toFixed(2)} s`,
-        );
-      },
-      60_000,
-    );
-  },
-);
+describe.each(TRACKS)("autopilot baseline lap on $track.id", ({ track, maxSteps, maxLapMs }) => {
+  it("completes a valid lap from the fixed spawn", () => {
+    const result = runAutopilotLap({ track, maxSteps });
+    expect(result).not.toBeNull();
+    expect(result!.lapTimeMs).toBeGreaterThan(20_000);
+    expect(result!.lapTimeMs).toBeLessThan(maxLapMs);
+    expect(result!.trajectory.length).toBeGreaterThan(0);
+    console.log(`Autopilot ${track.id} lap time: ${(result!.lapTimeMs / 1000).toFixed(2)} s`);
+  }, 60_000);
+});
 
 describe("replayInputs", () => {
   const coast = { throttle: 0, brake: 0, steer: 0 };
@@ -117,6 +99,6 @@ describe("replayInputs", () => {
   });
 
   it("returns null lapTimeMs when no lap is completed", () => {
-    expect(replayInputs(Array(60).fill(coast)).lapTimeMs).toBeNull();
+    expect(replayInputs(Array.from({ length: 60 }, () => coast)).lapTimeMs).toBeNull();
   });
 });

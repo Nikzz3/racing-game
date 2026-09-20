@@ -114,13 +114,10 @@ export class RoomManager {
   private readonly writes = new SerialQueues("Failed to persist room");
 
   async load(): Promise<void> {
-    await pool.query(
-      "DELETE FROM rooms WHERE created_at <= now() - $1::interval",
-      [`${ROOM_TTL_MS} milliseconds`],
-    );
-    const { rows } = await pool.query(
-      "SELECT id, name, created_at, difficulty, track FROM rooms",
-    );
+    await pool.query("DELETE FROM rooms WHERE created_at <= now() - $1::interval", [
+      `${ROOM_TTL_MS} milliseconds`,
+    ]);
+    const { rows } = await pool.query("SELECT id, name, created_at, difficulty, track FROM rooms");
     for (const row of rows) {
       const room = new Room(
         row.id,
@@ -142,7 +139,7 @@ export class RoomManager {
       resolveTrack(trackSlug),
     );
     this.rooms.set(room.id, room);
-    this.writes.enqueue(room.id, () =>
+    void this.writes.enqueue(room.id, () =>
       pool.query(
         "INSERT INTO rooms (id, name, created_at, difficulty, track) VALUES ($1, $2, $3, $4, $5)",
         [room.id, room.name, new Date(room.createdAt), room.difficulty, room.track.id],
@@ -187,7 +184,7 @@ export class RoomManager {
 
   private remove(room: Room): void {
     this.rooms.delete(room.id);
-    this.writes.enqueue(room.id, () =>
+    void this.writes.enqueue(room.id, () =>
       pool.query("DELETE FROM rooms WHERE id = $1", [room.id]),
     );
   }

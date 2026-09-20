@@ -50,7 +50,11 @@ async function databaseUrl(): Promise<string> {
 
   adoptPodmanSocket();
   container = await new GenericContainer("postgres:17-alpine")
-    .withEnvironment({ POSTGRES_USER: "postgres", POSTGRES_PASSWORD: "postgres", POSTGRES_DB: "racing" })
+    .withEnvironment({
+      POSTGRES_USER: "postgres",
+      POSTGRES_PASSWORD: "postgres",
+      POSTGRES_DB: "racing",
+    })
     .withExposedPorts(5432)
     // The image's first boot initialises the cluster on a temporary server, stops
     // it, then starts the real one. pg_isready passes against the temporary server

@@ -3,9 +3,7 @@ import { CAR_VARIANTS, type Variant } from "@racing/shared";
 
 /** Matches the eight five-metre bays authored in environment:garage. */
 export function garageBayX(variant: Variant): number {
-  return (
-    (CAR_VARIANTS.indexOf(variant) - (CAR_VARIANTS.length - 1) / 2) * 5
-  );
+  return (CAR_VARIANTS.indexOf(variant) - (CAR_VARIANTS.length - 1) / 2) * 5;
 }
 
 /** Only the camera moves. Retargeting starts from its current position. */
@@ -46,14 +44,8 @@ export class GarageCamera {
 
   update(now: number): boolean {
     const t =
-      this.duration === 0
-        ? 1
-        : THREE.MathUtils.clamp((now - this.started) / this.duration, 0, 1);
-    this.current = THREE.MathUtils.lerp(
-      this.from,
-      this.to,
-      t * t * (3 - 2 * t),
-    );
+      this.duration === 0 ? 1 : THREE.MathUtils.clamp((now - this.started) / this.duration, 0, 1);
+    this.current = THREE.MathUtils.lerp(this.from, this.to, t * t * (3 - 2 * t));
     this.pose();
     return t < 1;
   }
@@ -61,11 +53,7 @@ export class GarageCamera {
   private pose(): void {
     this.target.set(this.current, 0.9, 0);
     this.position.set(
-      THREE.MathUtils.clamp(
-        this.current + Math.sin(this.angle) * 6.8,
-        -19,
-        20.3,
-      ),
+      THREE.MathUtils.clamp(this.current + Math.sin(this.angle) * 6.8, -19, 20.3),
       2.65,
       Math.cos(this.angle) * 6.8,
     );

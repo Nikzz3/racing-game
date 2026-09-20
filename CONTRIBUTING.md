@@ -89,7 +89,7 @@ npm ci --prefer-offline
   `PORT=8090 CLIENT_PORT=5183 npm run dev` instead.
 
 T3 Code does not apply `t3.json` automatically to an existing project: open
-*Settings → Projects → racing-game → Actions* and use **Import scripts → Import from
+_Settings → Projects → racing-game → Actions_ and use **Import scripts → Import from
 t3.json**. The imported actions are stored per machine; the file in the repo is the source
 of truth for everyone else. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
 `T3CODE_WORKTREE_PATH` in their environment.
@@ -149,6 +149,24 @@ developer `racing` database:
 ```bash
 SERVER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/racing_test npm test -w server
 ```
+
+## Linting and formatting
+
+[oxlint](https://oxc.rs/docs/guide/usage/linter) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter)
+cover the TypeScript workspaces; `.oxlintrc.json` and `.oxfmtrc.json` at the repo root are
+the whole configuration, and every rule turned off there says why. Linting is type-aware, so
+it reads each workspace's `tsconfig.json` and takes a few seconds longer than a plain lint.
+
+```bash
+npm run lint          # type-aware oxlint; CI fails on errors, warnings are advisory
+npm run lint:fix      # apply the safe auto-fixes, then re-run lint for what remains
+npm run format        # rewrite files with oxfmt
+npm run format:check  # what CI runs
+```
+
+Prefer fixing the code over disabling a rule. If a rule is wrong for this codebase, turn it
+off in `.oxlintrc.json` with a one-line reason rather than adding inline `oxlint-disable`
+comments.
 
 ## End-to-end tests
 

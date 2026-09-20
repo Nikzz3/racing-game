@@ -36,7 +36,10 @@ function bakedServerUrl(): string | undefined {
   const configPath = path.join(import.meta.dirname, "config.json");
   if (!existsSync(configPath)) return undefined;
   try {
-    return (JSON.parse(readFileSync(configPath, "utf8")) as { serverUrl?: string }).serverUrl || undefined;
+    return (
+      (JSON.parse(readFileSync(configPath, "utf8")) as { serverUrl?: string }).serverUrl ||
+      undefined
+    );
   } catch (err) {
     console.warn(`desktop: could not parse ${configPath}:`, err);
     return undefined;
@@ -44,7 +47,10 @@ function bakedServerUrl(): string | undefined {
 }
 
 const serverUrl =
-  process.argv.find((a) => a.startsWith("--server-url="))?.slice("--server-url=".length).trim() ||
+  process.argv
+    .find((a) => a.startsWith("--server-url="))
+    ?.slice("--server-url=".length)
+    .trim() ||
   process.env.RACING_SERVER_URL?.trim() ||
   bakedServerUrl() ||
   "ws://localhost:8080";
@@ -94,7 +100,8 @@ function resolveBundleFile(requestUrl: string): string | null {
 
 async function handleAppRequest(request: Request): Promise<Response> {
   const file = resolveBundleFile(request.url);
-  if (!file) return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
+  if (!file)
+    return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain" } });
   const upstream = await net.fetch(pathToFileURL(file).href);
   const headers = new Headers(upstream.headers);
   const ext = path.extname(file).toLowerCase();
@@ -105,7 +112,10 @@ async function handleAppRequest(request: Request): Promise<Response> {
 
 // Must run before app is ready.
 protocol.registerSchemesAsPrivileged([
-  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
 ]);
 
 function openExternally(url: string): void {
@@ -222,7 +232,8 @@ function setupAutoUpdater(): void {
 
   const canInstallInPlace =
     process.platform !== "darwin" || !existsSync(path.join(process.resourcesPath, UNSIGNED_MARKER));
-  if (!canInstallInPlace) console.info("desktop: unsigned macOS build; updates are offered as downloads");
+  if (!canInstallInPlace)
+    console.info("desktop: unsigned macOS build; updates are offered as downloads");
 
   const updater = electronUpdater.autoUpdater;
   updater.autoDownload = false;
@@ -238,7 +249,11 @@ function setupAutoUpdater(): void {
   });
   updater.on("update-available", (info) => {
     offered = info.version;
-    publishUpdateState({ status: "available", version: info.version, canInstall: canInstallInPlace });
+    publishUpdateState({
+      status: "available",
+      version: info.version,
+      canInstall: canInstallInPlace,
+    });
   });
   updater.on("update-not-available", () => {
     offered = null;
@@ -279,7 +294,9 @@ function setupAutoUpdater(): void {
         // itself inactive (`isUpdaterActive`), which would otherwise leave the control
         // stuck on its pre-check label forever.
         if (result === null) {
-          console.warn("desktop: updater is inactive in this install; offering the releases page instead");
+          console.warn(
+            "desktop: updater is inactive in this install; offering the releases page instead",
+          );
           publishUpdateState({ status: "unsupported" });
         }
       },
@@ -301,7 +318,9 @@ function setupAutoUpdater(): void {
       publishUpdateState({ status: "downloading", version: updateState.version, percent: 0 });
       // The `error` listener above has already translated a rejection into renderer
       // state (including the macOS fallback); nothing more to do than keep the app alive.
-      await updater.downloadUpdate().catch((err: unknown) => console.warn("desktop: update install failed:", err));
+      await updater
+        .downloadUpdate()
+        .catch((err: unknown) => console.warn("desktop: update install failed:", err));
     }
   });
 

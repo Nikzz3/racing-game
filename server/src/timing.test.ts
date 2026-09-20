@@ -12,7 +12,13 @@ function at(t: TimingState, k: number, now: number, maxSpeed = MAX_SPEED, minLap
 }
 
 /** From a timing state already past the start line, visit every remaining gate and finish. */
-function finishLap(t: TimingState, now: number, stepMs: number, maxSpeed = MAX_SPEED, minLap = MIN_LAP_MS) {
+function finishLap(
+  t: TimingState,
+  now: number,
+  stepMs: number,
+  maxSpeed = MAX_SPEED,
+  minLap = MIN_LAP_MS,
+) {
   for (let k = 1; k < CHECKPOINTS.length; k++) {
     now += stepMs;
     at(t, k, now, maxSpeed, minLap);
@@ -44,7 +50,15 @@ describe("updateTiming — speed bound", () => {
     updateTiming(t, START.x + 0.75, START.z, 1, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
     expect(t.lapImplausible).toBe(false);
     for (let ms = 50; ms <= 1000; ms += 50) {
-      updateTiming(t, START.x + 0.75 + (15 * ms) / 1000, START.z, ms, CHECKPOINTS, MAX_SPEED, MIN_LAP_MS);
+      updateTiming(
+        t,
+        START.x + 0.75 + (15 * ms) / 1000,
+        START.z,
+        ms,
+        CHECKPOINTS,
+        MAX_SPEED,
+        MIN_LAP_MS,
+      );
     }
     expect(t.lapImplausible).toBe(false);
   });

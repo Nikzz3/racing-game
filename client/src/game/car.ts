@@ -3,10 +3,7 @@ import { CAR_VARIANTS, type Variant } from "@racing/shared";
 import { hashString } from "../util";
 import { getModel } from "./models";
 
-const COLORS = [
-  0xd65b34, 0x4b7e9d, 0x688b56, 0xd2ac4a, 0x987caa, 0xb77b42, 0x438d86,
-  0xcc8591,
-];
+const COLORS = [0xd65b34, 0x4b7e9d, 0x688b56, 0xd2ac4a, 0x987caa, 0xb77b42, 0x438d86, 0xcc8591];
 interface MovingParts {
   wheels: THREE.Object3D[];
   fronts: THREE.Object3D[];
@@ -16,11 +13,7 @@ export function resolveVariant(id: string, variant?: Variant): Variant {
   return variant ?? CAR_VARIANTS[hashString(id) % CAR_VARIANTS.length];
 }
 
-export function createCarMesh(
-  id: string,
-  name?: string,
-  variant?: Variant,
-): THREE.Group {
+export function createCarMesh(id: string, name?: string, variant?: Variant): THREE.Group {
   const car = new THREE.Group();
   const source = getModel(`car:${resolveVariant(id, variant)}`);
   if (source) {
@@ -69,16 +62,10 @@ export function createCarMesh(
     );
   return car;
 }
-export function animateCar(
-  car: THREE.Group,
-  speed: number,
-  steer: number,
-  dt: number,
-): void {
+export function animateCar(car: THREE.Group, speed: number, steer: number, dt: number): void {
   const parts = car.userData.parts as MovingParts | undefined;
   if (!parts) return;
-  for (const wheel of parts.wheels)
-    wheel.rotation.x += (speed * dt) / parts.radius;
+  for (const wheel of parts.wheels) wheel.rotation.x += (speed * dt) / parts.radius;
   for (const wheel of parts.fronts) wheel.rotation.y = steer * 0.45;
 }
 /** Releases the name tag and any fallback box; Blender geometry is shared. */
@@ -94,9 +81,7 @@ export function disposeCarMesh(car: THREE.Group): void {
     }
   });
 }
-export function disposeMaterials(
-  material: THREE.Material | THREE.Material[],
-): void {
+export function disposeMaterials(material: THREE.Material | THREE.Material[]): void {
   if (Array.isArray(material)) material.forEach((m) => m.dispose());
   else material.dispose();
 }

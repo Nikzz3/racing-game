@@ -39,9 +39,9 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
       },
 
       async driveInputs(inputs) {
-        await page.evaluate((inputs) => {
+        await page.evaluate((injected) => {
           if (!window.__game) throw new Error("window.__game is not installed");
-          window.__game.inject(inputs);
+          window.__game.inject(injected);
         }, inputs);
 
         // The seam is held to real time, so a full lap's worth of inputs takes minutes.
@@ -57,11 +57,9 @@ export const test = dbTest.extend<{ game: GameSeamFixture }>({
       async driveLap() {
         const trajectory = await game.driveInputs(lapInputs);
 
-        await page.waitForFunction(
-          () => window.__game?.state().lapSubmitted === true,
-          undefined,
-          { timeout: 10_000 },
-        );
+        await page.waitForFunction(() => window.__game?.state().lapSubmitted === true, undefined, {
+          timeout: 10_000,
+        });
 
         const checkpoints = trajectory
           .map((sample) => sample.checkpoint)

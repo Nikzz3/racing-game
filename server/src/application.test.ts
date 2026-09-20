@@ -131,18 +131,12 @@ describe("connection initialization", () => {
     expect(client.messages).toEqual([]);
     finishWelcome([]);
     await vi.waitFor(() =>
-      expect(client.messages.some((message) => message.type === "joined")).toBe(
-        true,
-      ),
+      expect(client.messages.some((message) => message.type === "joined")).toBe(true),
     );
     expect(client.messages[0].type).toBe("welcome");
     application.tick();
-    const snapshot = client.messages.find(
-      (message) => message.type === "snapshot",
-    );
-    expect(snapshot?.players).toEqual([
-      expect.objectContaining({ name: "Ava", variant: "taxi" }),
-    ]);
+    const snapshot = client.messages.find((message) => message.type === "snapshot");
+    expect(snapshot?.players).toEqual([expect.objectContaining({ name: "Ava", variant: "taxi" })]);
   });
 
   it("drops queued work if a driver disconnects during the database query", async () => {

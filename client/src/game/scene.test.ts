@@ -30,12 +30,20 @@ describe("sunset lighting", () => {
   it("keeps the visible sun aligned with tree shadows as the car crosses the world", () => {
     const bundle = world();
     const sky = bundle.scene.getObjectByName("sunset-sky") as THREE.Mesh<
-      THREE.SphereGeometry, THREE.ShaderMaterial
+      THREE.SphereGeometry,
+      THREE.ShaderMaterial
     >;
     const direction = sky.material.uniforms.sunDirection.value as THREE.Vector3;
-    for (const [x, z] of [[0, 0], [300, -220], [-410, 390]]) {
+    for (const [x, z] of [
+      [0, 0],
+      [300, -220],
+      [-410, 390],
+    ]) {
       updateSun(bundle.sun, x, z);
-      const lightDirection = bundle.sun.position.clone().sub(bundle.sun.target.position).normalize();
+      const lightDirection = bundle.sun.position
+        .clone()
+        .sub(bundle.sun.target.position)
+        .normalize();
       expect(lightDirection.distanceTo(direction)).toBeLessThan(1e-10);
     }
     expect(direction.y).toBeGreaterThan(0.1);
@@ -69,8 +77,12 @@ describe("disposeRenderer", () => {
   it("calls forceContextLoss before dispose", () => {
     const calls: string[] = [];
     const renderer = {
-      forceContextLoss: vi.fn(() => { calls.push("forceContextLoss"); }),
-      dispose: vi.fn(() => { calls.push("dispose"); }),
+      forceContextLoss: vi.fn(() => {
+        calls.push("forceContextLoss");
+      }),
+      dispose: vi.fn(() => {
+        calls.push("dispose");
+      }),
     };
     disposeRenderer(renderer as never);
     expect(calls).toEqual(["forceContextLoss", "dispose"]);

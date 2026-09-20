@@ -1,8 +1,8 @@
 # A Track may define its own checkpoint layout; Stormhaven gates every control point
 
 Checkpoints are ordered gates that a lap must pass through in sequence
-(`server/src/timing.ts`). They enforce lap *order* — you cannot skip a gate — but
-they do nothing to enforce the racing *line*: any straight path between two
+(`server/src/timing.ts`). They enforce lap _order_ — you cannot skip a gate — but
+they do nothing to enforce the racing _line_: any straight path between two
 consecutive checkpoints is legal. On the Sunset Ridge Circuit, twelve evenly-spaced
 gates suffice, because its corners don't fold back on themselves.
 
@@ -26,14 +26,14 @@ derivation. The change is physics-neutral and confined to `shared/src/track.ts`.
 - **Strengthen the grass physics globally (rejected):** lower `grassMaxSpeed` / raise
   friction so any cut bleeds too much speed. A two-constant change, but global — it
   punishes every player's legitimate off-track recovery, alters the feel of Sunset Ridge,
-  and shifts the AI Reference Lap and the Medium leaderboard baseline on *both* Tracks.
+  and shifts the AI Reference Lap and the Medium leaderboard baseline on _both_ Tracks.
   The exploit lives on one Track's geometry, so the fix should too.
 - **Raise the evenly-spaced checkpoint count (rejected):** measured and insufficient —
   even at 32 evenly-spaced gates a 0.59-ratio shortcut survives, because arc-even spacing
   keeps landing gates mid-swing on the switchbacks. Placement, not count, is what forces
   the line.
-- **Physical barriers on the infield (rejected):** would make cutting *impossible* rather
-  than merely *slower*; we deliberately want the grass to stay drivable and the racing line
+- **Physical barriers on the infield (rejected):** would make cutting _impossible_ rather
+  than merely _slower_; we deliberately want the grass to stay drivable and the racing line
   to win on merit.
 - **A checkpoint on every control point (chosen):** physics-neutral, Stormhaven-only, and
   self-maintaining — reshaping the Track later moves the gates automatically.

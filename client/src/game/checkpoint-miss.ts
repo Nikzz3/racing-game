@@ -8,7 +8,6 @@ export function checkpointMissed(
   totalSamples: number,
   margin: number,
 ): boolean {
-  const forwardDistance =
-    (carSampleIndex - owedCpSampleIndex + totalSamples) % totalSamples;
+  const forwardDistance = (carSampleIndex - owedCpSampleIndex + totalSamples) % totalSamples;
   return forwardDistance > margin && forwardDistance < totalSamples / 2;
 }

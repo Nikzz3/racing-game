@@ -1,10 +1,5 @@
 import * as THREE from "three";
-import {
-  resolveTrack,
-  type ReplayFrame,
-  type TrackSlug,
-  type Variant,
-} from "@racing/shared";
+import { resolveTrack, type ReplayFrame, type TrackSlug, type Variant } from "@racing/shared";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh, disposeCarMesh } from "./car";
 import {
@@ -44,8 +39,7 @@ export class ReplayViewer {
     private readonly onClose: () => void,
   ) {
     // Validate before allocating a renderer or attaching any DOM nodes.
-    if (frames.length === 0)
-      throw new Error("ReplayViewer: frames must not be empty");
+    if (frames.length === 0) throw new Error("ReplayViewer: frames must not be empty");
     this.lastFrame = this.playStart = performance.now();
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.append(this.container);
@@ -68,14 +62,11 @@ export class ReplayViewer {
     this.overlay.querySelector<HTMLElement>(".replay-name")!.textContent = name;
     this.timeEl = this.overlay.querySelector<HTMLElement>(".replay-time")!;
     this.timeEl.textContent = `--:--.--- / ${formatMs(timeMs)}`;
-    this.finishedEl =
-      this.overlay.querySelector<HTMLElement>(".replay-finished")!;
-    this.overlay
-      .querySelector(".replay-exit")!
-      .addEventListener("click", () => {
-        this.dispose();
-        this.onClose();
-      });
+    this.finishedEl = this.overlay.querySelector<HTMLElement>(".replay-finished")!;
+    this.overlay.querySelector(".replay-exit")!.addEventListener("click", () => {
+      this.dispose();
+      this.onClose();
+    });
     parent.append(this.overlay);
     window.addEventListener("resize", this.onResize);
     this.restart(this.playStart);

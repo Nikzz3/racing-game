@@ -57,15 +57,7 @@ function captureFrames(handle: number): (now: number) => void {
 function makeViewer(variant: Variant | undefined): ReplayViewer {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
-  return new ReplayViewer(
-    parent,
-    "Ava",
-    "sunset-ridge",
-    61_000,
-    FRAMES,
-    variant,
-    () => {},
-  );
+  return new ReplayViewer(parent, "Ava", "sunset-ridge", 61_000, FRAMES, variant, () => {});
 }
 
 describe("ReplayViewer variant", () => {
@@ -94,16 +86,12 @@ describe("ReplayViewer lifecycle", () => {
     const mesh = vi.mocked(createCarMesh).mock.results[0].value;
     frame(1000);
     expect(mesh.position.x).toBe(5);
-    expect(
-      document.querySelector<HTMLElement>(".replay-finished")!.hidden,
-    ).toBe(false);
+    expect(document.querySelector<HTMLElement>(".replay-finished")!.hidden).toBe(false);
     frame(2499);
     expect(mesh.position.x).toBe(5);
     frame(2500);
     expect(mesh.position.x).toBe(0);
-    expect(
-      document.querySelector<HTMLElement>(".replay-finished")!.hidden,
-    ).toBe(true);
+    expect(document.querySelector<HTMLElement>(".replay-finished")!.hidden).toBe(true);
     viewer.dispose();
   });
 
@@ -120,16 +108,7 @@ describe("ReplayViewer lifecycle", () => {
   it("rejects empty recordings before attaching DOM or allocating a car", () => {
     const parent = document.createElement("div");
     expect(
-      () =>
-        new ReplayViewer(
-          parent,
-          "Ava",
-          "sunset-ridge",
-          0,
-          [],
-          undefined,
-          () => {},
-        ),
+      () => new ReplayViewer(parent, "Ava", "sunset-ridge", 0, [], undefined, () => {}),
     ).toThrow("frames must not be empty");
     expect(parent.childElementCount).toBe(0);
     expect(createCarMesh).not.toHaveBeenCalled();
@@ -152,28 +131,17 @@ describe("pre-rework recording compatibility", () => {
         variant,
         () => {},
       );
-      expect(createCarMesh).toHaveBeenCalledWith(
-        "LegacyDriver",
-        "LegacyDriver",
-        variant,
-      );
+      expect(createCarMesh).toHaveBeenCalledWith("LegacyDriver", "LegacyDriver", variant);
       const mesh = vi.mocked(createCarMesh).mock.results[0].value;
       frame(25);
       expect(mesh.position.x).toBeCloseTo(-142.075, 6);
       expect(mesh.position.z).toBeCloseTo(38.49, 6);
       expect(mesh.rotation.y).toBeCloseTo(3.141092653589793, 10);
       // The cosmetic HUD scale must never change recorded speed or playback.
-      expect(animateCar).toHaveBeenLastCalledWith(
-        mesh,
-        expect.closeTo(83.74, 8),
-        0,
-        0.025,
-      );
+      expect(animateCar).toHaveBeenLastCalledWith(mesh, expect.closeTo(83.74, 8), 0, 0.025);
       frame(LEGACY_RECORD.time_ms);
       expect(mesh.position.x).toBe(-144.14);
-      expect(document.querySelector(".replay-time")?.textContent).toBe(
-        "1:01.234 / 1:01.234",
-      );
+      expect(document.querySelector(".replay-time")?.textContent).toBe("1:01.234 / 1:01.234");
       frame(LEGACY_RECORD.time_ms + 1500);
       expect(mesh.position.x).toBe(-144.13);
       expect(LEGACY_RECORD.frames).toEqual(originalFrames);
@@ -187,12 +155,9 @@ describe("pre-rework recording compatibility", () => {
     expect(pose.z).toBeCloseTo(38.49, 6);
     expect(pose.heading).toBeCloseTo(3.141092653589793, 10);
     expect(pose.speed).toBeCloseTo(83.74, 8);
-    expect(
-      pacerPoseAt(LEGACY_RECORD.frames, 10_000, 10_000 + LEGACY_RECORD.time_ms)
-        ?.speed,
-    ).toBe(82.45);
-    expect(
-      pacerPoseAt(LEGACY_RECORD.frames, 10_000, 10_001 + LEGACY_RECORD.time_ms),
-    ).toBeNull();
+    expect(pacerPoseAt(LEGACY_RECORD.frames, 10_000, 10_000 + LEGACY_RECORD.time_ms)?.speed).toBe(
+      82.45,
+    );
+    expect(pacerPoseAt(LEGACY_RECORD.frames, 10_000, 10_001 + LEGACY_RECORD.time_ms)).toBeNull();
   });
 });

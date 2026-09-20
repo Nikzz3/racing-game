@@ -50,10 +50,7 @@ export class TouchControls {
     this.x = 0;
     this.y = 0;
     this.knob.style.transform = "translate(-50%, -50%)";
-    if (
-      capturedPointer !== null &&
-      this.root.hasPointerCapture?.(capturedPointer)
-    ) {
+    if (capturedPointer !== null && this.root.hasPointerCapture?.(capturedPointer)) {
       this.root.releasePointerCapture(capturedPointer);
     }
   };
@@ -93,7 +90,5 @@ export class TouchControls {
 
 function deadZone(value: number): number {
   const magnitude = Math.abs(value);
-  return magnitude < DEAD_ZONE
-    ? 0
-    : (Math.sign(value) * (magnitude - DEAD_ZONE)) / (1 - DEAD_ZONE);
+  return magnitude < DEAD_ZONE ? 0 : (Math.sign(value) * (magnitude - DEAD_ZONE)) / (1 - DEAD_ZONE);
 }

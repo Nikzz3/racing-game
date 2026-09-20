@@ -37,9 +37,7 @@ export class GarageStage {
       }`,
   });
   private screen: "garage" | "track" | "settings" = "garage";
-  private readonly motion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)",
-  );
+  private readonly motion = window.matchMedia("(prefers-reduced-motion: reduce)");
   private variant?: Variant;
   private active = true;
   private disposed = false;
@@ -58,9 +56,7 @@ export class GarageStage {
       alpha: true,
       antialias: !CHEAP_RENDER,
     });
-    this.renderer.setPixelRatio(
-      CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5),
-    );
+    this.renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5));
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
@@ -69,8 +65,7 @@ export class GarageStage {
     const canvas = this.renderer.domElement;
     canvas.className = "garage-stage-canvas";
     canvas.setAttribute("aria-hidden", "true");
-    canvas.style.cssText =
-      "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
+    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
     this.camera.position.set(5, 2.8, 7.6);
     this.camera.lookAt(0, 1, 0);
     const environment = new RoomEnvironment();
@@ -92,10 +87,7 @@ export class GarageStage {
       far: 25,
     });
     this.light.shadow.normalBias = 0.035;
-    this.scene.add(
-      this.light,
-      new THREE.HemisphereLight(0xe1e8f0, 0x352619, 0.75),
-    );
+    this.scene.add(this.light, new THREE.HemisphereLight(0xe1e8f0, 0x352619, 0.75));
     const rim = new THREE.DirectionalLight(0xffb87e, 0.8);
     rim.position.set(5, 3, -5);
     this.scene.add(rim);
@@ -148,12 +140,7 @@ export class GarageStage {
   }
 
   setVariant(variant: Variant): void {
-    if (
-      this.disposed ||
-      this.variant === variant ||
-      !getModel(`car:${variant}`)
-    )
-      return;
+    if (this.disposed || this.variant === variant || !getModel(`car:${variant}`)) return;
     this.variant = variant;
     this.endDrag();
     const now = performance.now();
@@ -198,8 +185,7 @@ export class GarageStage {
   private pointerMove = (event: PointerEvent): void => {
     if (!this.drag || event.pointerId !== this.drag.pointerId) return;
     this.rig.orbit(
-      ((event.clientX - this.drag.x) * 2) /
-        Math.max(this.interactionHost.clientWidth, 1),
+      ((event.clientX - this.drag.x) * 2) / Math.max(this.interactionHost.clientWidth, 1),
     );
     this.drag.x = event.clientX;
     this.draw(performance.now());
@@ -287,10 +273,7 @@ export class GarageStage {
     this.interactionHost.removeEventListener("pointermove", this.pointerMove);
     this.interactionHost.removeEventListener("pointerup", this.pointerEnd);
     this.interactionHost.removeEventListener("pointercancel", this.pointerEnd);
-    this.interactionHost.removeEventListener(
-      "lostpointercapture",
-      this.pointerEnd,
-    );
+    this.interactionHost.removeEventListener("lostpointercapture", this.pointerEnd);
     this.interactionHost.classList.remove("can-rotate-car");
     cancelAnimationFrame(this.animation);
     this.observer.disconnect();

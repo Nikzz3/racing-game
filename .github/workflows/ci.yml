@@ -47,6 +47,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Type-aware oxlint reads the same tsconfigs as the typecheck above.
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm test
 
   e2e:

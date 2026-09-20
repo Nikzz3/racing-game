@@ -8,10 +8,7 @@ import { initDb } from "./db";
 import { createHttpHandler } from "./http";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const CLIENT_DIST = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../client/dist",
-);
+const CLIENT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 const SNAPSHOT_INTERVAL_MS = 50;
 const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 
@@ -25,9 +22,7 @@ async function main(): Promise<void> {
     maxPayload: MAX_WS_PAYLOAD_BYTES,
   });
   sockets.on("connection", (socket) => application.connect(socket));
-  sockets.on("error", (error) =>
-    console.error("WebSocket server error:", error),
-  );
+  sockets.on("error", (error) => console.error("WebSocket server error:", error));
 
   await new Promise<void>((resolveReady, reject) => {
     server.once("error", reject);

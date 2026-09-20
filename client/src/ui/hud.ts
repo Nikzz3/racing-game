@@ -112,8 +112,7 @@ export class Hud {
   setStandings(players: PlayerSnapshot[], id: string): void {
     const sorted = [...players].sort(
       (a, b) =>
-        (a.bestLapMs ?? Infinity) - (b.bestLapMs ?? Infinity) ||
-        a.name.localeCompare(b.name),
+        (a.bestLapMs ?? Infinity) - (b.bestLapMs ?? Infinity) || a.name.localeCompare(b.name),
     );
     const markup = sorted
       .map(

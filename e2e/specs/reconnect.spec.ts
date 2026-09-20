@@ -3,7 +3,9 @@ import { expect, test } from "../fixtures/players";
 import { openRaceSettings } from "../fixtures/lobby";
 import { serverPort } from "../workers";
 
-test("automatically reconnects after a dropped connection and another failed attempt", async ({ playerA }, testInfo) => {
+test("automatically reconnects after a dropped connection and another failed attempt", async ({
+  playerA,
+}, testInfo) => {
   let connection: WebSocketRoute | undefined;
   let attempts = 0;
   await playerA.routeWebSocket(

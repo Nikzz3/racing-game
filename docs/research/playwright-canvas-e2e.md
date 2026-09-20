@@ -20,7 +20,7 @@ live pages (no per-file SHA available), linked to `playwright.dev` directly.
 > checkpoints, lap timer, or Room roster living in the Three.js scene / JS game state. The
 > mature answer used by real projects is a **dedicated `window` test seam**: the game attaches
 > a small, stable read/write hook (e.g. `window.__game`) that `page.evaluate()` reads for
-> assertions and (for input) that the game's input system reads *instead of* real keyboard
+> assertions and (for input) that the game's input system reads _instead of_ real keyboard
 > events. This makes state assertions and deterministic input the **same seam** and sidesteps
 > both the "nothing in the DOM" problem and the `requestAnimationFrame` timing race that plagues
 > real `page.keyboard` input. Recommend: **(a) expose game state via a `window` hook read through
@@ -34,11 +34,11 @@ live pages (no per-file SHA available), linked to `playwright.dev` directly.
 ## 1. State-assertion approaches
 
 For a WebGL canvas, "read the rendered state" splits into three families. The core constraint,
-stated by the testdino Playwright skill: *"Canvas pixels are not queryable via DOM"*
+stated by the testdino Playwright skill: _"Canvas pixels are not queryable via DOM"_
 ([canvas-and-webgl.md @ d3be9ca](https://github.com/testdino-hq/playwright-skill/blob/d3be9ca4d7303e2aee3eba4842963abf573117b0/core/canvas-and-webgl.md)).
 Everything below is a way around that.
 
-### 1a. Window-exposed test hooks read via `page.evaluate()` — *the strongest fit here*
+### 1a. Window-exposed test hooks read via `page.evaluate()` — _the strongest fit here_
 
 `page.evaluate()` runs a function **inside the page VM** and marshals a serializable result back
 to the test. From the docs:
@@ -69,42 +69,42 @@ context state" or "programmatic canvas operations" through `page.evaluate()`
 ([canvas-and-webgl.md @ d3be9ca](https://github.com/testdino-hq/playwright-skill/blob/d3be9ca4d7303e2aee3eba4842963abf573117b0/core/canvas-and-webgl.md)),
 and it is exactly how three.js's e2e runner synchronizes on render state (§3).
 
-- **Pros:** asserts on *actual game state* (lap count, checkpoint index, car transform, Room
+- **Pros:** asserts on _actual game state_ (lap count, checkpoint index, car transform, Room
   roster), not a proxy; fast; deterministic; headless-CI safe; no GPU dependency; results are
   small serializable structures that read cleanly in assertions.
 - **Cons:** requires a **test seam in production code** — the game must attach the hook. Best
   practice is a single, deliberately stable object (a public contract the tests depend on), not
   scattered globals. There's a small risk of asserting on state the renderer hasn't drawn yet;
-  that's why the hook should expose *game-model* state (authoritative), and, if visual fidelity
+  that's why the hook should expose _game-model_ state (authoritative), and, if visual fidelity
   ever matters, a `renderFinished` flag (three.js does this).
 
 ### 1b. HUD/DOM-only assertions
 
-Read the parts of the app that *are* in the DOM — the React HUD/lobby: lap timer text, position,
+Read the parts of the app that _are_ in the DOM — the React HUD/lobby: lap timer text, position,
 player-name list, "Room ABCD" label. Standard Playwright locators + web-first assertions
 (`expect(locator).toHaveText(...)`), no seam required.
 
 - **Pros:** zero production test-code; uses Playwright's auto-waiting locator assertions; tests
   what the user literally sees; ideal for the **lobby/Room-join** flow, which is DOM.
-- **Cons:** only reaches state the HUD chooses to render. #76 says it plainly: *"DOM assertions
-  only reach the HUD/lobby UI; game state needs another surface."* You cannot assert "car passed
+- **Cons:** only reaches state the HUD chooses to render. #76 says it plainly: _"DOM assertions
+  only reach the HUD/lobby UI; game state needs another surface."_ You cannot assert "car passed
   checkpoint 3 with the correct heading" from the HUD unless the HUD happens to surface it, and
   coupling deep game assertions to HUD copy is brittle (a text tweak breaks the test).
 
 ### 1c. Screenshot / visual-regression assertions
 
 Playwright's `expect(page).toHaveScreenshot()` captures the canvas and diffs it pixel-wise
-against a committed baseline with a tolerance. The testdino skill calls this *"the primary
-strategy for canvas"* because *"screenshot is the source of truth"* for pixels, recommending
+against a committed baseline with a tolerance. The testdino skill calls this _"the primary
+strategy for canvas"_ because _"screenshot is the source of truth"_ for pixels, recommending
 `maxDiffPixelRatio: 0.01`–`0.02` for render variance
 ([canvas-and-webgl.md @ d3be9ca](https://github.com/testdino-hq/playwright-skill/blob/d3be9ca4d7303e2aee3eba4842963abf573117b0/core/canvas-and-webgl.md)).
 It is the dominant pattern in the wild (three.js, satelllte, createIT — all §3).
 
-- **Pros:** the *only* approach that verifies the WebGL actually **renders correctly** (shaders,
+- **Pros:** the _only_ approach that verifies the WebGL actually **renders correctly** (shaders,
   camera, materials); no per-state seam.
 - **Cons:** **explicitly out of scope for our suite per #76.** Also: notoriously flaky across
-  GPUs/drivers/OSes — satelllte warns *"the example tests from this repo will fail for other
-  operating systems due to some low-level rendering differences"* and recommends pinning to a
+  GPUs/drivers/OSes — satelllte warns _"the example tests from this repo will fail for other
+  operating systems due to some low-level rendering differences"_ and recommends pinning to a
   Docker image
   ([satelllte/playwright-canvas @ 48716b6](https://github.com/satelllte/playwright-canvas/tree/48716b626086774c743a82ac09a204ac13f79d9e)).
   Needs software-GL determinism flags (§3). Answers "did it draw?" not "is the lap valid?" — the
@@ -124,12 +124,12 @@ Three approaches, increasing in determinism.
 ### 2a. `page.keyboard` / `locator.press` — real DOM key events
 
 Playwright dispatches genuine `keydown`/`keypress`/`keyup` events. `keyboard.press()` is
-*"a shortcut for `keyboard.down()` and `keyboard.up()`"*; holding a key means calling
+_"a shortcut for `keyboard.down()` and `keyboard.up()`"_; holding a key means calling
 `keyboard.down('ArrowRight')` then later `keyboard.up('ArrowRight')`; `press()` takes a `delay`
-= *"Time to wait between `keydown` and `keyup`"*
+= _"Time to wait between `keydown` and `keyup`"_
 ([Keyboard, playwright.dev](https://playwright.dev/docs/api/class-keyboard)).
 
-- **Pros:** highest fidelity — exercises the game's *real* keydown/keyup listeners; proves the
+- **Pros:** highest fidelity — exercises the game's _real_ keydown/keyup listeners; proves the
   actual input wiring works end-to-end.
 - **Cons/caveats:** **timing is wall-clock, not frame-locked.** A held key spans an
   indeterminate number of rAF ticks depending on machine speed / CI load, so the car travels a
@@ -141,7 +141,7 @@ Playwright dispatches genuine `keydown`/`keypress`/`keyup` events. `keyboard.pre
 ### 2b. CDP input injection — `Input.dispatchKeyEvent`
 
 Open a raw Chrome DevTools Protocol session and send `Input.*` commands. From the docs, CDP is
-for *"controlling features not exposed through Playwright's high level API"*; you obtain a
+for _"controlling features not exposed through Playwright's high level API"_; you obtain a
 session with `const client = await page.context().newCDPSession(page)` and call
 `client.send('Domain.method', params)`
 ([CDPSession, playwright.dev](https://playwright.dev/docs/api/class-cdpsession)) — e.g.
@@ -155,26 +155,29 @@ session with `const client = await page.context().newCDPSession(page)` and call
   only if the high-level keyboard API genuinely can't do the job; otherwise it's complexity
   without payoff here.
 
-### 2c. Dedicated input test-seam — *the deterministic option*
+### 2c. Dedicated input test-seam — _the deterministic option_
 
 Have the game's input system read from an **injectable intent object** (e.g. the input layer
-checks `window.__game?.input` or a set of virtual axes) *instead of*, or layered over, real DOM
+checks `window.__game?.input` or a set of virtual axes) _instead of_, or layered over, real DOM
 key handlers. Tests then bypass event dispatch entirely:
 
 ```ts
 // set intent, then advance exactly N frames deterministically
-await page.evaluate(() => { window.__game.input.throttle = 1; window.__game.input.steer = 0.3; });
+await page.evaluate(() => {
+  window.__game.input.throttle = 1;
+  window.__game.input.steer = 0.3;
+});
 await page.evaluate((n) => window.__game.step(n), 30); // step 30 fixed-dt ticks
 ```
 
 Combined with a **fixed-timestep** stepping hook (`window.__game.step(frames)` that runs the sim
 a deterministic number of ticks with fixed `dt`), a lap becomes byte-for-byte reproducible in CI.
 `page.exposeFunction`/`exposeBinding` can register the reverse direction — a `window` function
-that *"executes callback"* in Node — but for input the simpler direction is the game reading a
+that _"executes callback"_ in Node — but for input the simpler direction is the game reading a
 plain `window` object the test writes via `evaluate`
 ([exposeFunction, playwright.dev](https://playwright.dev/docs/api/class-page#page-expose-function)).
 
-- **Pros:** fully deterministic and rAF-independent; the *same* `window.__game` seam serves both
+- **Pros:** fully deterministic and rAF-independent; the _same_ `window.__game` seam serves both
   input (write) and assertions (read); no flake from wall-clock timing; trivially fast in
   headless CI. This is what makes #78 (deterministic lap) tractable.
 - **Cons:** requires a production seam and, for perfect determinism, a fixed-timestep loop +
@@ -184,9 +187,9 @@ plain `window` object the test writes via `evaluate`
 
 ## 3. Prior art (real repos — what they actually do)
 
-Honest finding: **detailed, public Playwright test code for a *3D WebGL game specifically* is
+Honest finding: **detailed, public Playwright test code for a _3D WebGL game specifically_ is
 scarce.** What exists is overwhelmingly **screenshot-based**, and the most rigorous example
-(three.js itself) is **Puppeteer**, not Playwright — but its *technique* transfers directly and
+(three.js itself) is **Puppeteer**, not Playwright — but its _technique_ transfers directly and
 is the best public evidence for the `window`-seam pattern.
 
 - **three.js official e2e** (Puppeteer; adjacent prior art) —
@@ -194,16 +197,16 @@ is the best public evidence for the `window`-seam pattern.
   Renders each example headless and does **screenshot pixel-diff** (`pixelThreshold = 0.1`,
   `maxDifferentPixels = 0.1`, i.e. ≤0.1% pixels may differ). Crucially, it uses a **`window`
   seam to synchronize on render completion** rather than sleeping: it sets `window._renderStarted
-  = true` and then polls until the example signals `window._renderFinished` (lines ~470–485).
+= true` and then polls until the example signals `window._renderFinished` (lines ~470–485).
   That "attach a boolean/flag on `window`, have the test poll it via evaluate" move is exactly
-  the seam we'd generalize to *game state*. It runs software-GPU headless via flags
+  the seam we'd generalize to _game state_. It runs software-GPU headless via flags
   `--enable-unsafe-webgpu --enable-features=Vulkan --disable-vulkan-surface --ignore-gpu-blocklist
-  --disable-gpu-driver-bug-workarounds --disable-gpu-watchdog --no-sandbox` (lines ~204–212).
+--disable-gpu-driver-bug-workarounds --disable-gpu-watchdog --no-sandbox` (lines ~204–212).
 
 - **satelllte/playwright-canvas** (Playwright; HTML canvas PoC) —
   [`@ 48716b6`](https://github.com/satelllte/playwright-canvas/tree/48716b626086774c743a82ac09a204ac13f79d9e).
-  Explicitly demonstrates *"testing HTML Canvas scenarios"* including *"gameplay loops, 3D
-  scenes, fragment shaders outputs"* by pairing Playwright's **Clock API**
+  Explicitly demonstrates _"testing HTML Canvas scenarios"_ including _"gameplay loops, 3D
+  scenes, fragment shaders outputs"_ by pairing Playwright's **Clock API**
   ([playwright.dev/docs/clock](https://playwright.dev/docs/clock)) with **visual comparisons**
   ([toHaveScreenshot](https://playwright.dev/docs/test-snapshots)). The Clock API is the notable
   transferable idea: **freeze/advance time** so an animation/gameplay loop is deterministic
@@ -219,8 +222,8 @@ is the best public evidence for the `window`-seam pattern.
   (not `--use-angle=angle`), plus `--no-sandbox`; verified by screenshots. Confirms the theme:
   public WebGL Playwright examples lean on screenshots + GL launch flags, not state seams.
 
-**Net:** no public repo demonstrates the *"expose game state on `window` and assert lap logic in
-code with Playwright"* pattern end-to-end for a 3D game — but three.js proves the `window`-seam
+**Net:** no public repo demonstrates the _"expose game state on `window` and assert lap logic in
+code with Playwright"_ pattern end-to-end for a 3D game — but three.js proves the `window`-seam
 synchronization mechanism in production, and the Playwright docs bless `page.evaluate` reading
 `window`. Our suite would be combining well-supported primitives, not inventing one.
 
@@ -241,7 +244,7 @@ const p2 = await (await browser.newContext()).newPage();
 
 This is the backbone of #80: two contexts join the same WebSocket Room; assert each sees the
 other (roster/HUD via DOM per §1b, or authoritative Room state via the `window` seam per §1a).
-The docs frame multi-context precisely for *"multi-user scenarios"* / collaborative apps.
+The docs frame multi-context precisely for _"multi-user scenarios"_ / collaborative apps.
 
 ### 4b. `webServer` — orchestrate client + WebSocket server startup
 
@@ -258,7 +261,7 @@ webServer: {
 ```
 
 `url` is polled until it returns 2xx/3xx/4xx; `timeout` defaults to 60 s. **It accepts an array**
-of server configs — so we can boot the **Node WebSocket server** *and* the **client dev server**
+of server configs — so we can boot the **Node WebSocket server** _and_ the **client dev server**
 (and point at a test Postgres) as separate entries, each with its own `command`/`url`/`name`.
 This is how the leaderboard-persistence flow (#76) gets a real Postgres behind a real server.
 
@@ -271,16 +274,16 @@ Custom fixtures encapsulate setup+teardown and hand a ready object to the test v
 const test = base.extend<{ room: RoomHandle }>({
   room: async ({ browser }, use) => {
     const host = await (await browser.newContext()).newPage();
-    const code = await createRoom(host);       // setup
-    await use({ host, code });                  // test runs here
-    await host.context().close();               // teardown
+    const code = await createRoom(host); // setup
+    await use({ host, code }); // test runs here
+    await host.context().close(); // teardown
   },
 });
 ```
 
-*"Code before `await use()` runs during setup; code after runs during cleanup."* Scopes matter:
+_"Code before `await use()` runs during setup; code after runs during cleanup."_ Scopes matter:
 **worker-scoped** fixtures (`[fixture, { scope: 'worker' }]`) run once per worker — ideal for
-*"expensive operations like server startup"* or a shared seeded DB; **test-scoped** (default) for
+_"expensive operations like server startup"_ or a shared seeded DB; **test-scoped** (default) for
 per-test isolation like a fresh Room or a seeded lap. Fixtures compose (one can depend on
 another), so a `seededLap` fixture can build on a `room` fixture.
 
@@ -294,7 +297,7 @@ two-context tests, **screenshots out of scope (#76)**, and eventual **headless C
 snapshots of authoritative game-model state: current lap, checkpoints hit + order, lap validity,
 car transform, Room id, and the roster of connected players. Treat this hook as a **public test
 contract** (versioned, deliberately minimal), gated behind a test/dev build flag if you don't want
-it in production bundles. This is the only approach that lets #78 assert "a *valid* lap completed"
+it in production bundles. This is the only approach that lets #78 assert "a _valid_ lap completed"
 and #80 assert "both players see each other" without screenshots or brittle HUD-text coupling.
 Keep **HUD/DOM assertions (§1b)** as the natural surface for the lobby/Room-join UI, which really
 is DOM. **Do not** adopt screenshot/visual-regression (§1c) — out of scope, GPU-flaky, and it

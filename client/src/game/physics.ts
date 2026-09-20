@@ -106,10 +106,7 @@ export class CarPhysics {
   /** Pass the raw frame delta so ordinary stalls catch up to the lap clock. */
   advance(elapsed: number, input: CarInput): void {
     if (!Number.isFinite(elapsed) || elapsed < 0) return;
-    this.stepAccumulator = Math.min(
-      this.stepAccumulator + elapsed,
-      MAX_ACCUMULATED_TIME,
-    );
+    this.stepAccumulator = Math.min(this.stepAccumulator + elapsed, MAX_ACCUMULATED_TIME);
     for (
       let steps = 0;
       steps < MAX_STEPS_PER_FRAME && this.stepAccumulator >= PHYSICS_STEP;
@@ -130,8 +127,7 @@ export class CarPhysics {
   }
 
   private applyPedals(dt: number, input: CarInput): void {
-    if (input.throttle > 0)
-      this.speed += this.tuning.engineAccel * input.throttle * dt;
+    if (input.throttle > 0) this.speed += this.tuning.engineAccel * input.throttle * dt;
     if (input.brake > 0) this.speed -= BRAKE_DECEL * input.brake * dt;
     if (input.throttle === 0 && input.brake === 0) {
       this.speed = approachRest(this.speed, COAST_DECEL * dt);
@@ -142,11 +138,8 @@ export class CarPhysics {
   private applySurface(dt: number): void {
     const nearest = nearestCenterline(this.x, this.z, this.samples);
     this.onTrack = nearest.dist <= ROAD_HALF_WIDTH + 0.6;
-    const limit = this.onTrack
-      ? this.tuning.maxSpeed
-      : this.tuning.grassMaxSpeed;
-    if (this.speed > limit)
-      this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
+    const limit = this.onTrack ? this.tuning.maxSpeed : this.tuning.grassMaxSpeed;
+    if (this.speed > limit) this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
     if (!this.onTrack && this.speed !== 0) {
       this.speed = approachRest(this.speed, this.tuning.grassFriction * dt);
     }
@@ -154,9 +147,7 @@ export class CarPhysics {
   }
 
   private move(dt: number, steer: number): void {
-    const grip =
-      Math.min(Math.abs(this.speed) / 14, 1) /
-      (1 + Math.abs(this.speed) * 0.015);
+    const grip = Math.min(Math.abs(this.speed) / 14, 1) / (1 + Math.abs(this.speed) * 0.015);
     this.heading += steer * STEER_RATE * grip * Math.sign(this.speed || 1) * dt;
     this.x += Math.sin(this.heading) * this.speed * dt;
     this.z += Math.cos(this.heading) * this.speed * dt;
@@ -181,7 +172,5 @@ export class CarPhysics {
 }
 
 function approachRest(speed: number, deceleration: number): number {
-  return Math.abs(speed) <= deceleration
-    ? 0
-    : speed - Math.sign(speed) * deceleration;
+  return Math.abs(speed) <= deceleration ? 0 : speed - Math.sign(speed) * deceleration;
 }

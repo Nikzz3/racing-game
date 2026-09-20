@@ -23,16 +23,8 @@ function setup(): HTMLElement {
   });
   return root;
 }
-function pointer(
-  root: HTMLElement,
-  type: string,
-  id: number,
-  x = 100,
-  y = 0,
-): void {
-  root.dispatchEvent(
-    new PointerEvent(type, { pointerId: id, clientX: x, clientY: y }),
-  );
+function pointer(root: HTMLElement, type: string, id: number, x = 100, y = 0): void {
+  root.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y }));
 }
 describe("touch driving controls", () => {
   it("keeps the first pointer in control and releases on lost capture", () => {

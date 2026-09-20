@@ -1,0 +1,19 @@
+{
+  // oxfmt config (JSONC). Docs: https://oxc.rs/docs/guide/usage/formatter/config
+  // Formatting defaults match Prettier; only the print width differs, to match the
+  // ~95-column prose width already used in this repo's docs and comments.
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/release/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "rl/**",
+    "assets/**",
+    ".sandcastle/worktrees/**",
+    ".sandcastle/logs/**",
+    "e2e/lap-inputs.json",
+    "package-lock.json"
+  ]
+}

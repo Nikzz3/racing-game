@@ -61,7 +61,9 @@ test("selects a car through the carousel before configuring a race", async ({ pa
 test.describe("touch controls", () => {
   test.use({ hasTouch: true });
 
-  test("car selection and race setup remain usable on a phone with reduced motion", async ({ page }, testInfo) => {
+  test("car selection and race setup remain usable on a phone with reduced motion", async ({
+    page,
+  }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");

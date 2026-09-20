@@ -10,9 +10,7 @@ function input(): Input {
   return control;
 }
 function key(code: string, repeat = false, target: EventTarget = window): void {
-  target.dispatchEvent(
-    new KeyboardEvent("keydown", { code, repeat, bubbles: true }),
-  );
+  target.dispatchEvent(new KeyboardEvent("keydown", { code, repeat, bubbles: true }));
 }
 afterEach(() => {
   controls.forEach((control) => control.detach());

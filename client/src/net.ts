@@ -19,10 +19,7 @@ export class Net {
       const socket = new WebSocket(url);
       this.socket = socket;
       let settled = false;
-      const timeout = setTimeout(
-        () => fail(new Error("The connection timed out.")),
-        10_000,
-      );
+      const timeout = setTimeout(() => fail(new Error("The connection timed out.")), 10_000);
       const settle = (error?: Error): void => {
         if (settled) return;
         settled = true;
@@ -31,8 +28,7 @@ export class Net {
         if (error) reject(error);
         else resolve();
       };
-      const cancel = (): void =>
-        settle(new DOMException("Connection superseded", "AbortError"));
+      const cancel = (): void => settle(new DOMException("Connection superseded", "AbortError"));
       const fail = (error: Error): void => {
         if (this.socket !== socket) return;
         this.socket = null;
@@ -66,8 +62,7 @@ export class Net {
     });
   }
   send(message: ClientMessage): void {
-    if (this.socket?.readyState === WebSocket.OPEN)
-      this.socket.send(JSON.stringify(message));
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
   }
   onMessage(callback: (message: ServerMessage) => void): () => void {
     this.messages.add(callback);

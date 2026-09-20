@@ -2,18 +2,18 @@
 
 PRD #7 built a trained RL policy whose record is validated headlessly in Node and
 explicitly listed "any in-browser inference" and "integrating the trained agent into the
-live game" as out of scope. We nonetheless want players to *watch* the policy's fastest
+live game" as out of scope. We nonetheless want players to _watch_ the policy's fastest
 lap. We reconcile this by defining a **Reference Lap** (see `CONTEXT.md`): the single
 deterministic fastest lap the policy drives against the real physics, computed live in the
 browser via `runPolicyLap`, converted to `ReplayFrame[]`, and shown through the existing
-`ReplayViewer` — labelled **"AI Record"**. It is a *viewer*, not a driver in a Room, which
+`ReplayViewer` — labelled **"AI Record"**. It is a _viewer_, not a driver in a Room, which
 is what keeps it inside the PRD's boundary.
 
 ## Considered Options
 
 - **Seed it into the leaderboard DB (rejected):** reuse the human ▶ replay path by
   inserting the AI lap as a `(name, difficulty)` best-lap row. Rejected because ADR-0001
-  defines the leaderboard as *honest human records*; an unbeatable machine entry corrupts
+  defines the leaderboard as _honest human records_; an unbeatable machine entry corrupts
   that ranking and blurs "Track Record" (human) with the AI benchmark.
 - **Run the policy live as a Room bot / ghost (rejected):** the PRD explicitly excludes
   in-game inference and bot opponents; the browser loop also feeds variable dt, which would

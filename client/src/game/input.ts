@@ -65,14 +65,11 @@ export class Input {
   }
 
   read(dt: number): CarInput {
-    const target =
-      this.held("KeyA", "ArrowLeft") - this.held("KeyD", "ArrowRight");
+    const target = this.held("KeyA", "ArrowLeft") - this.held("KeyD", "ArrowRight");
     const difference = target - this.smoothSteer;
     const step = STEER_CHANGE_PER_SECOND * Math.max(0, dt);
     this.smoothSteer =
-      Math.abs(difference) <= step
-        ? target
-        : this.smoothSteer + Math.sign(difference) * step;
+      Math.abs(difference) <= step ? target : this.smoothSteer + Math.sign(difference) * step;
     const touch = this.touch?.read();
     return {
       throttle: Math.max(this.held("KeyW", "ArrowUp"), touch?.throttle ?? 0),

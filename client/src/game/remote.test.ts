@@ -64,22 +64,25 @@ describe("RemotePlayers movement", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it.each([100, 5])("teleports a respawning car from %i m out without sweeping or overshooting", (x) => {
-    remote.onSnapshot([{ ...makeSnapshot("p1"), x, speed: 50 }]);
-    now = 100;
-    remote.onSnapshot([{ ...makeSnapshot("p1"), spawns: 1 }]);
+  it.each([100, 5])(
+    "teleports a respawning car from %i m out without sweeping or overshooting",
+    (x) => {
+      remote.onSnapshot([{ ...makeSnapshot("p1"), x, speed: 50 }]);
+      now = 100;
+      remote.onSnapshot([{ ...makeSnapshot("p1"), spawns: 1 }]);
 
-    // Rendering is delayed by 130 ms; retain the old pose until the respawn.
-    now = 180;
-    remote.update(1 / 60);
-    expect(mesh.position.x).toBe(x);
-    now = 240;
-    remote.update(1 / 60);
-    expect(mesh.position.x).toBe(0);
-    now = 300;
-    remote.update(1 / 60);
-    expect(mesh.position.x).toBe(0);
-  });
+      // Rendering is delayed by 130 ms; retain the old pose until the respawn.
+      now = 180;
+      remote.update(1 / 60);
+      expect(mesh.position.x).toBe(x);
+      now = 240;
+      remote.update(1 / 60);
+      expect(mesh.position.x).toBe(0);
+      now = 300;
+      remote.update(1 / 60);
+      expect(mesh.position.x).toBe(0);
+    },
+  );
 
   it("still interpolates ordinary high-speed movement", () => {
     remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 110 }]);
@@ -100,7 +103,6 @@ describe("RemotePlayers movement", () => {
   });
 });
 
-
 describe("disposeCarMesh", () => {
   it("disposes the sprite material and texture", () => {
     const { mesh, disposeTexture, disposeMaterial } = makeMeshWithSprite();
@@ -111,9 +113,7 @@ describe("disposeCarMesh", () => {
 
   it("does nothing on a group with no sprites", () => {
     const mesh = new THREE.Group();
-    mesh.add(
-      new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()),
-    );
+    mesh.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
     expect(() => disposeCarMesh(mesh)).not.toThrow();
   });
 
@@ -127,7 +127,6 @@ describe("disposeCarMesh", () => {
     expect(disposeMaterial).toHaveBeenCalledOnce();
   });
 });
-
 
 describe("RemotePlayers name-tag disposal", () => {
   let scene: THREE.Scene;
@@ -154,9 +153,7 @@ describe("RemotePlayers name-tag disposal", () => {
   it("disposes all meshes' textures and materials on dispose()", () => {
     const a = makeMeshWithSprite();
     const b = makeMeshWithSprite();
-    vi.mocked(createCarMesh)
-      .mockReturnValueOnce(a.mesh)
-      .mockReturnValueOnce(b.mesh);
+    vi.mocked(createCarMesh).mockReturnValueOnce(a.mesh).mockReturnValueOnce(b.mesh);
 
     rp.onSnapshot([makeSnapshot("p1"), makeSnapshot("p2")]);
     rp.dispose();
@@ -179,7 +176,6 @@ describe("RemotePlayers name-tag disposal", () => {
     expect(disposeTexture).toHaveBeenCalledOnce();
   });
 });
-
 
 describe("RemotePlayers variants", () => {
   let scene: THREE.Scene;

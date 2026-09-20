@@ -29,8 +29,7 @@ function workerServers(worker: number): WebServer[] {
       reuseExistingServer: false,
     },
     {
-      command:
-        `npm run dev:e2e -w @racing/client -- --port ${clientPort(worker)} --strictPort --host 127.0.0.1`,
+      command: `npm run dev:e2e -w @racing/client -- --port ${clientPort(worker)} --strictPort --host 127.0.0.1`,
       env: {
         VITE_SERVER_PORT: String(serverPort(worker)),
       },
@@ -84,6 +83,18 @@ export default defineConfig({
         // Software WebGL cost scales with canvas size. Tests that assert on layout
         // or take screenshots set the viewport they need themselves.
         viewport: { width: 640, height: 480 },
+        launchOptions: {
+          // No GPU in CI (or in a headless local run), so the race scene renders on
+          // SwiftShader. Chromium's docs/gpu/swiftshader.md deprecate the *silent*
+          // WebGL fallback ("WebGL context creation will soon fail instead of falling
+          // back to SwiftShader") and give this exact switch triple as the opt-in.
+          // Playwright's Chromium launcher (playwright-core 1.61, Chromium class in
+          // lib/coreBundle.js) already pushes --enable-unsafe-swiftshader on every
+          // platform; it is repeated here so the config does not depend on that. The
+          // --use-gl / --use-angle pair makes the backend an explicit choice rather
+          // than a fallback that a future Chromium can remove.
+          args: ["--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader-webgl"],
+        },
       },
     },
   ],

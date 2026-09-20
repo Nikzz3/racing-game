@@ -6,8 +6,7 @@ import { policyForward, type PolicyWeights } from "./harness";
 // floating-point changes can alter subsequent steering and the recorded lap.
 function referenceForward(obs: number[], policy: PolicyWeights): number[] {
   let x = obs.map((value, i) => {
-    const normalized =
-      (value - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
+    const normalized = (value - policy.obs_mean[i]) / Math.sqrt(policy.obs_var[i] + 1e-8);
     return Math.max(-5, Math.min(5, normalized));
   });
   policy.layers.forEach(({ weight, bias }, i) => {
@@ -28,8 +27,9 @@ const policy: PolicyWeights | null = existsSync(POLICY_URL)
 describe.skipIf(!policy)("policyForward numerical compatibility", () => {
   it("preserves exact actions for normal and clipped observations", () => {
     for (let sample = 0; sample < 300; sample++) {
-      const obs = Array.from({ length: policy!.obs_mean.length }, (_, index) =>
-        Math.sin(sample * 0.7919 + index * 2.31) * (sample % 3 === 0 ? 20 : 3),
+      const obs = Array.from(
+        { length: policy!.obs_mean.length },
+        (_, index) => Math.sin(sample * 0.7919 + index * 2.31) * (sample % 3 === 0 ? 20 : 3),
       );
       expect(policyForward(obs, policy!)).toEqual(referenceForward(obs, policy!));
     }

@@ -36,7 +36,10 @@ test("two players create and join a Room and see each other", async ({ playerA, 
 
   // Player B chose the taxi Variant, seeded directly into the localStorage key
   // the Garage picker writes (player A exercises the picker UI itself below).
-  await playerB.addInitScript((variant) => localStorage.setItem("racer-variant", variant), PLAYER_B_VARIANT);
+  await playerB.addInitScript(
+    (variant) => localStorage.setItem("racer-variant", variant),
+    PLAYER_B_VARIANT,
+  );
 
   await Promise.all([playerA.goto("/"), playerB.goto("/")]);
   const [playerAId, playerBId] = await Promise.all([playerAIdPromise, playerBIdPromise]);

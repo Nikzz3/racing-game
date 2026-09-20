@@ -1,47 +1,47 @@
-import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { runPolicyLap, runAutopilotLap, policyForward, type PolicyWeights } from './harness';
+import { describe, it, expect } from "vitest";
+import { existsSync, readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { runPolicyLap, runAutopilotLap, policyForward, type PolicyWeights } from "./harness";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const POLICY_PATH = join(__dirname, '../../../rl/policy.json');
+const POLICY_PATH = join(__dirname, "../../../rl/policy.json");
 const policyExists = existsSync(POLICY_PATH);
 
 // Wall-clock lap cap: 36000 steps ≈ 10 min at the 60 fps physics step (dt = 1/60 s).
 const MAX_LAP_STEPS = 36000;
 
 function loadPolicy(): PolicyWeights {
-  return JSON.parse(readFileSync(POLICY_PATH, 'utf-8')) as PolicyWeights;
+  return JSON.parse(readFileSync(POLICY_PATH, "utf-8")) as PolicyWeights;
 }
 
-describe('policyForward — VecNormalize clip_obs=5 parity', () => {
+describe("policyForward — VecNormalize clip_obs=5 parity", () => {
   // Identity normalization and a single 0.1 weight: without the clip, obs=10
   // would reach the output clip as 1.0 instead of 0.5.
   const policy: PolicyWeights = {
     obs_mean: [0],
     obs_var: [1],
     net_arch: [1],
-    activation: 'tanh',
+    activation: "tanh",
     layers: [{ weight: [[0.1]], bias: [0] }],
   };
 
-  it('clips normalized obs to [-5, 5] before the first layer', () => {
+  it("clips normalized obs to [-5, 5] before the first layer", () => {
     expect(policyForward([10], policy)[0]).toBeCloseTo(0.5, 5);
     expect(policyForward([-10], policy)[0]).toBeCloseTo(-0.5, 5);
   });
 
-  it('passes values within [-5, 5] through unchanged', () => {
+  it("passes values within [-5, 5] through unchanged", () => {
     expect(policyForward([3], policy)[0]).toBeCloseTo(0.3, 5);
     expect(policyForward([5], policy)[0]).toBeCloseTo(0.5, 5);
     expect(policyForward([-5], policy)[0]).toBeCloseTo(-0.5, 5);
   });
 });
 
-describe('policyForward', () => {
-  it.skipIf(!policyExists)('returns a 2-element action given a 7-element obs', () => {
+describe("policyForward", () => {
+  it.skipIf(!policyExists)("returns a 2-element action given a 7-element obs", () => {
     const policy = loadPolicy();
-    const obs = new Array<number>(7).fill(0);
+    const obs = Array.from({ length: 7 }, () => 0);
     const action = policyForward(obs, policy);
     expect(action).toHaveLength(2);
     expect(action[0]).toBeGreaterThanOrEqual(-1);
@@ -50,7 +50,7 @@ describe('policyForward', () => {
     expect(action[1]).toBeLessThanOrEqual(1);
   });
 
-  it.skipIf(!policyExists)('output is deterministic', () => {
+  it.skipIf(!policyExists)("output is deterministic", () => {
     const policy = loadPolicy();
     const obs = [0.1, 0.2, 0.5, -0.1, 0.3, 0.0, -0.2];
     const a1 = policyForward(obs, policy);
@@ -59,9 +59,9 @@ describe('policyForward', () => {
   });
 });
 
-describe('runPolicyLap — Node validation against real TypeScript CarPhysics', () => {
+describe("runPolicyLap — Node validation against real TypeScript CarPhysics", () => {
   it.skipIf(!policyExists)(
-    'exported policy completes a validated lap from the fixed spawn',
+    "exported policy completes a validated lap from the fixed spawn",
     () => {
       const policy = loadPolicy();
       const result = runPolicyLap(policy, { maxSteps: MAX_LAP_STEPS });
@@ -76,14 +76,14 @@ describe('runPolicyLap — Node validation against real TypeScript CarPhysics', 
 
       console.log(
         `Policy lap time: ${(result.lapTimeMs / 1000).toFixed(2)} s  ` +
-        `(autopilot baseline ≈35.47 s)`
+          `(autopilot baseline ≈35.47 s)`,
       );
     },
-    60_000,  // allow up to 60 s of wall-clock time
+    60_000, // allow up to 60 s of wall-clock time
   );
 
   it.skipIf(!policyExists)(
-    'headline gate: policy lap beats the rule-based autopilot baseline (Medium, fixed spawn)',
+    "headline gate: policy lap beats the rule-based autopilot baseline (Medium, fixed spawn)",
     () => {
       const policy = loadPolicy();
       const policyResult = runPolicyLap(policy, { maxSteps: MAX_LAP_STEPS });
@@ -95,12 +95,12 @@ describe('runPolicyLap — Node validation against real TypeScript CarPhysics', 
 
       console.log(
         `Headline gate — policy: ${(policyResult.lapTimeMs / 1000).toFixed(2)} s  ` +
-        `autopilot: ${(autopilotResult.lapTimeMs / 1000).toFixed(2)} s`
+          `autopilot: ${(autopilotResult.lapTimeMs / 1000).toFixed(2)} s`,
       );
 
       // The headline success criterion from PRD #7 issue #11.
       expect(policyResult.lapTimeMs).toBeLessThan(autopilotResult.lapTimeMs);
     },
-    120_000,  // allow up to 2 min for both laps
+    120_000, // allow up to 2 min for both laps
   );
 });

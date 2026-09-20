@@ -28,16 +28,12 @@ describe("Hud pacer chip", () => {
 
   it("showPacerChip makes the chip visible", () => {
     hud.showPacerChip(vi.fn());
-    expect(
-      parent.querySelector(".pacer-chip")!.classList.contains("visible"),
-    ).toBe(true);
+    expect(parent.querySelector(".pacer-chip")!.classList.contains("visible")).toBe(true);
   });
 
   it("chip shows the Pacer's name", () => {
     hud.showPacerChip(vi.fn(), "ByteRacer");
-    expect(parent.querySelector(".pacer-chip")!.textContent).toContain(
-      "ByteRacer",
-    );
+    expect(parent.querySelector(".pacer-chip")!.textContent).toContain("ByteRacer");
   });
 
   it("chip shows a dismiss button with label ✕", () => {
@@ -57,9 +53,7 @@ describe("Hud pacer chip", () => {
   it("hidePacerChip hides the chip", () => {
     hud.showPacerChip(vi.fn());
     hud.hidePacerChip();
-    expect(
-      parent.querySelector(".pacer-chip")!.classList.contains("visible"),
-    ).toBe(false);
+    expect(parent.querySelector(".pacer-chip")!.classList.contains("visible")).toBe(false);
   });
 
   it("showPacerChip replaces the previous dismiss handler", () => {
@@ -84,9 +78,10 @@ describe("Hud circuit map", () => {
   afterEach(() => parent.remove());
 
   const remoteDots = () =>
-    [...parent.querySelectorAll<SVGCircleElement>(".hud-map-remote")].map(
-      (dot) => [dot.getAttribute("cx"), dot.getAttribute("cy")],
-    );
+    [...parent.querySelectorAll<SVGCircleElement>(".hud-map-remote")].map((dot) => [
+      dot.getAttribute("cx"),
+      dot.getAttribute("cy"),
+    ]);
 
   it("draws one marker per other driver behind the local driver", () => {
     hud.setRemotePositions([
@@ -98,9 +93,7 @@ describe("Hud circuit map", () => {
       ["30.3", "40.0"],
     ]);
     const svg = parent.querySelector(".hud-map svg")!;
-    const order = [...svg.querySelectorAll("circle")].map(
-      (c) => c.className.baseVal,
-    );
+    const order = [...svg.querySelectorAll("circle")].map((c) => c.className.baseVal);
     expect(order.at(-1)).toBe("hud-map-driver");
   });
 
@@ -123,8 +116,6 @@ describe("Hud circuit map", () => {
 
   it("is a no-op without a track", () => {
     const bare = new Hud(makeParent(), "Bare", vi.fn(), 3);
-    expect(() =>
-      bare.setRemotePositions([{ id: "p1", x: 0, z: 0 }]),
-    ).not.toThrow();
+    expect(() => bare.setRemotePositions([{ id: "p1", x: 0, z: 0 }])).not.toThrow();
   });
 });

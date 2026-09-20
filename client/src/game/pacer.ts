@@ -1,16 +1,6 @@
 import * as THREE from "three";
-import {
-  CHECKPOINT_RADIUS,
-  type ReplayFrame,
-  type Variant,
-} from "@racing/shared";
-import {
-  animateCar,
-  createCarMesh,
-  disposeMaterials,
-  labelSprite,
-  resolveVariant,
-} from "./car";
+import { CHECKPOINT_RADIUS, type ReplayFrame, type Variant } from "@racing/shared";
+import { animateCar, createCarMesh, disposeMaterials, labelSprite, resolveVariant } from "./car";
 import type { E2ePacerState } from "./e2e-seam";
 import { interpolatePose, type Pose } from "./pose-interpolation";
 
@@ -61,8 +51,7 @@ export function pacerCheckpointTimes(
       const B = 2 * (ex * ddx + ez * ddz);
       const C = ex * ex + ez * ez - r2;
       const disc = B * B - 4 * A * C;
-      const frac =
-        disc >= 0 ? Math.max(0, Math.min(1, (-B - Math.sqrt(disc)) / (2 * A))) : 0;
+      const frac = disc >= 0 ? Math.max(0, Math.min(1, (-B - Math.sqrt(disc)) / (2 * A))) : 0;
       return t0 + (t - t0) * frac;
     }
     return null;
@@ -192,9 +181,7 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
   const group = createCarMesh(driverName, undefined, variant);
   group.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
-    obj.material = Array.isArray(obj.material)
-      ? obj.material.map(ghosted)
-      : ghosted(obj.material);
+    obj.material = Array.isArray(obj.material) ? obj.material.map(ghosted) : ghosted(obj.material);
     obj.castShadow = false;
     obj.receiveShadow = false;
   });

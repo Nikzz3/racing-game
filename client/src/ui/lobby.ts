@@ -66,8 +66,7 @@ const LABELS: Record<Variant, string> = {
   van: "Van",
 };
 /** GitHub releases page where the desktop installers (`v*` tags) are published. */
-export const DESKTOP_DOWNLOAD_URL =
-  "https://github.com/Nikzz3/racing-game/releases";
+export const DESKTOP_DOWNLOAD_URL = "https://github.com/Nikzz3/racing-game/releases";
 
 function label(choice: Choice): string {
   return choice === "random" ? "Random" : LABELS[choice];
@@ -144,21 +143,26 @@ const ARROWS: Record<string, number> = {
   ArrowDown: 1,
 };
 /** Index an arrow/Home/End key moves to from `index`; -1 for any other key. */
+/** A roving-tabindex radio (or tab) button; see `check()` for the checked-state sync. */
+function radio(className: string, attrs: string, body: string, aria = "aria-checked"): string {
+  return `<button type="button" role="${aria === "aria-selected" ? "tab" : "radio"}" ${aria}="false" tabindex="-1" class="${className}" ${attrs}>${body}</button>`;
+}
+/** One entry in the room list; an empty value stands for "open a new room". */
+function row(value: string, body: string): string {
+  return `<label class="room-row"><input type="radio" name="room-choice" value="${html(value)}">${body}</label>`;
+}
 function step(key: string, index: number, length: number, wrap = true): number {
   if (key === "Home") return 0;
   if (key === "End") return length - 1;
   const delta = ARROWS[key];
   if (!delta) return -1;
   const next = index + delta;
-  return wrap
-    ? (next + length) % length
-    : Math.max(0, Math.min(length - 1, next));
+  return wrap ? (next + length) % length : Math.max(0, Math.min(length - 1, next));
 }
 
 export class Lobby {
   private readonly root = document.createElement("div");
-  private readonly randomRoll =
-    CAR_VARIANTS[Math.floor(Math.random() * CAR_VARIANTS.length)];
+  private readonly randomRoll = CAR_VARIANTS[Math.floor(Math.random() * CAR_VARIANTS.length)];
   private choice: Choice;
   private track: TrackSlug = DEFAULT_TRACK_SLUG;
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
@@ -189,15 +193,7 @@ export class Lobby {
   ) {
     const saved = localStorage.getItem("racer-variant");
     this.choice = asVariant(saved) ?? "random";
-    if (saved !== null && saved !== this.choice)
-      localStorage.setItem("racer-variant", this.choice);
-    const radio = (
-      className: string,
-      attrs: string,
-      body: string,
-      aria = "aria-checked",
-    ): string =>
-      `<button type="button" role="${aria === "aria-selected" ? "tab" : "radio"}" ${aria}="false" tabindex="-1" class="${className}" ${attrs}>${body}</button>`;
+    if (saved !== null && saved !== this.choice) localStorage.setItem("racer-variant", this.choice);
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
@@ -240,8 +236,7 @@ export class Lobby {
     this.nameInput = this.find<HTMLInputElement>("#driver-name");
     this.picker = this.find<HTMLSelectElement>(".pacer-select");
     this.nameInput.value =
-      localStorage.getItem("racer-name") ??
-      `Racer${100 + Math.floor(Math.random() * 900)}`;
+      localStorage.getItem("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
     this.nameInput.addEventListener("change", () => this.saveName());
     const form = this.find<HTMLFormElement>(".create-form");
     form.addEventListener("submit", (event) => {
@@ -267,16 +262,12 @@ export class Lobby {
     this.root.addEventListener("keydown", (event) => this.keydown(event));
     this.picker.addEventListener("change", () => this.choosePacer());
     document.addEventListener("pointerdown", ({ target }) => {
-      if (
-        target instanceof Node &&
-        !this.find(".board-track-menu").contains(target)
-      )
+      if (target instanceof Node && !this.find(".board-track-menu").contains(target))
         this.toggleBoardTrackMenu(false);
     });
     const stage = this.find(".track-stage");
     stage.addEventListener("pointerdown", (event) => {
-      if (event.target instanceof Element && event.target.closest("button"))
-        return;
+      if (event.target instanceof Element && event.target.closest("button")) return;
       this.pointerStart = { x: event.clientX, y: event.clientY };
       stage.setPointerCapture?.(event.pointerId);
     });
@@ -285,8 +276,7 @@ export class Lobby {
       const dx = event.clientX - this.pointerStart.x,
         dy = event.clientY - this.pointerStart.y;
       this.pointerStart = null;
-      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy))
-        this.cycleTrack(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) this.cycleTrack(dx < 0 ? 1 : -1);
     });
     stage.addEventListener("pointercancel", () => {
       this.pointerStart = null;
@@ -307,17 +297,9 @@ export class Lobby {
     if (updates === undefined) return;
     this.find(".update-notice").addEventListener("click", () => {
       const { status } = this.updateState;
-      if (
-        status === "available" ||
-        status === "downloaded" ||
-        status === "unsupported"
-      )
+      if (status === "available" || status === "downloaded" || status === "unsupported")
         void updates.install();
-      else if (
-        status === "unchecked" ||
-        status === "idle" ||
-        status === "error"
-      )
+      else if (status === "unchecked" || status === "idle" || status === "error")
         void updates.check();
     });
     updates.onState((state) => this.paintUpdate(state));
@@ -340,12 +322,7 @@ export class Lobby {
     return this.root.querySelector<T>(selector)!;
   }
   /** Roving-tabindex radio/tab group: the node whose `data-<key>` equals `value` is checked. */
-  private check(
-    selector: string,
-    key: string,
-    value: string,
-    aria = "aria-checked",
-  ): void {
+  private check(selector: string, key: string, value: string, aria = "aria-checked"): void {
     for (const node of this.root.querySelectorAll<HTMLElement>(selector)) {
       const active = node.dataset[key] === value;
       node.classList.toggle("active", active);
@@ -367,9 +344,7 @@ export class Lobby {
   }
   private click(event: MouseEvent): void {
     const button =
-      event.target instanceof Element
-        ? event.target.closest<HTMLButtonElement>("button")
-        : null;
+      event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button") : null;
     if (!button) return;
     const data = button.dataset;
     // Progress steps are disabled unless they lead somewhere, so a click is always valid.
@@ -380,17 +355,11 @@ export class Lobby {
       this.setScreen("track");
     else if (data.changeCar !== undefined) this.setScreen("garage");
     else if (data.selectTrack !== undefined) this.setScreen("settings");
-    else if (data.trackCarousel)
-      this.cycleTrack(data.trackCarousel === "next" ? 1 : -1);
+    else if (data.trackCarousel) this.cycleTrack(data.trackCarousel === "next" ? 1 : -1);
     else if (data.setupTab) this.setSetupTab(data.setupTab as SetupTab);
     else if (data.replay !== undefined)
-      this.callbacks.onReplay(
-        data.replay,
-        data.track as TrackSlug,
-        data.diff as Difficulty,
-      );
-    else if (data.boardDiff)
-      this.chooseBoardDifficulty(data.boardDiff as Difficulty);
+      this.callbacks.onReplay(data.replay, data.track as TrackSlug, data.diff as Difficulty);
+    else if (data.boardDiff) this.chooseBoardDifficulty(data.boardDiff as Difficulty);
     else if (data.boardTrackToggle) this.toggleBoardTrackMenu();
     else if (data.boardTrack) {
       this.chooseBoardTrack(data.boardTrack);
@@ -418,9 +387,7 @@ export class Lobby {
   }
   private cycle(direction: number): void {
     const index = CHOICES.indexOf(this.choice);
-    this.chooseCar(
-      CHOICES[(index + direction + CHOICES.length) % CHOICES.length],
-    );
+    this.chooseCar(CHOICES[(index + direction + CHOICES.length) % CHOICES.length]);
   }
   private chooseTrack(track: TrackSlug, direction = 1): void {
     if (track === this.track) return;
@@ -451,14 +418,8 @@ export class Lobby {
   }
   private toggleBoardTrackMenu(open = !this.boardTrackMenuOpen()): void {
     this.find(".board-track-list").hidden = !open;
-    this.find(".board-track-select").setAttribute(
-      "aria-expanded",
-      String(open),
-    );
-    if (open)
-      this.find(
-        `.board-track-opt[data-board-track="${this.boardTrack}"]`,
-      ).focus();
+    this.find(".board-track-select").setAttribute("aria-expanded", String(open));
+    if (open) this.find(`.board-track-opt[data-board-track="${this.boardTrack}"]`).focus();
   }
   /** Copy the Records browse filters into the race selection. */
   private useBoardSettings(): void {
@@ -485,9 +446,7 @@ export class Lobby {
       return true;
     }
     if (!open) return false;
-    const options = [
-      ...this.root.querySelectorAll<HTMLButtonElement>(".board-track-opt"),
-    ];
+    const options = [...this.root.querySelectorAll<HTMLButtonElement>(".board-track-opt")];
     const next = step(
       event.key,
       options.indexOf(document.activeElement as HTMLButtonElement),
@@ -504,13 +463,8 @@ export class Lobby {
     this.find(".selected-track-name").textContent = track.name;
     this.find(".track-counter").textContent =
       `${String(TRACK_IDS.indexOf(this.track) + 1).padStart(2, "0")} / ${String(TRACKS.length).padStart(2, "0")}`;
-    this.find(".setup-circuit-outline").innerHTML = outline(
-      track,
-      "setup-track-outline",
-    );
-    for (const slide of this.root.querySelectorAll<HTMLElement>(
-      ".track-slide",
-    )) {
+    this.find(".setup-circuit-outline").innerHTML = outline(track, "setup-track-outline");
+    for (const slide of this.root.querySelectorAll<HTMLElement>(".track-slide")) {
       const active = slide.dataset.trackSlide === this.track;
       slide.classList.toggle("active", active);
       slide.setAttribute("aria-hidden", String(!active));
@@ -519,11 +473,7 @@ export class Lobby {
   }
   private keydown(event: KeyboardEvent): void {
     const target = event.target instanceof Element ? event.target : null;
-    if (
-      target?.closest(".board-track-menu") &&
-      this.boardTrackMenu(event, target)
-    )
-      return;
+    if (target?.closest(".board-track-menu") && this.boardTrackMenu(event, target)) return;
     if (event.key === "Escape" && this.screen !== "garage") {
       event.preventDefault();
       this.setScreen(this.screen === "settings" ? "track" : "garage");
@@ -540,25 +490,15 @@ export class Lobby {
         if (next === -1) return;
         event.preventDefault();
         this.chooseBoardDifficulty(DIFFICULTIES[next]);
-        this.find(
-          `.board-diff-opt[data-board-diff="${DIFFICULTIES[next]}"]`,
-        ).focus();
+        this.find(`.board-diff-opt[data-board-diff="${DIFFICULTIES[next]}"]`).focus();
       } else if (target?.closest(".diff-picker")) {
-        const next = step(
-          event.key,
-          DIFFICULTIES.indexOf(this.difficulty),
-          DIFFICULTIES.length,
-        );
+        const next = step(event.key, DIFFICULTIES.indexOf(this.difficulty), DIFFICULTIES.length);
         if (next === -1) return;
         event.preventDefault();
         this.chooseDifficulty(DIFFICULTIES[next]);
         this.find(`.diff-opt[data-diff="${DIFFICULTIES[next]}"]`).focus();
       } else if (target?.closest(".setup-menu")) {
-        const next = step(
-          event.key,
-          SETUP_TABS.indexOf(this.setupTab),
-          SETUP_TABS.length,
-        );
+        const next = step(event.key, SETUP_TABS.indexOf(this.setupTab), SETUP_TABS.length);
         if (next === -1) return;
         event.preventDefault();
         this.setSetupTab(SETUP_TABS[next]);
@@ -568,22 +508,14 @@ export class Lobby {
     // Carousels only answer to horizontal arrows.
     if (event.key === "ArrowUp" || event.key === "ArrowDown") return;
     if (this.screen === "track") {
-      const next = step(
-        event.key,
-        TRACK_IDS.indexOf(this.track),
-        TRACK_IDS.length,
-      );
+      const next = step(event.key, TRACK_IDS.indexOf(this.track), TRACK_IDS.length);
       if (next === -1) return;
       event.preventDefault();
       this.chooseTrack(TRACK_IDS[next], event.key === "ArrowLeft" ? -1 : 1);
       if (target?.closest(".track-selector"))
         this.find(`.track-card[data-track="${this.track}"]`).focus();
     } else {
-      const next = step(
-        event.key,
-        CHOICES.indexOf(this.choice),
-        CHOICES.length,
-      );
+      const next = step(event.key, CHOICES.indexOf(this.choice), CHOICES.length);
       if (next === -1) return;
       event.preventDefault();
       this.chooseCar(CHOICES[next]);
@@ -600,12 +532,9 @@ export class Lobby {
       const section = this.find(`.${page}-screen`);
       section.toggleAttribute("inert", page !== screen);
       section.setAttribute("aria-hidden", String(page !== screen));
-      const stepButton = this.find<HTMLButtonElement>(
-        `[data-progress-screen="${page}"]`,
-      );
+      const stepButton = this.find<HTMLButtonElement>(`[data-progress-screen="${page}"]`);
       stepButton.classList.toggle("active", page === screen);
-      stepButton.disabled =
-        page === screen || page === "settings" || screen === "garage";
+      stepButton.disabled = page === screen || page === "settings" || screen === "garage";
       if (page === screen) stepButton.setAttribute("aria-current", "step");
       else stepButton.removeAttribute("aria-current");
     }
@@ -620,16 +549,13 @@ export class Lobby {
   private setSetupTab(tab: SetupTab): void {
     this.setupTab = tab;
     this.check("[data-setup-tab]", "setupTab", tab, "aria-selected");
-    for (const panel of this.root.querySelectorAll<HTMLElement>(
-      "[data-setup-panel]",
-    ))
+    for (const panel of this.root.querySelectorAll<HTMLElement>("[data-setup-panel]"))
       panel.hidden = panel.dataset.setupPanel !== tab;
     this.find(`[data-setup-tab="${tab}"]`).focus({ preventScroll: true });
   }
   setConnection(state: ConnectionState): void {
     const badge = this.find(".connection-status");
-    badge.textContent =
-      state === "connected" ? "LIVE MULTIPLAYER" : state.toUpperCase();
+    badge.textContent = state === "connected" ? "LIVE MULTIPLAYER" : state.toUpperCase();
     badge.dataset.state = state;
   }
   paintGarageThumbnails(): boolean {
@@ -647,9 +573,7 @@ export class Lobby {
     }
     this.images = renderVariantThumbnails(CAR_VARIANTS);
     for (const choice of CHOICES) {
-      const url = this.images.get(
-        choice === "random" ? this.randomRoll : choice,
-      );
+      const url = this.images.get(choice === "random" ? this.randomRoll : choice);
       if (!url) continue;
       const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
       img.src = url;
@@ -659,10 +583,7 @@ export class Lobby {
     const shown = this.root.style.display !== "none";
     if (!this.stage) {
       try {
-        this.stage = new GarageStage(
-          this.find(".live-car-stage"),
-          this.find(".car-stage"),
-        );
+        this.stage = new GarageStage(this.find(".live-car-stage"), this.find(".car-stage"));
         this.stage.setActive(shown);
         this.stage.setScreen(this.screen);
       } catch {
@@ -686,28 +607,18 @@ export class Lobby {
     const name = label(this.choice);
     this.find(".hero-car-name").textContent = name;
     this.find(".selected-car-name").textContent =
-      this.choice === "random"
-        ? `Random · ${LABELS[this.selectedVariant]}`
-        : name;
+      this.choice === "random" ? `Random · ${LABELS[this.selectedVariant]}` : name;
     this.find(".stage-watermark").textContent = name;
     this.find(".showroom-number").textContent =
       `${this.choice === "random" ? "↝" : String(index + 1).padStart(2, "0")} / ${CAR_COUNT}`;
     this.stage?.setVariant(this.selectedVariant);
-    this.root
-      .querySelectorAll<HTMLElement>(".car-slide")
-      .forEach((slide, i) => {
-        let offset = (i - index + CHOICES.length) % CHOICES.length;
-        if (offset > CHOICES.length / 2) offset -= CHOICES.length;
-        slide.dataset.position =
-          offset === 0
-            ? "current"
-            : offset === -1
-              ? "previous"
-              : offset === 1
-                ? "next"
-                : "offstage";
-        slide.setAttribute("aria-hidden", String(offset !== 0));
-      });
+    this.root.querySelectorAll<HTMLElement>(".car-slide").forEach((slide, i) => {
+      let offset = (i - index + CHOICES.length) % CHOICES.length;
+      if (offset > CHOICES.length / 2) offset -= CHOICES.length;
+      slide.dataset.position =
+        offset === 0 ? "current" : offset === -1 ? "previous" : offset === 1 ? "next" : "offstage";
+      slide.setAttribute("aria-hidden", String(offset !== 0));
+    });
     const url = this.images.get(this.selectedVariant);
     if (!url) return;
     for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
@@ -721,8 +632,6 @@ export class Lobby {
     this.find(".room-total").textContent = rooms.length
       ? `${rooms.length} OPEN ${rooms.length === 1 ? "ROOM" : "ROOMS"}`
       : "NO OPEN ROOMS";
-    const row = (value: string, body: string): string =>
-      `<label class="room-row"><input type="radio" name="room-choice" value="${html(value)}">${body}</label>`;
     this.find(".room-list").innerHTML =
       row(
         "",
@@ -758,21 +667,15 @@ export class Lobby {
    */
   private reconcileRoomChoice(): void {
     const room = this.rooms.find((r) => r.id === this.roomChoice);
-    if (
-      !room ||
-      room.track !== this.track ||
-      room.difficulty !== this.difficulty
-    )
+    if (!room || room.track !== this.track || room.difficulty !== this.difficulty)
       this.roomChoice = null;
     this.syncRoomChoice();
   }
   private syncRoomChoice(): void {
     const choice = this.roomChoice ?? "";
-    for (const radio of this.root.querySelectorAll<HTMLInputElement>(
-      'input[name="room-choice"]',
-    )) {
-      radio.checked = radio.value === choice;
-      radio.closest(".room-row")?.classList.toggle("active", radio.checked);
+    for (const input of this.root.querySelectorAll<HTMLInputElement>('input[name="room-choice"]')) {
+      input.checked = input.value === choice;
+      input.closest(".room-row")?.classList.toggle("active", input.checked);
     }
     this.find(".room-name-field").hidden = this.roomChoice !== null;
     this.find(".primary-action-label").textContent = this.roomChoice
@@ -784,8 +687,7 @@ export class Lobby {
     this.renderBoard();
   }
   getReferenceLap(): ReferenceLap | null {
-    if (this.reference === undefined)
-      this.reference = buildReferenceLap(policy);
+    if (this.reference === undefined) this.reference = buildReferenceLap(policy);
     return this.reference;
   }
   /** The AI reference lap exists only for Sunset Ridge at Medium. */
@@ -803,10 +705,7 @@ export class Lobby {
    */
   private reconcilePacer(): void {
     this.eligible = this.entries.filter(
-      (e) =>
-        e.hasReplay &&
-        e.track === this.track &&
-        e.difficulty === this.difficulty,
+      (e) => e.hasReplay && e.track === this.track && e.difficulty === this.difficulty,
     );
     const pacer = this.pacer;
     if (pacer?.kind === "ai") {
@@ -814,9 +713,7 @@ export class Lobby {
     } else if (pacer) {
       const entry = this.eligible.find(
         (e) =>
-          e.name === pacer.name &&
-          e.track === pacer.track &&
-          e.difficulty === pacer.difficulty,
+          e.name === pacer.name && e.track === pacer.track && e.difficulty === pacer.difficulty,
       );
       this.pacer = entry ? replayPacer(entry) : null;
     }
@@ -853,9 +750,7 @@ export class Lobby {
     );
     this.check(".board-diff-opt", "boardDiff", boardDifficulty);
     this.find(".board-track-label").textContent = resolveTrack(boardTrack).name;
-    for (const option of this.root.querySelectorAll<HTMLElement>(
-      ".board-track-opt",
-    )) {
+    for (const option of this.root.querySelectorAll<HTMLElement>(".board-track-opt")) {
       const active = option.dataset.boardTrack === boardTrack;
       option.classList.toggle("active", active);
       option.setAttribute("aria-selected", String(active));

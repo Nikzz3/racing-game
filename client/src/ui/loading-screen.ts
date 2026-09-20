@@ -43,8 +43,10 @@ export class LoadingScreen {
     this.status = this.element.querySelector(".loading-status")!;
     this.meter = this.element.querySelector("progress")!;
     this.amount = this.element.querySelector(".loading-amount")!;
-    this.element.querySelector<HTMLButtonElement>("[data-loading-retry]")!.onclick = () => location.reload();
-    this.element.querySelector<HTMLButtonElement>("[data-loading-continue]")!.onclick = () => this.dismiss();
+    this.element.querySelector<HTMLButtonElement>("[data-loading-retry]")!.onclick = () =>
+      location.reload();
+    this.element.querySelector<HTMLButtonElement>("[data-loading-continue]")!.onclick = () =>
+      this.dismiss();
     host.append(this.element);
   }
 
@@ -54,11 +56,12 @@ export class LoadingScreen {
       this.fail("The garage could not download. Check your connection and try again.");
       return;
     }
-    this.status.textContent = progress.phase === "loading" ? "Loading your garage" : "Opening the garage";
+    this.status.textContent =
+      progress.phase === "loading" ? "Loading your garage" : "Opening the garage";
     if (progress.phase === "loading" && progress.total > 0) {
       this.meter.max = progress.total;
       this.meter.value = progress.loaded;
-      this.amount.textContent = `${Math.min(100, Math.floor(progress.loaded / progress.total * 100))}%`;
+      this.amount.textContent = `${Math.min(100, Math.floor((progress.loaded / progress.total) * 100))}%`;
     } else {
       this.meter.removeAttribute("value");
       this.amount.textContent = "";

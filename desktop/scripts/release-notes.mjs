@@ -56,7 +56,9 @@ const downloads = [
 const prev = previousTag();
 const lines = [];
 
-lines.push(`Sunset Ridge Racing ${version} for macOS, Windows and Linux. Installed apps pick this release up automatically once it is published.`);
+lines.push(
+  `Sunset Ridge Racing ${version} for macOS, Windows and Linux. Installed apps pick this release up automatically once it is published.`,
+);
 lines.push("");
 lines.push("## Downloads");
 lines.push("");
@@ -66,9 +68,13 @@ for (const [platform, file] of downloads) {
   lines.push(`| ${platform} | ${link(file)} |`);
 }
 lines.push("");
-lines.push("- **macOS:** builds are not notarized. If macOS refuses to open the app, go to **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -cr \"/Applications/Sunset Ridge Racing.app\"` once.");
+lines.push(
+  '- **macOS:** builds are not notarized. If macOS refuses to open the app, go to **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -cr "/Applications/Sunset Ridge Racing.app"` once.',
+);
 lines.push("- **Windows:** if SmartScreen appears, click **More info → Run anyway**.");
-lines.push("- **Linux:** `chmod +x` the AppImage and run it; works on Bazzite and SteamOS (add it to Steam as a non-Steam game for Game Mode).");
+lines.push(
+  "- **Linux:** `chmod +x` the AppImage and run it; works on Bazzite and SteamOS (add it to Steam as a non-Steam game for Game Mode).",
+);
 lines.push("");
 lines.push("## What's Changed");
 lines.push("");

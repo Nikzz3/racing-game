@@ -34,9 +34,9 @@ export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
 ```
 
 - **Type**: `ReplayFrame = [number, number, number, number, number]` (`t, x, z, rot,
-  speed`) — defined once in `shared/src/messages.ts:38` and reused for the server's
+speed`) — defined once in `shared/src/messages.ts:38` and reused for the server's
   `replay` message payload (`shared/src/messages.ts:173`: `{ type: "replay"; ...;
-  frames: ReplayFrame[] }`). **The AI stream and a human Replay's stream are the exact
+frames: ReplayFrame[] }`). **The AI stream and a human Replay's stream are the exact
   same wire/in-memory type.**
 - **Client-only, on demand**: `runPolicyLap` (`harness.ts:221-255`) runs the exported
   MLP policy (`policyForward`, harness.ts:200-215) against the real `CarPhysics` purely
@@ -60,7 +60,7 @@ export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
 
 **The overlay-playback class does not exist in the codebase yet** (confirmed: no
 `Pacer`/`pacer` hits anywhere under `client/src`, `server/src`, `shared/src`,
-`CONTEXT.md`, or `docs/adr`; only the *name* landed, via PR #62 for #58). What exists
+`CONTEXT.md`, or `docs/adr`; only the _name_ landed, via PR #62 for #58). What exists
 today, per `client/src/game/replay.ts` and the wiring research on
 `research/replay-in-room-wiring` (`docs/research/replay-in-room-wiring.md`, resolving
 #59), is:
@@ -73,11 +73,11 @@ today, per `client/src/game/replay.ts` and the wiring research on
   applies the pose via `animateCar` to a `carMesh` built by `createCarMesh`
   (`client/src/game/car.ts:29`). It operates purely on the in-memory `frames` array —
   it has no awareness of where those frames came from.
-- **`RemotePlayers`** (`client/src/game/remote.ts:13-88`) is the *structural template*
+- **`RemotePlayers`** (`client/src/game/remote.ts:13-88`) is the _structural template_
   #59 points to for the new class: it takes the live `scene` and a player id in its
   constructor, adds `createCarMesh` cars to that scene, and is ticked via `update(dt)`
   called from `game.ts`'s frame loop (`game.ts:160` per #59's findings) — no camera, no
-  HUD, no rAF of its own. (Its own data source, server snapshots, is *not* what the new
+  HUD, no rAF of its own. (Its own data source, server snapshots, is _not_ what the new
   class should copy — see below.)
 
 **Issue #59's resolution** (quoted): "the client half does not [exist]... `reference-lap.ts`
@@ -97,8 +97,8 @@ ticked from the Game loop)."
 > authoritative for nothing, and waiting for the server would offset the ghost by the
 > driver's ping on a ~24 s lap, systematically flattering the driver.
 
-This is the strongest evidence against server-origin coupling: the *playback clock
-itself* is explicitly designed to be client-local, deliberately rejecting a
+This is the strongest evidence against server-origin coupling: the _playback clock
+itself_ is explicitly designed to be client-local, deliberately rejecting a
 server-confirmed anchor. Nothing about "restart on local start-line crossing" cares
 whether `frames` arrived via `getReplay` or was computed by `buildReferenceLap`.
 
@@ -106,10 +106,10 @@ whether `frames` arrived via `getReplay` or was computed by `buildReferenceLap`.
 
 > **1. Scope: any leaderboard entry.** Any of the top-10 rows whose `hasReplay` is true
 > can be loaded as the in-Room opponent... **3. Matching: the Replay must match the
-> Room's track *and* difficulty.** Selection is limited to the leaderboard the lobby
+> Room's track _and_ difficulty.** Selection is limited to the leaderboard the lobby
 > already shows for that pair.
 
-This is a *data-acquisition/selection* rule about which human `getReplay` result to
+This is a _data-acquisition/selection_ rule about which human `getReplay` result to
 fetch — not a constraint baked into the overlay-playback class's input contract. It
 does, however, establish the one real compatibility rule an AI-sourced feed would also
 need to satisfy: **track + difficulty must match the Room**. Since
@@ -136,7 +136,7 @@ exactly the fields `ReferenceLap` already exposes:
 ```ts
 // reference-lap.ts:12-17
 export interface ReferenceLap {
-  name: 'AI Record';
+  name: "AI Record";
   track: TrackSlug;
   timeMs: number;
   frames: ReplayFrame[];
@@ -154,12 +154,12 @@ plus a `t`; it has and needs no reference to `getReplay`, sockets, or a `Player`
 - **#59** (wiring): explicitly names both `frames: ReplayFrame[]` and the fact that
   `reference-lap.ts` already produces that exact shape client-side as the reusable
   asset — no server-origin assumption stated or implied.
-- **#55** (lifecycle): the restart anchor is *client-detected* start-line crossing via
+- **#55** (lifecycle): the restart anchor is _client-detected_ start-line crossing via
   `shared/src/track.ts` geometry, explicitly **not** server-confirmed — actively
   designed away from a server pose-origin.
 - **#54** (selection scope): the only origin-adjacent language is about `getReplay`
   being keyed `(name, track, difficulty)` with "zero change" needed — this describes
-  how a *human* Replay's frames are fetched, not a requirement that frames arrive via
+  how a _human_ Replay's frames are fetched, not a requirement that frames arrive via
   the network. It does not gate the overlay class on message origin, only on track+
   difficulty match.
 - **#56** (visuals): no data-source assumption; purely about the mesh/material once a
@@ -170,7 +170,7 @@ contract is "a `ReplayFrame[]` (+ track/timeMs) already sitting in the client," 
 `buildReferenceLap` already produces. A client-computed AI lap could be injected at the
 same seam a fetched human Replay's `frames` would be — the class doesn't need to know
 or care which one it got. The `getReplay`/`replay` message is exclusively the
-*acquisition* mechanism for human Replays (because their frames live server-side in
+_acquisition_ mechanism for human Replays (because their frames live server-side in
 Postgres, `server/src/replay.ts:74-85`); the AI Reference Lap has no equivalent
 acquisition step because it's computed, not stored, so it would skip that message
 entirely and hand `frames` straight to the overlay class's constructor/update path.
@@ -178,11 +178,11 @@ entirely and hand `frames` straight to the overlay class's constructor/update pa
 **What would still need deciding** for an actual AI-Pacer effort (not blocking the
 injection-point answer, but real scoping gaps): (a) Sunset Ridge/Medium hardcoding in
 `reference-lap.ts`/`harness.ts` vs. #54's track+difficulty matching rule; (b) ADR-0002
-only sanctions *baked-pose, non-live* AI playback in a viewer — its rejected option was
+only sanctions _baked-pose, non-live_ AI playback in a viewer — its rejected option was
 "run the policy live as a Room bot/ghost" (ADR-0002, "Considered Options"), so an
 AI Pacer would need to stay in the same baked/computed-once mold `buildReferenceLap`
 already uses, not switch to live in-Room inference; #58's Pacer definition already
-anticipates this ("the AI's baked-pose lap *could* mechanically be a Pacer... only human
+anticipates this ("the AI's baked-pose lap _could_ mechanically be a Pacer... only human
 Replays are surfaced as Pacers today").
 
 ## 4. Is #60 a prerequisite?
@@ -193,8 +193,8 @@ Replays are surfaced as Pacers today").
 decisions already closed on map #53 — it introduces no new design content. All four
 decision tickets in scope for this question (#59, #55, #54, #56) are already resolved
 and, per §3, already answer the coupling question without ambiguity: none of them ties
-the overlay's input contract to a server origin. #60 gates *when Sandcastle is allowed
-to start building the class* (via the `ready-for-agent` relabel), not whether the
+the overlay's input contract to a server origin. #60 gates _when Sandcastle is allowed
+to start building the class_ (via the `ready-for-agent` relabel), not whether the
 injection point can be identified — which this document does now, ahead of #60.
 
 The one genuinely open item is unrelated to server-origin coupling: map #53's "Not yet

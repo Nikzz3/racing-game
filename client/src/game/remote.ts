@@ -1,11 +1,6 @@
 import * as THREE from "three";
 import type { PlayerSnapshot, Variant } from "@racing/shared";
-import {
-  animateCar,
-  createCarMesh,
-  disposeCarMesh,
-  resolveVariant,
-} from "./car";
+import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import { interpolateHeading } from "./pose-interpolation";
 
 interface BufferedSnapshot {
@@ -37,9 +32,7 @@ export class RemotePlayers {
 
   onSnapshot(players: PlayerSnapshot[]): void {
     const others = new Map(
-      players
-        .filter((player) => player.id !== this.myId)
-        .map((player) => [player.id, player]),
+      players.filter((player) => player.id !== this.myId).map((player) => [player.id, player]),
     );
     this.snapshots.push({ receivedAt: performance.now(), players: others });
     if (this.snapshots.length > SNAPSHOT_LIMIT) this.snapshots.shift();
@@ -48,8 +41,7 @@ export class RemotePlayers {
       const variant = resolveVariant(id, player.variant);
       const existing = this.cars.get(id);
       if (existing) {
-        if (existing.variant === variant && existing.name === player.name)
-          continue;
+        if (existing.variant === variant && existing.name === player.name) continue;
         this.removeCar(id);
       }
       const mesh = createCarMesh(id, player.name, variant);
@@ -77,9 +69,7 @@ export class RemotePlayers {
     }
     const span = newer.receivedAt - older.receivedAt;
     const amount =
-      span > 0
-        ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25)
-        : 1;
+      span > 0 ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25) : 1;
     const settled = renderTime >= newer.receivedAt;
     for (const [id, { mesh }] of this.cars) {
       const before = older.players.get(id);
@@ -102,12 +92,7 @@ export class RemotePlayers {
           before.z + (after.z - before.z) * amount,
         );
         mesh.rotation.y = interpolateHeading(before.rot, after.rot, amount);
-        animateCar(
-          mesh,
-          before.speed + (after.speed - before.speed) * amount,
-          0,
-          dt,
-        );
+        animateCar(mesh, before.speed + (after.speed - before.speed) * amount, 0, dt);
       }
     }
   }
@@ -126,9 +111,7 @@ export class RemotePlayers {
   }
 
   resolvedVariants(): Record<string, Variant> {
-    return Object.fromEntries(
-      [...this.cars].map(([id, car]) => [id, car.variant]),
-    );
+    return Object.fromEntries([...this.cars].map(([id, car]) => [id, car.variant]));
   }
 
   dispose(): void {

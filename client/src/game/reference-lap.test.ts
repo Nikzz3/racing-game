@@ -5,19 +5,14 @@ import { dirname, join } from "path";
 import { buildReferenceLap, type ReferenceLap } from "./reference-lap";
 import { runPolicyLap, type PolicyWeights, type RunResult } from "./harness";
 
-const POLICY_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../rl/policy.json",
-);
+const POLICY_PATH = join(dirname(fileURLToPath(import.meta.url)), "../../../rl/policy.json");
 const DT_MS = 1000 / 60;
 
 describe.skipIf(!existsSync(POLICY_PATH))("buildReferenceLap", () => {
   let lap: ReferenceLap;
   let result: RunResult;
   beforeAll(() => {
-    const policy = JSON.parse(
-      readFileSync(POLICY_PATH, "utf-8"),
-    ) as PolicyWeights;
+    const policy = JSON.parse(readFileSync(POLICY_PATH, "utf-8")) as PolicyWeights;
     lap = buildReferenceLap(policy)!;
     result = runPolicyLap(policy)!;
     expect(lap).not.toBeNull();

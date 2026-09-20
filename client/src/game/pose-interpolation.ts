@@ -8,11 +8,7 @@ export interface Pose {
 }
 
 /** Follow the shortest arc, including headings that cross the ±π boundary. */
-export function interpolateHeading(
-  from: number,
-  to: number,
-  amount: number,
-): number {
+export function interpolateHeading(from: number, to: number, amount: number): number {
   const turn = Math.PI * 2;
   let delta = (to - from) % turn;
   if (delta > Math.PI) delta -= turn;
@@ -36,8 +32,7 @@ export function lerpPose(
 
 /** Sample a sorted recording in logarithmic time, clamped to its endpoints. */
 export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
-  if (frames.length === 0)
-    throw new Error("interpolatePose: frames must not be empty");
+  if (frames.length === 0) throw new Error("interpolatePose: frames must not be empty");
 
   let lower = 0;
   let upper = Math.max(0, frames.length - 2);
@@ -48,10 +43,8 @@ export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
   }
 
   const [start, x0, z0, heading0, speed0] = frames[lower];
-  const [end, x1, z1, heading1, speed1] =
-    frames[Math.min(lower + 1, frames.length - 1)];
-  const amount =
-    end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
+  const [end, x1, z1, heading1, speed1] = frames[Math.min(lower + 1, frames.length - 1)];
+  const amount = end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
   return lerpPose(
     { x: x0, z: z0, heading: heading0, speed: speed0 },
     { x: x1, z: z1, heading: heading1, speed: speed1 },

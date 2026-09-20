@@ -67,12 +67,12 @@ restarts.
 
 ## Configuration that feeds a release
 
-| Setting | Where | Purpose |
-|---|---|---|
-| `RACING_SERVER_URL` | GitHub repository variable | WebSocket URL baked into the installers (`wss://racing.nickzimmermann.com`) |
-| `CSC_LINK`, `CSC_KEY_PASSWORD` | GitHub secrets (optional) | Code-signing certificate for macOS and Windows |
-| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | GitHub secrets (optional) | macOS notarization; also set `notarize: true` in `desktop/electron-builder.yml` |
-| `version` | `desktop/package.json` | Release version; must match the tag |
+| Setting                                                    | Where                      | Purpose                                                                         |
+| ---------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
+| `RACING_SERVER_URL`                                        | GitHub repository variable | WebSocket URL baked into the installers (`wss://racing.nickzimmermann.com`)     |
+| `CSC_LINK`, `CSC_KEY_PASSWORD`                             | GitHub secrets (optional)  | Code-signing certificate for macOS and Windows                                  |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | GitHub secrets (optional)  | macOS notarization; also set `notarize: true` in `desktop/electron-builder.yml` |
+| `version`                                                  | `desktop/package.json`     | Release version; must match the tag                                             |
 
 Without the signing secrets the workflow still succeeds and ships unsigned installers, which
 macOS Gatekeeper and Windows SmartScreen warn about on first launch. The macOS bundle is

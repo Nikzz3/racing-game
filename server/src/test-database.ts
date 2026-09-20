@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import pg from "pg";
+import { Pool } from "pg";
 import { vi } from "vitest";
 
 /**
@@ -15,21 +15,19 @@ import { vi } from "vitest";
 export const testDatabaseUrl = process.env.SERVER_TEST_DATABASE_URL;
 
 export interface TestDatabase {
-  pool: pg.Pool;
+  pool: Pool;
   initDb: () => Promise<void>;
 }
 
-export async function withTestSchema<T>(
-  run: (db: TestDatabase) => Promise<T>,
-): Promise<T> {
+export async function withTestSchema<T>(run: (db: TestDatabase) => Promise<T>): Promise<T> {
   if (!testDatabaseUrl) throw new Error("SERVER_TEST_DATABASE_URL is not set");
   const url = new URL(testDatabaseUrl);
   if (url.pathname === "/racing") {
     throw new Error("Use a disposable database, not the developer racing database");
   }
   const schema = `test_${randomUUID().replaceAll("-", "")}`;
-  const admin = new pg.Pool({ connectionString: url.toString(), max: 1 });
-  let applicationPool: pg.Pool | undefined;
+  const admin = new Pool({ connectionString: url.toString(), max: 1 });
+  let applicationPool: Pool | undefined;
   let schemaCreated = false;
   const previousUrl = process.env.DATABASE_URL;
   try {

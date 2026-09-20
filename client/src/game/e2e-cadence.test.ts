@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SUNSET_RIDGE, MAX_SPEED_MS, minPlausibleLapMs } from "@racing/shared";
-import {
-  createTiming,
-  updateTiming,
-  type LapResult,
-} from "../../../server/src/timing";
+import { createTiming, updateTiming, type LapResult } from "../../../server/src/timing";
 import lapInputs from "../../../e2e/lap-inputs.json";
 import { CarPhysics } from "./physics";
 import { E2eSeam } from "./e2e-seam";
