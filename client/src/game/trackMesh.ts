@@ -7,6 +7,7 @@ import {
   type TrackSample,
 } from "@racing/shared";
 import { getModel, instancedFromModel } from "./models";
+import { freezeStatic } from "./scene";
 
 const BARRIER_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET;
 
@@ -47,6 +48,7 @@ export function buildTrack(scene: THREE.Scene, track: Track): void {
   const barrier = getModel("prop:barrier");
   if (barrier) group.add(instancedFromModel(barrier, barrierMatrices(samples)));
   scene.add(group);
+  freezeStatic(group);
 }
 
 /** One barrier segment per two samples, skipping spans that would cross the road. */

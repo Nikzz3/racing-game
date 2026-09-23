@@ -1755,11 +1755,12 @@ a {
 }
 .hud-checkpoint-bar i {
   display: block;
-  width: 0;
   height: 100%;
   background: #ffc078;
   box-shadow: 0 0 10px #f8ac5670;
-  transition: width 0.3s ease;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
 }
 .hud-timer {
   top: 31px;

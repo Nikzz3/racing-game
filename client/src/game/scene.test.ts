@@ -2,6 +2,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import * as THREE from "three";
 import { SUNSET_RIDGE } from "@racing/shared";
 import { createScene, disposeRenderer, disposeWorld, updateSun } from "./scene";
+import { buildTrack } from "./trackMesh";
 
 vi.mock("three", async (importOriginal) => {
   const actual = await importOriginal<typeof THREE>();
@@ -70,6 +71,37 @@ describe("sunset lighting", () => {
     expect(disposeSharedMaterial).not.toHaveBeenCalled();
     sharedGeometry.dispose();
     sharedMaterial.dispose();
+  });
+});
+
+describe("static scenery", () => {
+  it("bakes world transforms once while the sun keeps following the car", () => {
+    const bundle = world();
+    const sky = bundle.scene.getObjectByName("sunset-sky")!;
+    const ground = bundle.scene.children.find(
+      (child) => child instanceof THREE.Mesh && child !== sky,
+    )!;
+    // Scenery is placed before freezing, so its baked matrix is already correct.
+    const flat = new THREE.Vector3(0, 0, 1).applyMatrix4(ground.matrixWorld);
+    expect(flat.y).toBeCloseTo(-0.015 + 1, 10);
+    const recompose = vi.spyOn(ground, "updateMatrix");
+    updateSun(bundle.sun, 120, -80);
+    bundle.scene.updateMatrixWorld();
+    expect(recompose).not.toHaveBeenCalled();
+    const target = new THREE.Vector3().setFromMatrixPosition(bundle.sun.target.matrixWorld);
+    expect(target.toArray()).toEqual([120, 0, -80]);
+    expect(new THREE.Vector3().setFromMatrixPosition(bundle.sun.matrixWorld).x).toBe(270);
+    disposeWorld(bundle);
+  });
+
+  it("freezes the circuit once it is built", () => {
+    const bundle = world();
+    const before = bundle.scene.children.length;
+    buildTrack(bundle.scene, SUNSET_RIDGE);
+    const circuit = bundle.scene.children.slice(before);
+    expect(circuit).toHaveLength(1);
+    circuit[0].traverse((part) => expect(part.matrixAutoUpdate).toBe(false));
+    disposeWorld(bundle);
   });
 });
 
