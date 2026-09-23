@@ -18,6 +18,7 @@ vi.mock("./track-stage", () => ({
   TrackStage: class {
     setActive() {}
     setTrack() {}
+    release() {}
   },
 }));
 vi.mock("./garage-thumbs", () => ({
@@ -57,5 +58,19 @@ describe("persistent lobby garage", () => {
     expect(stage.setActive).toHaveBeenLastCalledWith(false);
     lobby.show();
     expect(stage.setActive).toHaveBeenLastCalledWith(true);
+  });
+
+  it("does not redraw the garage when shown while already visible", () => {
+    const lobby = new Lobby(document.body, {
+      onCreate: vi.fn(),
+      onJoin: vi.fn(),
+      onReplay: vi.fn(),
+      onReferenceLap: vi.fn(),
+      onVariantChange: vi.fn(),
+    });
+    lobby.paintGarageThumbnails();
+    stage.setActive.mockClear();
+    lobby.show();
+    expect(stage.setActive).not.toHaveBeenCalled();
   });
 });

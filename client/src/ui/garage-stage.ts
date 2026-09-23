@@ -150,13 +150,17 @@ export class GarageStage {
   }
 
   setActive(active: boolean): void {
-    if (!active) this.endDrag();
     this.active = active;
     cancelAnimationFrame(this.animation);
     this.animation = 0;
     if (active) {
       this.resize();
       this.schedule();
+    } else {
+      this.endDrag();
+      // The lobby is hidden behind a race or replay. Free the full-screen
+      // multisampled drawing buffer until resize() restores it on return.
+      if (!this.disposed) this.renderer.setSize(1, 1, false);
     }
   }
 
