@@ -23,7 +23,7 @@ import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
-import { escapeHtml as html, formatMs } from "../util";
+import { escapeHtml as html, formatMs, whenIdle } from "../util";
 
 export interface LobbyCallbacks {
   onCreate(roomName: string, track: TrackSlug, difficulty: Difficulty): void;
@@ -186,6 +186,8 @@ export class Lobby {
   private stage: GarageStage | null = null;
   private trackStage: TrackStage | null = null;
   private pointerStart: { x: number; y: number } | null = null;
+  /** The Pacer picker only shows on Race Setup, so it repaints when that screen opens. */
+  private pickerStale = false;
 
   constructor(
     parent: HTMLElement,
@@ -525,6 +527,7 @@ export class Lobby {
   }
   private setScreen(screen: Screen): void {
     this.screen = screen;
+    if (screen === "settings" && this.pickerStale) this.paintPicker();
     this.stage?.setScreen(screen);
     this.trackStage?.setActive(screen === "track");
     this.find(".lobby-deck").dataset.screen = screen;
@@ -571,15 +574,6 @@ export class Lobby {
       this.paintHero();
       return true;
     }
-    this.images = renderVariantThumbnails(CAR_VARIANTS);
-    for (const choice of CHOICES) {
-      const url = this.images.get(choice === "random" ? this.randomRoll : choice);
-      if (!url) continue;
-      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
-      img.src = url;
-      img.hidden = false;
-    }
-    this.find(".showroom-loading").hidden = true;
     const shown = this.root.style.display !== "none";
     if (!this.stage) {
       try {
@@ -598,9 +592,43 @@ export class Lobby {
         // Exact circuit outlines remain available without WebGL.
       }
     }
+    // The live garage hides the still previews until Race Setup, so they render one
+    // car per idle callback, selected car first, after the garage's first frame.
+    // Without the live garage they are the carousel and render right away.
+    const selected = this.selectedVariant;
+    renderVariantThumbnails(
+      [selected, ...CAR_VARIANTS.filter((variant) => variant !== selected)],
+      (variant, url) => this.paintThumbnail(variant, url),
+      this.stage ? whenIdle : (task) => task(),
+    );
+    // Bake the AI Record before the player reaches the Race Setup picker.
+    whenIdle(() => {
+      if (this.aiEligible()) this.getReferenceLap();
+    });
+    this.find(".showroom-loading").hidden = true;
     this.paintTrack();
     this.paintHero();
     return this.stage !== null;
+  }
+  private paintThumbnail(variant: Variant, url: string): void {
+    this.images.set(variant, url);
+    for (const choice of CHOICES) {
+      if ((choice === "random" ? this.randomRoll : choice) !== variant) continue;
+      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
+      img.src = url;
+      img.hidden = false;
+    }
+    if (variant === this.selectedVariant) this.paintSelectedThumbnail();
+  }
+  private paintSelectedThumbnail(): void {
+    // Thumbnails arrive over idle callbacks; until this car's is ready, show none
+    // rather than the previous car's.
+    const url = this.images.get(this.selectedVariant);
+    for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
+      const img = this.find<HTMLImageElement>(selector);
+      if (url) img.src = url;
+      img.hidden = !url;
+    }
   }
   private paintHero(): void {
     const index = CHOICES.indexOf(this.choice);
@@ -619,13 +647,7 @@ export class Lobby {
         offset === 0 ? "current" : offset === -1 ? "previous" : offset === 1 ? "next" : "offstage";
       slide.setAttribute("aria-hidden", String(offset !== 0));
     });
-    const url = this.images.get(this.selectedVariant);
-    if (!url) return;
-    for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
-      const img = this.find<HTMLImageElement>(selector);
-      img.src = url;
-      img.hidden = false;
-    }
+    this.paintSelectedThumbnail();
   }
   setRooms(rooms: RoomInfo[]): void {
     this.rooms = rooms;
@@ -717,6 +739,12 @@ export class Lobby {
       );
       this.pacer = entry ? replayPacer(entry) : null;
     }
+    // Painting the picker bakes the AI Record, which is too slow for startup.
+    if (this.screen === "settings") this.paintPicker();
+    else this.pickerStale = true;
+  }
+  private paintPicker(): void {
+    this.pickerStale = false;
     const ai = this.aiEligible() ? this.getReferenceLap() : null;
     const choices = this.eligible.map((e, i) => ({
       time: e.timeMs,
@@ -794,6 +822,9 @@ export class Lobby {
     }
   }
   show(): void {
+    // Joining a room passes through here while the lobby is still up. Skip the
+    // full garage redraw that the race would cover right away.
+    if (this.root.style.display !== "none") return;
     this.root.style.display = "";
     this.stage?.setActive(true);
     this.trackStage?.setActive(this.screen === "track");
@@ -801,6 +832,6 @@ export class Lobby {
   hide(): void {
     this.root.style.display = "none";
     this.stage?.setActive(false);
-    this.trackStage?.setActive(false);
+    this.trackStage?.release();
   }
 }

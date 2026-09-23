@@ -22,3 +22,10 @@ export function hashString(s: string): number {
   }
   return Math.abs(h);
 }
+
+/** Run `task` once the main thread is idle, or on the next task where idle callbacks are missing. */
+export function whenIdle(task: () => void): void {
+  if (typeof requestIdleCallback === "function")
+    requestIdleCallback(() => task(), { timeout: 1000 });
+  else setTimeout(task, 0);
+}

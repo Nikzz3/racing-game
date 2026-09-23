@@ -15,6 +15,7 @@ export class Hud {
   private standings = "";
   private dial = "";
   private dot = "";
+  private checkpointFill = "";
   private readonly remoteDots = new Map<string, SVGCircleElement>();
   constructor(
     parent: HTMLElement,
@@ -104,8 +105,13 @@ export class Hud {
   setMyProgress(player: PlayerSnapshot): void {
     this.text(".hud-lap", `LAP ${player.laps}`);
     this.text(".hud-cp", `CP ${player.nextCheckpoint}/${this.checkpointCount}`);
-    this.el(".hud-checkpoint-bar i").style.width =
-      `${Math.min(100, (player.nextCheckpoint / this.checkpointCount) * 100)}%`;
+    // Scaling, not resizing, keeps the fill's 0.3s ease on the compositor
+    // instead of forcing a layout on every frame of each checkpoint's animation.
+    const fill = `scaleX(${Math.min(1, player.nextCheckpoint / this.checkpointCount)})`;
+    if (fill !== this.checkpointFill) {
+      this.checkpointFill = fill;
+      this.el(".hud-checkpoint-bar i").style.transform = fill;
+    }
     this.text(".hud-last", formatMs(player.lastLapMs));
     this.text(".hud-best", formatMs(player.bestLapMs));
   }

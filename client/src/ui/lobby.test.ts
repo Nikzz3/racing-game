@@ -15,6 +15,15 @@ const { buildReferenceLapMock } = vi.hoisted(() => ({
 vi.mock("../game/reference-lap", () => ({
   buildReferenceLap: buildReferenceLapMock,
 }));
+// Thumbnails need WebGL; capture the lobby's image callback so tests deliver them.
+const { thumbnails } = vi.hoisted(() => ({
+  thumbnails: { deliver: (_variant: string, _url: string): void => {} },
+}));
+vi.mock("./garage-thumbs", () => ({
+  renderVariantThumbnails: (_variants: unknown, onImage: typeof thumbnails.deliver) => {
+    thumbnails.deliver = onImage;
+  },
+}));
 
 const AI_FRAMES: ReplayFrame[] = [
   [0, 0, 0, 0, 0],
@@ -96,6 +105,12 @@ function submitForm(): void {
 function enterSettings(): void {
   click("[data-select-car]");
   click("[data-select-track]");
+}
+/** Mounts a Lobby already on Race Setup, where the Pacer picker is painted. */
+function mountSetup(): Lobby {
+  mount();
+  enterSettings();
+  return lobby;
 }
 const track = (slug: string) => `button[data-track="${slug}"]`;
 const diff = (d: string) => `button[data-diff="${d}"]`;
@@ -222,7 +237,7 @@ describe("Lobby Pacer arming UX", () => {
   });
 
   beforeEach(() => {
-    mount().setLeaderboard([replayEntry, noReplayEntry, replayEntry2]);
+    mountSetup().setLeaderboard([replayEntry, noReplayEntry, replayEntry2]);
   });
 
   /** Selects the option naming `name` (or "No Pacer" when null) and fires change. */
@@ -339,19 +354,19 @@ describe("Lobby AI Record Pacer option", () => {
 
   it("offers the AI Record with the baked time when eligible", () => {
     buildReferenceLapMock.mockReturnValue(referenceLap(24680));
-    mount();
+    mountSetup();
     // The displayed time is the bake's, never a literal.
     expect(aiOption()!.textContent).toBe(`⚑ AI Record — ${formatMs(24680)}`);
   });
 
   it("is styled to match the Pacer cyan", () => {
-    mount();
+    mountSetup();
     expect(aiOption()!.classList.contains("pacer-opt-ai")).toBe(true);
   });
 
   it("sits at its time-sorted position among the human options", () => {
     // Alice 22.0s < AI 23.8s < Carol 63.0s
-    mount().setLeaderboard([alice, carol]);
+    mountSetup().setLeaderboard([alice, carol]);
     expect(optionTexts()).toEqual([
       "No Pacer — race alone",
       `⚑ Alice — ${formatMs(22000)}`,
@@ -361,13 +376,13 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("is absent on a Track without a trained policy", () => {
-    mount();
+    mountSetup();
     click(track("stormhaven"));
     expect(aiOption()).toBeUndefined();
   });
 
   it("is absent on a non-Medium Difficulty", () => {
-    mount();
+    mountSetup();
     for (const d of ["easy", "hard"]) {
       click(diff(d));
       expect(aiOption()).toBeUndefined();
@@ -376,12 +391,12 @@ describe("Lobby AI Record Pacer option", () => {
 
   it("a null bake yields no AI option", () => {
     buildReferenceLapMock.mockReturnValue(null);
-    mount();
+    mountSetup();
     expect(aiOption()).toBeUndefined();
   });
 
   it('selecting it arms a kind:"ai" Pacer whose frames are the memoized bake', () => {
-    mount();
+    mountSetup();
     pickPacer("ai");
     expect(lobby.armedPacer).toEqual({
       kind: "ai",
@@ -396,7 +411,7 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("selecting a human option replaces an armed AI, and vice versa", () => {
-    mount().setLeaderboard([alice]);
+    mountSetup().setLeaderboard([alice]);
     pickPacer("ai");
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
     pickPacer("0");
@@ -409,7 +424,7 @@ describe("Lobby AI Record Pacer option", () => {
     ["Track", track("stormhaven")],
     ["Difficulty", diff("hard")],
   ])("switching %s to an ineligible context clears an armed AI Pacer", (_, selector) => {
-    mount();
+    mountSetup();
     pickPacer("ai");
     click(selector);
     expect(lobby.armedPacer).toBeNull();
@@ -417,7 +432,7 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("an armed AI Pacer survives eligible re-renders (leaderboard refreshes)", () => {
-    mount();
+    mountSetup();
     pickPacer("ai");
     lobby.setLeaderboard([alice, carol]);
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
@@ -425,7 +440,7 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("bakes at most once across repeated renders", () => {
-    mount();
+    mountSetup();
     lobby.setLeaderboard([alice]);
     lobby.setLeaderboard([alice, carol]);
     click(diff("hard"));
@@ -434,7 +449,7 @@ describe("Lobby AI Record Pacer option", () => {
   });
 
   it("does not bake again for ineligible renders", () => {
-    mount();
+    mountSetup();
     click(track("stormhaven"));
     buildReferenceLapMock.mockClear();
     lobby.setLeaderboard([alice]);
@@ -442,9 +457,18 @@ describe("Lobby AI Record Pacer option", () => {
     expect(buildReferenceLapMock).not.toHaveBeenCalled();
   });
 
+  it("waits for Race Setup before baking", () => {
+    mount();
+    lobby.setLeaderboard([alice]);
+    expect(buildReferenceLapMock).not.toHaveBeenCalled();
+    enterSettings();
+    expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
+    expect(aiOption()).toBeDefined();
+  });
+
   it("a null bake is memoized too", () => {
     buildReferenceLapMock.mockReturnValue(null);
-    mount();
+    mountSetup();
     lobby.setLeaderboard([alice]);
     lobby.setLeaderboard([alice, carol]);
     expect(buildReferenceLapMock).toHaveBeenCalledTimes(1);
@@ -597,6 +621,20 @@ describe("Lobby Garage picker", () => {
       expect(img.getAttribute("src")).toBeNull();
   });
 
+  it("hides the Race Setup car image until the selected car's thumbnail is ready", () => {
+    mount();
+    lobby.paintGarageThumbnails();
+    selectCar("police");
+    thumbnails.deliver("police", "blob:police");
+    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:police");
+    selectCar("van");
+    for (const selector of [".setup-car-image", ".selected-car-thumb"])
+      expect(q<HTMLImageElement>(selector).hidden).toBe(true);
+    thumbnails.deliver("van", "blob:van");
+    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:van");
+    expect(q<HTMLImageElement>(".setup-car-image").hidden).toBe(false);
+  });
+
   it("cycles across every car and Random, wrapping in both directions", () => {
     mount();
     for (const variant of CAR_VARIANTS) {
@@ -737,7 +775,7 @@ describe("Lobby Records board filters", () => {
   });
 
   beforeEach(() => {
-    mount().setLeaderboard([sunsetMedium, sunsetHard, stormMedium]);
+    mountSetup().setLeaderboard([sunsetMedium, sunsetHard, stormMedium]);
   });
 
   function boardTrackValue(): string | undefined {

@@ -84,6 +84,16 @@ export class TrackStage {
     if (active) this.resize();
   }
 
+  /**
+   * Deactivates and frees the drawing buffer while the lobby is hidden. Leaving the
+   * circuit screen only deactivates, since the canvas stays visible as it slides out.
+   * `setActive(true)` restores the buffer.
+   */
+  release(): void {
+    this.setActive(false);
+    if (!this.disposed) this.renderer.setSize(1, 1, false);
+  }
+
   private resize = (): void => {
     if (!this.active || this.disposed || !this.host.clientWidth || !this.host.clientHeight) return;
     this.renderer.setSize(this.host.clientWidth, this.host.clientHeight, false);

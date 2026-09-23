@@ -15,7 +15,8 @@ const APP_ORIGIN = `${APP_SCHEME}://bundle`;
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  // The asset library's meshopt decoder compiles WebAssembly; this does not allow eval().
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",

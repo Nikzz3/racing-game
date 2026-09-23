@@ -119,3 +119,34 @@ describe("Hud circuit map", () => {
     expect(() => bare.setRemotePositions([{ id: "p1", x: 0, z: 0 }])).not.toThrow();
   });
 });
+
+describe("Hud checkpoint bar", () => {
+  it("scales the fill to the share of gates collected, writing only on change", () => {
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 4);
+    const fill = parent.querySelector<HTMLElement>(".hud-checkpoint-bar i")!;
+    const player = {
+      id: "me",
+      name: "Me",
+      x: 0,
+      y: 0,
+      z: 0,
+      rot: 0,
+      speed: 0,
+      laps: 0,
+      lastLapMs: null,
+      bestLapMs: null,
+      lapStartT: 0,
+      nextCheckpoint: 1,
+      spawns: 0,
+    };
+    hud.setMyProgress(player);
+    expect(fill.style.transform).toBe("scaleX(0.25)");
+    const writes = vi.spyOn(fill.style, "transform", "set");
+    hud.setMyProgress(player);
+    expect(writes).not.toHaveBeenCalled();
+    hud.setMyProgress({ ...player, nextCheckpoint: 3 });
+    expect(fill.style.transform).toBe("scaleX(0.75)");
+    parent.remove();
+  });
+});

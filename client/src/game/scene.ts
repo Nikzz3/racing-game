@@ -76,7 +76,24 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   ground.userData.owned = true;
   scene.add(ground);
   scatterEnvironment(scene, samples);
+  // Everything added so far stays put; only the sun and its target follow the car.
+  // The root never moves either, so it stops re-forcing every descendant's update.
+  for (const child of scene.children)
+    if (child !== sun && child !== sun.target) freezeStatic(child);
+  scene.matrixAutoUpdate = false;
   return { scene, camera, renderer, sun };
+}
+
+/**
+ * Bake the transforms of scenery that never moves again. Three otherwise
+ * recomposes every object's matrix each frame, and the scattered nature alone
+ * is hundreds of instanced batches. Call once the subtree is fully placed.
+ */
+export function freezeStatic(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  root.traverse((part) => {
+    part.matrixAutoUpdate = false;
+  });
 }
 
 function createSunsetSky(): THREE.Mesh {
