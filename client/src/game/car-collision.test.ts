@@ -48,9 +48,13 @@ describe("carContact", () => {
 
   it("parts exactly overlapping cars even when they face opposite ways", () => {
     // Each client lists its own car's axes first, so each may hold the axis negated.
-    const mine = carContact(car(0, 0, 0), obstacle(0, 0, Math.PI, 1));
-    const theirs = carContact(car(0, 0, Math.PI), obstacle(0, 0, 0, -1));
-    expect(mine?.nx).toBeCloseTo(-(theirs?.nx ?? 0));
-    expect(mine?.nz).toBeCloseTo(-(theirs?.nz ?? 0));
+    for (const [a, b] of [
+      [0, Math.PI],
+      [Math.PI / 2, -Math.PI / 2],
+    ]) {
+      const mine = carContact(car(0, 0, a), obstacle(0, 0, b, 1));
+      const theirs = carContact(car(0, 0, b), obstacle(0, 0, a, -1));
+      expect(Math.hypot(mine!.nx + theirs!.nx, mine!.nz + theirs!.nz)).toBeCloseTo(0);
+    }
   });
 });

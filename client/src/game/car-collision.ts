@@ -43,9 +43,10 @@ export function carContact(car: Readonly<Pose>, other: CarObstacle): CarContact 
     if (depth <= 0) return null;
     if (best && depth >= best.depth) continue;
     // An exact overlap has no direction to part along. Orient the axis the same way
-    // on both clients (each may hold it negated) so opposite `side`s part the cars.
-    const sign =
-      along === 0 ? other.side * (ax > 0 || (ax === 0 && az > 0) ? 1 : -1) : Math.sign(along);
+    // on both clients (each may hold it negated, with rounding noise in the other
+    // component) so opposite `side`s part the cars.
+    const canonical = Math.abs(ax) > 1e-9 ? Math.sign(ax) : Math.sign(az);
+    const sign = along === 0 ? other.side * canonical : Math.sign(along);
     best = { nx: ax * sign, nz: az * sign, depth };
   }
   return best;
