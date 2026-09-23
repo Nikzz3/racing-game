@@ -306,6 +306,7 @@ export class Game {
         sendState: (sentAt) => this.sendState(sentAt),
         linkStates: () => this.links?.states() ?? {},
         poseSources: () => this.remote.sources(),
+        directPoses: () => this.remote.directPoses(),
         playerVariants: () => ({
           [this.myId]: resolveVariant(this.myId, this.variant),
           ...this.remote.resolvedVariants(),

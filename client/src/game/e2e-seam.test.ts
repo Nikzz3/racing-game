@@ -34,6 +34,7 @@ function createBindings(): E2eGameBindings {
     pacerState: () => null,
     linkStates: () => ({ "remote-a": "direct" }),
     poseSources: () => ({ "remote-a": "direct", "remote-b": "relay" }),
+    directPoses: () => ({ "remote-a": 12, "remote-b": 0 }),
   };
 }
 
@@ -204,6 +205,7 @@ describe("E2eSeam", () => {
       pacerVariant: "taxi",
       links: { "remote-a": "direct" },
       poseSources: { "remote-a": "direct", "remote-b": "relay" },
+      directPoses: { "remote-a": 12, "remote-b": 0 },
       injectionFinished: true,
       lapSubmitted: true,
       serverLaps: 1,

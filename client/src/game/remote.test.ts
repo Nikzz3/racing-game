@@ -389,6 +389,7 @@ describe("RemotePlayers with Direct Links", () => {
     now = 210;
     remote.update(1 / 60);
     expect(remote.sources()).toEqual({ p1: "direct" });
+    expect(remote.directPoses()).toEqual({ p1: 3 });
     // Drawn 80 ms behind the fastest path: sender time 5120, 40% from pose 2 to 3.
     expect(mesh.position.x).toBeCloseTo(24);
     expect(remote.obstacles()).toHaveLength(1);
@@ -427,7 +428,7 @@ describe("RemotePlayers with Direct Links", () => {
     expect(mesh.position.x).toBe(20);
   });
 
-  it("ignores Direct Link poses before the relay has placed the car, or far from it", () => {
+  it("ignores Direct Link poses before the relay has placed the car, or far ahead of it", () => {
     now = 10;
     remote.onDirectPose("p1", direct(1));
     remote.onDirectPose("ghost", direct(1));
@@ -435,11 +436,34 @@ describe("RemotePlayers with Direct Links", () => {
     now = 60;
     remote.onSnapshot([stamped(1)]);
     remote.onDirectPose("p1", direct(100));
-    remote.onDirectPose("p1", {
-      ...direct(2),
-      stamp: { seq: 2, sentAt: sentAt(2) + 5000, epoch: 0 },
-    });
     expect(remote.sources()).toEqual({ p1: "relay" });
+  });
+
+  it("counts a Direct Link as live on a slow client whose poses arrive in bunches", () => {
+    // A page drawing ~2 frames a second sends and receives in bursts, seconds apart.
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    for (const seq of [2, 3, 4]) {
+      now = 1000 * seq;
+      remote.onDirectPose("p1", direct(seq));
+      now += 400;
+      remote.onSnapshot([stamped(seq)]);
+      now += 400;
+      expect(remote.sources()).toEqual({ p1: "direct" });
+    }
+  });
+
+  it("draws from the relay when it, not the Direct Link, delivers poses first", () => {
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    for (const seq of [2, 3, 4, 5]) {
+      now = seq * 50 + 20;
+      remote.onSnapshot([stamped(seq)]);
+      now = seq * 50 + 40;
+      remote.onDirectPose("p1", direct(seq));
+    }
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    expect(remote.directPoses()).toEqual({ p1: 0 });
   });
 
   it("starts over once a driver's relayed poses gain stamps", () => {

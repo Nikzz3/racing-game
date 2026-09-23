@@ -58,8 +58,12 @@ function room(ids: string[], deliver = true): Room {
   return { drivers, signals };
 }
 
-/** ICE on a loaded CI runner can take seconds; vi.waitFor's default is one. */
-const LINKED = { timeout: 10_000 };
+/**
+ * ICE checks retry on a ~1 s schedule, and a host with many interfaces (VPN,
+ * container bridges) or a loaded CI runner can need several rounds: well past
+ * vi.waitFor's 1 s and a test's 5 s defaults.
+ */
+const LINKED = { timeout: 15_000 };
 
 let open: DirectLinks[] = [];
 function track(target: Room): Room {
@@ -72,7 +76,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("DirectLinks", () => {
+describe("DirectLinks", { timeout: 20_000 }, () => {
   it("links two drivers and carries poses between them over the data channel", async () => {
     const { drivers } = track(room(["a", "b"]));
     const received: Array<[string, DirectPose]> = [];
@@ -127,18 +131,50 @@ describe("DirectLinks", () => {
     await vi.waitFor(() => expect(drivers.get("b")!.states()).toEqual({ a: "relay" }), LINKED);
   });
 
-  it("falls back to the relay when the pair never connects", async () => {
+  it("falls back to the relay when the pair never connects, retrying with backoff", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { drivers, signals } = track(room(["a", "b"], false));
-    drivers.get("a")!.setMembers([member("a"), member("b")]);
-    await vi.waitFor(() => expect(signals.length).toBeGreaterThan(0));
-    expect(drivers.get("a")!.states()).toEqual({ b: "connecting" });
+    const a = drivers.get("a")!;
+    const offers = () =>
+      signals.filter(({ signal }) => signal.kind === "description" && signal.type === "offer")
+        .length;
+    a.setMembers([member("a"), member("b")]);
+    await vi.waitFor(() => expect(offers()).toBe(1));
+    expect(a.states()).toEqual({ b: "connecting" });
     vi.advanceTimersByTime(15_000);
-    expect(drivers.get("a")!.states()).toEqual({ b: "relay" });
-    // A failed pair is remembered, not re-offered on every snapshot.
-    const sent = signals.length;
-    drivers.get("a")!.setMembers([member("a"), member("b")]);
-    expect(signals.length).toBe(sent);
+    expect(a.states()).toEqual({ b: "relay" });
+    // A failed pair is remembered, not re-offered on every snapshot...
+    a.setMembers([member("a"), member("b")]);
+    expect(offers()).toBe(1);
+    // ...but retried after a backoff that grows with each attempt, four in all.
+    for (const [attempt, backoff] of [5_000, 10_000, 15_000].entries()) {
+      vi.advanceTimersByTime(backoff - 1);
+      expect(offers()).toBe(attempt + 1);
+      vi.advanceTimersByTime(1);
+      await vi.waitFor(() => expect(offers()).toBe(attempt + 2));
+      expect(a.states()).toEqual({ b: "connecting" });
+      vi.advanceTimersByTime(15_000);
+      expect(a.states()).toEqual({ b: "relay" });
+    }
+    vi.advanceTimersByTime(120_000);
+    expect(offers()).toBe(4);
+  });
+
+  it("re-links after an established link drops", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { drivers } = track(room(["a", "b"]));
+    const members = [member("a"), member("b")];
+    for (const links of drivers.values()) links.setMembers(members);
+    await vi.waitFor(() => expect(drivers.get("a")!.states()).toEqual({ b: "direct" }), LINKED);
+    // The answering side loses its link (say, a network change) and starts over.
+    drivers.get("b")!.setMembers([member("b")]);
+    drivers.get("b")!.setMembers(members);
+    await vi.waitFor(() => expect(drivers.get("a")!.states()).toEqual({ b: "relay" }), LINKED);
+    vi.advanceTimersByTime(5_000);
+    await vi.waitFor(() => {
+      expect(drivers.get("a")!.states()).toEqual({ b: "direct" });
+      expect(drivers.get("b")!.states()).toEqual({ a: "direct" });
+    }, LINKED);
   });
 
   it("ignores an offer from a driver whose id says it should answer", async () => {

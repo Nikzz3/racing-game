@@ -10,7 +10,9 @@ negotiation between members of the same Room, and it still relays every pose in 
 Each pose carries a **stamp**: a sequence number, the sender's own clock, and a respawn epoch.
 Receivers merge the relayed copy and the Direct Link copy of a car into one buffer by sequence
 number, and draw whichever copy landed first. A car is drawn on the sender's clock, 80 ms behind
-its fastest path while a Direct Link is delivering, and 130 ms behind otherwise. The delay moves
+its fastest path while its Direct Link delivers the newest poses first, and 130 ms behind
+otherwise. That test counts poses, not wall time, so a client drawing only a few frames a
+second, whose messages arrive in bursts, still recognizes a live link. The delay moves
 gradually between the two, so a link opening or dropping never makes the car jump. Fallback is
 not a mode switch: a pair that cannot link, or whose link drops, keeps getting the relayed
 copies.
@@ -54,8 +56,9 @@ dependency. `node-datachannel` provides a real WebRTC stack for the unit tests.
   - An honest client sends identical values on both paths. If a Direct Link copy of a pose
     differs from the relayed copy, the receiver drops that car's Direct Link poses for the rest
     of the Room.
-  - A Direct Link pose is only accepted near the car's newest relayed pose, within 20 poses and
-    1 s of its clock.
+  - A Direct Link pose is only accepted within 20 poses of the car's newest relayed pose. Its
+    clock is not checked: stamps reach the server unchecked too, so the relay path would
+    accept the same forgery.
   - The collision rule from ADR-0008 still applies, so an impossible move passes through
     instead of shoving the local car.
   - These poses are only drawn and collided with. They never reach timing or the leaderboard.
@@ -67,7 +70,8 @@ dependency. `node-datachannel` provides a real WebRTC stack for the unit tests.
   credentials. Pairs behind NATs that STUN cannot traverse stay on the relay.
 - **Room size:** a Room links at most seven peers per client, a full mesh for eight cars.
   Beyond that the extra cars are relayed.
-- **Retries:** a pair that has not connected within 15 s stays on the relay until one of the
-  drivers rejoins. There is no retry.
+- **Retries:** a link counts as failed if it has not opened within 15 s, or if it closes. The
+  offering side then tries again after 5, 10 and 15 s, four attempts in all. A link that drops
+  mid-race recovers this way. A pair that NAT keeps apart settles on the relay.
 - **Measurement:** we have no telemetry yet on how many pairs link directly, or on how old a
   pose is when drawn. The research recommends measuring both before tuning further.

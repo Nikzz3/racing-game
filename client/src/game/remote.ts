@@ -38,7 +38,10 @@ interface RemoteCar {
   relayHead: PoseSample | null;
   /** How far behind now this car is drawn (ms), eased toward its target. */
   lead: number | null;
-  lastDirectAt: number;
+  /** Highest seq whose first copy came over a Direct Link. */
+  lastDirectSeq: number;
+  /** Poses whose first copy came over a Direct Link. */
+  directPoses: number;
   /** A Direct Link pose disagreed with the relayed copy of the same pose. */
   distrusted: boolean;
 }
@@ -54,15 +57,17 @@ export interface RemotePosition {
  */
 const RELAY_RENDER_DELAY_MS = 130;
 const DIRECT_RENDER_DELAY_MS = 80;
-/** A Direct Link counts as carrying a car while its last pose is this recent. */
-const DIRECT_FRESH_MS = 250;
+/**
+ * A Direct Link carries a car while it delivered one of its newest poses first.
+ * Counted in poses, not wall time, so a client drawing a few frames a second
+ * (whose sends and receipts bunch up between frames) still reads its link as live.
+ */
+const DIRECT_SEQ_SLACK = 2;
 /** A car's draw delay moves by at most this fraction of elapsed time, so a source change never jumps it. */
 const LEAD_EASE_RATE = 0.1;
 const SAMPLE_LIMIT = 30;
-/** Poses are sent every 50 ms; how far a Direct Link pose may run ahead of the relayed one. */
-const SEND_INTERVAL_MS = 50;
+/** How many poses a Direct Link pose may run ahead of, or behind, the newest relayed one. */
 const MAX_DIRECT_LEAD_SEQ = 20;
-const MAX_DIRECT_CLOCK_SKEW_MS = 1000;
 /** Both copies of a pose carry the same doubles, so any disagreement is a forgery. */
 const COPY_TOLERANCE = 1e-6;
 /** Floor on the span a remote car's motion is judged over: two states can land in one 50 ms tick. */
@@ -116,7 +121,8 @@ export class RemotePlayers {
           unstampedSeq: 0,
           relayHead: null,
           lead: null,
-          lastDirectAt: -Infinity,
+          lastDirectSeq: -Infinity,
+          directPoses: 0,
           distrusted: false,
         };
         this.cars.set(id, car);
@@ -160,17 +166,13 @@ export class RemotePlayers {
     const head = car?.relayHead;
     if (!car || !head || car.distrusted) return;
     const { seq, sentAt, epoch } = pose.stamp;
-    const ahead = seq - head.seq;
-    if (Math.abs(ahead) > MAX_DIRECT_LEAD_SEQ) return;
-    if (Math.abs(sentAt - (head.t + ahead * SEND_INTERVAL_MS)) > MAX_DIRECT_CLOCK_SKEW_MS) return;
-    const now = performance.now();
-    car.lastDirectAt = now;
+    if (Math.abs(seq - head.seq) > MAX_DIRECT_LEAD_SEQ) return;
+    const lag = performance.now() - sentAt;
     const { x, z, rot, speed } = pose;
-    this.addSample(
-      car,
-      { seq, t: sentAt, lag: now - sentAt, epoch, x, z, rot, speed, direct: true },
-      true,
-    );
+    const sample = { seq, t: sentAt, lag, epoch, x, z, rot, speed, direct: true };
+    if (!this.addSample(car, sample, true)) return;
+    car.lastDirectSeq = Math.max(car.lastDirectSeq, seq);
+    car.directPoses++;
   }
 
   update(dt: number): void {
@@ -178,7 +180,7 @@ export class RemotePlayers {
     for (const car of this.cars.values()) {
       const { samples, mesh } = car;
       if (samples.length === 0) continue;
-      const direct = !car.distrusted && now - car.lastDirectAt <= DIRECT_FRESH_MS;
+      const direct = this.carriedDirect(car);
       let offset = Infinity;
       for (const sample of samples) offset = Math.min(offset, sample.lag);
       const target = offset + (direct ? DIRECT_RENDER_DELAY_MS : RELAY_RENDER_DELAY_MS);
@@ -236,14 +238,15 @@ export class RemotePlayers {
     }));
   }
 
+  /** How many of each remote car's poses a Direct Link delivered before the relay did. */
+  directPoses(): Record<string, number> {
+    return Object.fromEntries([...this.cars].map(([id, car]) => [id, car.directPoses]));
+  }
+
   /** Which path each remote car's poses are currently drawn from. */
   sources(): Record<string, PoseSource> {
-    const now = performance.now();
     return Object.fromEntries(
-      [...this.cars].map(([id, car]) => [
-        id,
-        !car.distrusted && now - car.lastDirectAt <= DIRECT_FRESH_MS ? "direct" : "relay",
-      ]),
+      [...this.cars].map(([id, car]) => [id, this.carriedDirect(car) ? "direct" : "relay"]),
     );
   }
 
@@ -279,7 +282,15 @@ export class RemotePlayers {
     this.cars.clear();
   }
 
-  private addSample(car: RemoteCar, sample: PoseSample, stamped: boolean): void {
+  private carriedDirect(car: RemoteCar): boolean {
+    const newest = car.samples.at(-1);
+    return (
+      !car.distrusted && newest !== undefined && newest.seq - car.lastDirectSeq <= DIRECT_SEQ_SLACK
+    );
+  }
+
+  /** Buffer a pose unless a copy of it is already buffered; returns whether it was taken. */
+  private addSample(car: RemoteCar, sample: PoseSample, stamped: boolean): boolean {
     // Stamped and unstamped times are different clocks: a driver's first
     // relayed poses predate its first state, so start over when stamps appear.
     if (car.stamped !== stamped) {
@@ -292,15 +303,15 @@ export class RemotePlayers {
     while (index > 0 && samples[index - 1].seq >= sample.seq) index--;
     const copy = samples[index];
     if (copy?.seq === sample.seq) {
-      if (copy.direct === sample.direct || sameCopy(copy, sample)) return;
+      if (copy.direct === sample.direct || sameCopy(copy, sample)) return false;
       // The relayed copy is what the server saw: it replaces the forgery.
       this.distrust(car);
-      if (!sample.direct) this.addSample(car, sample, stamped);
-      return;
+      return !sample.direct && this.addSample(car, sample, stamped);
     }
-    if (index === 0 && samples.length >= SAMPLE_LIMIT) return;
+    if (index === 0 && samples.length >= SAMPLE_LIMIT) return false;
     samples.splice(index, 0, sample);
     if (samples.length > SAMPLE_LIMIT) samples.shift();
+    return true;
   }
 
   private distrust(car: RemoteCar): void {

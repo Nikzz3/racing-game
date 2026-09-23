@@ -47,6 +47,8 @@ export interface E2eGameBindings {
   linkStates(): Record<string, LinkState>;
   /** Which path each remote car's poses are drawn from. */
   poseSources(): Record<string, PoseSource>;
+  /** Poses per remote car that a Direct Link delivered before the relay. */
+  directPoses(): Record<string, number>;
   /** Resolved (rendered) Variant per player id, local player included. */
   playerVariants(): Record<string, Variant>;
   /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
@@ -63,6 +65,7 @@ export interface E2eState extends E2eLocalState {
   pacer: E2ePacerState | null;
   links: Record<string, LinkState>;
   poseSources: Record<string, PoseSource>;
+  directPoses: Record<string, number>;
   injectionFinished: boolean;
   lapSubmitted: boolean;
   serverLaps: number;
@@ -192,6 +195,7 @@ export class E2eSeam {
       pacer: this.game.pacerState(),
       links: this.game.linkStates(),
       poseSources: this.game.poseSources(),
+      directPoses: this.game.directPoses(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
       serverLaps: this.serverLaps,

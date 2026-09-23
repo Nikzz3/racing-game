@@ -28,13 +28,24 @@ interface Link {
    * not overtake it: the other side drops candidates for a link it lacks.
    */
   unsent: PeerSignal[] | null;
+  /** Gives up on connecting, or, once failed, schedules the next attempt. */
   timeout: ReturnType<typeof setTimeout>;
+  /** 1 for the first offer to this driver; counts the offering side's retries. */
+  attempt: number;
 }
 
 /** Seven links is a full mesh for an eight-car Room; larger Rooms relay the rest. */
 const MAX_LINKS = 7;
-/** A pair still not linked by then (typically symmetric NAT without TURN) stays on the relay. */
+/** A pair still not linked by then (typically symmetric NAT without TURN) falls back to the relay. */
 const LINK_TIMEOUT_MS = 15_000;
+/**
+ * The offering side tries again after a failure, waiting this long times the
+ * attempt number: a link that dropped mid-race, or one negotiated while a
+ * page was too busy to answer in time, recovers. A pair that NAT keeps apart
+ * gives up for good after the last attempt.
+ */
+const RETRY_DELAY_MS = 5_000;
+const MAX_ATTEMPTS = 4;
 /** Poses are superseded every 50 ms: skip a send rather than queue behind a congested link. */
 const MAX_BUFFERED_BYTES = 16 * 1024;
 const POSE_FIELDS = 7;
@@ -166,7 +177,7 @@ export class DirectLinks {
     this.listeners.clear();
   }
 
-  private open(id: string): Link {
+  private open(id: string, attempt = 1): Link {
     const pc = this.createPeerConnection({ iceServers: this.iceServers });
     const channel = pc.createDataChannel("poses", {
       negotiated: true,
@@ -182,6 +193,7 @@ export class DirectLinks {
       pending: [],
       unsent: [],
       timeout: setTimeout(() => this.fail(id, link), LINK_TIMEOUT_MS),
+      attempt,
     };
     pc.onicecandidate = ({ candidate }) => {
       if (!candidate?.candidate || this.links.get(id) !== link) return;
@@ -236,11 +248,18 @@ export class DirectLinks {
     for (const candidate of link.pending.splice(0)) await addCandidate(link.pc, candidate);
   }
 
-  /** Give up on the direct path but remember the pair, so it is not retried every snapshot. */
+  /**
+   * Give up on this attempt but remember the pair, so a snapshot does not
+   * re-offer it; the offering side schedules its own retry instead.
+   */
   private fail(id: string, link: Link): void {
     if (this.links.get(id) !== link || link.state === "relay") return;
     link.state = "relay";
     this.shutdown(link);
+    if (this.myId > id || link.attempt >= MAX_ATTEMPTS) return;
+    link.timeout = setTimeout(() => {
+      if (this.links.get(id) === link) void this.offer(id, this.open(id, link.attempt + 1));
+    }, RETRY_DELAY_MS * link.attempt);
   }
 
   private close(id: string): void {
