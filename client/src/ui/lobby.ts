@@ -621,12 +621,13 @@ export class Lobby {
     if (variant === this.selectedVariant) this.paintSelectedThumbnail();
   }
   private paintSelectedThumbnail(): void {
+    // Thumbnails arrive over idle callbacks; until this car's is ready, show none
+    // rather than the previous car's.
     const url = this.images.get(this.selectedVariant);
-    if (!url) return;
     for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
       const img = this.find<HTMLImageElement>(selector);
-      img.src = url;
-      img.hidden = false;
+      if (url) img.src = url;
+      img.hidden = !url;
     }
   }
   private paintHero(): void {

@@ -15,6 +15,15 @@ const { buildReferenceLapMock } = vi.hoisted(() => ({
 vi.mock("../game/reference-lap", () => ({
   buildReferenceLap: buildReferenceLapMock,
 }));
+// Thumbnails need WebGL; capture the lobby's image callback so tests deliver them.
+const { thumbnails } = vi.hoisted(() => ({
+  thumbnails: { deliver: (_variant: string, _url: string): void => {} },
+}));
+vi.mock("./garage-thumbs", () => ({
+  renderVariantThumbnails: (_variants: unknown, onImage: typeof thumbnails.deliver) => {
+    thumbnails.deliver = onImage;
+  },
+}));
 
 const AI_FRAMES: ReplayFrame[] = [
   [0, 0, 0, 0, 0],
@@ -610,6 +619,20 @@ describe("Lobby Garage picker", () => {
     expect(() => lobby.paintGarageThumbnails()).not.toThrow();
     for (const img of parent.querySelectorAll(".garage-card img"))
       expect(img.getAttribute("src")).toBeNull();
+  });
+
+  it("hides the Race Setup car image until the selected car's thumbnail is ready", () => {
+    mount();
+    lobby.paintGarageThumbnails();
+    selectCar("police");
+    thumbnails.deliver("police", "blob:police");
+    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:police");
+    selectCar("van");
+    for (const selector of [".setup-car-image", ".selected-car-thumb"])
+      expect(q<HTMLImageElement>(selector).hidden).toBe(true);
+    thumbnails.deliver("van", "blob:van");
+    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:van");
+    expect(q<HTMLImageElement>(".setup-car-image").hidden).toBe(false);
   });
 
   it("cycles across every car and Random, wrapping in both directions", () => {
