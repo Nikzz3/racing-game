@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import { RacingApplication } from "./application";
 import { initDb } from "./db";
 import { createHttpHandler } from "./http";
+import { parseIceServers } from "./ice-servers";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/dist");
@@ -14,7 +15,7 @@ const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 
 async function main(): Promise<void> {
   await initDb();
-  const application = new RacingApplication();
+  const application = new RacingApplication(parseIceServers(process.env.ICE_SERVERS));
   await application.load();
   const server = createServer(createHttpHandler(CLIENT_DIST));
   const sockets = new WebSocketServer({

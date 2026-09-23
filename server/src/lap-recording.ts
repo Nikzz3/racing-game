@@ -30,6 +30,7 @@ export function recordState(
   player.z = z;
   player.rot = rot;
   player.speed = speed;
+  player.stamp = state.stamp;
 
   const timing = player.timing;
   settleSpawn(timing);

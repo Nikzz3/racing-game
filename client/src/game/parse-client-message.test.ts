@@ -99,4 +99,53 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "leaveRoom" })).toEqual({ type: "leaveRoom" });
     expect(parseClientMessage({ type: "respawn" })).toEqual({ type: "respawn" });
   });
+
+  it("keeps a hello's Direct Link capability only when it is literally true", () => {
+    expect(parseClientMessage({ type: "hello", name: "Ada", direct: true })).toEqual({
+      type: "hello",
+      name: "Ada",
+      direct: true,
+    });
+    const msg = parseClientMessage({ type: "hello", name: "Ada", direct: "yes" });
+    expect((msg as { direct?: boolean }).direct).toBeUndefined();
+  });
+
+  it("carries a finite pose stamp and drops a malformed one without rejecting the state", () => {
+    const state = { type: "state", x: 1, y: 0, z: 3, rot: 0.5, speed: 40 };
+    const stamp = { seq: 7, sentAt: 1234.5, epoch: 1 };
+    expect(parseClientMessage({ ...state, stamp })).toEqual({ ...state, stamp });
+    const bad = parseClientMessage({ ...state, stamp: { ...stamp, seq: "NaN" } });
+    expect(bad).toEqual(state);
+    expect((bad as { stamp?: unknown }).stamp).toBeUndefined();
+  });
+
+  it("accepts Direct Link signals and rejects malformed or oversized ones", () => {
+    const offer = { kind: "description", type: "offer", sdp: "v=0" };
+    const candidate = {
+      kind: "candidate",
+      candidate: "candidate:1",
+      sdpMid: "0",
+      sdpMLineIndex: 0,
+    };
+    expect(parseClientMessage({ type: "signal", to: "p2", signal: offer })).toEqual({
+      type: "signal",
+      to: "p2",
+      signal: offer,
+    });
+    expect(parseClientMessage({ type: "signal", to: "p2", signal: candidate })).toEqual({
+      type: "signal",
+      to: "p2",
+      signal: candidate,
+    });
+    for (const signal of [
+      { ...offer, type: "pranswer" },
+      { ...offer, sdp: "x".repeat(20_000) },
+      { ...candidate, sdpMLineIndex: -1 },
+      { ...candidate, sdpMid: 5 },
+      { kind: "bye" },
+      null,
+    ])
+      expect(parseClientMessage({ type: "signal", to: "p2", signal })).toBeNull();
+    expect(parseClientMessage({ type: "signal", signal: offer })).toBeNull();
+  });
 });

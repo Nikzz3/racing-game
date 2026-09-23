@@ -16,6 +16,14 @@ _Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
 The pre-Room screen where a driver sets their identity (name, and their chosen car Variant) and creates or joins a Room. The Lobby is not a Room and holds no race state; its choices persist locally on the driver's device.
 _Avoid_: using Lobby to mean Room, menu, title screen
 
+**Direct Link**:
+A peer-to-peer WebRTC data channel between two drivers in the same Room, carrying only their car poses, never lap timing. It runs alongside the Relay rather than replacing it: each pose goes out on both paths, and the receiver draws whichever copy arrives first. A pair that cannot link directly stays on the Relay (ADR-0009).
+_Avoid_: P2P connection, peer, socket
+
+**Relay**:
+The server's path for car poses: each driver reports its pose to the server, which times laps from it and forwards it to the rest of the Room in snapshots. Every pose takes the Relay, whether or not a Direct Link also carries it.
+_Avoid_: fallback (the Relay is always on), server connection
+
 **Variant**:
 One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid, or keep the default Random state, which re-rolls to a concrete Variant on each connection — the wire only ever carries concrete Variants. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
 _Avoid_: car type, skin, model (ambiguous with 3D asset files)

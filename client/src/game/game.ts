@@ -14,6 +14,7 @@ import {
   type Variant,
 } from "@racing/shared";
 import type { Net } from "../net";
+import type { DirectLinks } from "../direct-links";
 import type { ArmedPacer } from "../ui/lobby";
 import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
@@ -68,6 +69,10 @@ export class Game {
   private animation = 0;
   private disposed = false;
   private autopilot = false;
+  /** Poses sent so far and respawns so far, stamped on every pose (see PoseStamp). */
+  private poseSeq = 0;
+  private epoch = 0;
+  private readonly stopDirectPoses: (() => void) | null;
 
   constructor(
     parent: HTMLElement,
@@ -79,6 +84,7 @@ export class Game {
     trackSlug = DEFAULT_TRACK_SLUG,
     armedPacer?: ArmedPacer | null,
     private readonly variant?: Variant,
+    private readonly links: DirectLinks | null = null,
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpoints = this.track.checkpoints.map(
@@ -90,6 +96,7 @@ export class Game {
     this.bundle = createScene(this.container, this.track.samples);
     buildTrack(this.bundle.scene, this.track);
     this.remote = new RemotePlayers(this.bundle.scene, myId, MAX_SPEED_MS[difficulty]);
+    this.stopDirectPoses = links?.onPose((id, pose) => this.remote.onDirectPose(id, pose)) ?? null;
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
     this.hud = new Hud(
@@ -147,6 +154,7 @@ export class Game {
   }
   private respawn(): void {
     this.net.send({ type: "respawn" });
+    this.epoch++;
     this.spawn();
     this.clock = null;
     this.hud.setCurrentLap(null);
@@ -199,15 +207,15 @@ export class Game {
         this.hud.toast(`${message.name} set a track record: ${formatMs(message.lapTimeMs)}`, true);
     }
   }
-  private sendState(): void {
-    this.net.send({
-      type: "state",
-      x: this.car.x,
-      y: 0,
-      z: this.car.z,
-      rot: this.car.heading,
-      speed: this.car.speed,
-    });
+  /**
+   * Report the car's pose to the server, which times laps from it, and to every
+   * Direct Link. `sentAt` is on the clock the pose was simulated against.
+   */
+  private sendState(sentAt = performance.now()): void {
+    const stamp = { seq: ++this.poseSeq, sentAt, epoch: this.epoch };
+    const { x, z, heading: rot, speed } = this.car;
+    this.net.send({ type: "state", x, y: 0, z, rot, speed, stamp });
+    this.links?.broadcast({ stamp, x, z, rot, speed });
   }
   private checkCrossing(now: number): void {
     if (!this.pacer) return;
@@ -295,7 +303,9 @@ export class Game {
           },
         }),
         remotePositions: () => this.remote.positions(),
-        sendState: () => this.sendState(),
+        sendState: (sentAt) => this.sendState(sentAt),
+        linkStates: () => this.links?.states() ?? {},
+        poseSources: () => this.remote.sources(),
         playerVariants: () => ({
           [this.myId]: resolveVariant(this.myId, this.variant),
           ...this.remote.resolvedVariants(),
@@ -316,6 +326,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this.visibility);
     this.input.detach();
     this.touch.dispose();
+    this.stopDirectPoses?.();
     this.remote.dispose();
     this.pacer?.dispose();
     this.seam?.dispose();

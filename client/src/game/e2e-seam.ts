@@ -1,4 +1,5 @@
 import type { Variant } from "@racing/shared";
+import type { LinkState, PoseSource } from "../direct-links";
 import type { CarInput } from "./input";
 
 export const E2E_DT = 1 / 60;
@@ -37,8 +38,15 @@ export interface E2eGameBindings {
   localState(): E2eLocalState;
   /** Where each remote car is drawn this frame. */
   remotePositions(): { id: string; x: number; z: number }[];
-  /** Pushes local state to the server; the seam paces these off simulated time. */
-  sendState(): void;
+  /**
+   * Pushes local state to the server and Direct Links; the seam paces these off
+   * simulated time and stamps each with it (ms on the page's clock).
+   */
+  sendState(sentAt: number): void;
+  /** Direct Link state per linked player id. */
+  linkStates(): Record<string, LinkState>;
+  /** Which path each remote car's poses are drawn from. */
+  poseSources(): Record<string, PoseSource>;
   /** Resolved (rendered) Variant per player id, local player included. */
   playerVariants(): Record<string, Variant>;
   /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
@@ -53,6 +61,8 @@ export interface E2eState extends E2eLocalState {
   variants: Record<string, Variant>;
   pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
+  links: Record<string, LinkState>;
+  poseSources: Record<string, PoseSource>;
   injectionFinished: boolean;
   lapSubmitted: boolean;
   serverLaps: number;
@@ -79,6 +89,8 @@ export class E2eSeam {
   private stepAccumS = 0;
   /** Simulated ms accrued toward the next state send. */
   private sendAccumMs = 0;
+  /** Page-clock ms the simulation has reached; never ahead of real time. */
+  private simulatedClockMs = 0;
   private readonly api: E2eGameApi;
 
   constructor(
@@ -103,6 +115,7 @@ export class E2eSeam {
     this.serverLaps = 0;
     this.stepAccumS = 0;
     this.sendAccumMs = 0;
+    this.simulatedClockMs = performance.now();
   }
 
   get driving(): boolean {
@@ -147,17 +160,18 @@ export class E2eSeam {
       this.stepFrame(1);
       steps++;
       this.sendAccumMs += E2E_DT * 1000;
+      this.simulatedClockMs += E2E_DT * 1000;
       // Send while the car still occupies this sample. Sending after the full
       // render-frame budget repeats only its final pose and skips checkpoints.
       while (this.sendAccumMs >= this.sendIntervalMs) {
         this.sendAccumMs -= this.sendIntervalMs;
-        this.game.sendState();
+        this.game.sendState(this.simulatedClockMs);
       }
     }
     this.stepAccumS -= steps * E2E_DT;
     if (steps > 0 && !this.driving && this.sendAccumMs > 0) {
       // The input recording ends at the finish line, possibly between sends.
-      this.game.sendState();
+      this.game.sendState(this.simulatedClockMs);
       this.sendAccumMs = 0;
     }
     return steps * E2E_DT;
@@ -176,6 +190,8 @@ export class E2eSeam {
       variants: this.game.playerVariants(),
       pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),
+      links: this.game.linkStates(),
+      poseSources: this.game.poseSources(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
       serverLaps: this.serverLaps,

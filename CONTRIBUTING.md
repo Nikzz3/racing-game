@@ -97,6 +97,7 @@ of truth for everyone else. Scripts run with `T3CODE_PROJECT_ROOT` (the main che
 ## Project layout
 
 - `shared/` — track spline definition, checkpoints, and the WebSocket message protocol
+  (including the Direct Link signals the server relays; ADR-0009)
 - `server/` — room manager, server-side checkpoint validation and lap timing, persistent
   leaderboard and room list stored in Postgres
 - `client/` — Three.js scene, Blender asset integration, car physics, remote player

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
+import type { ClientMessage } from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
+import type { DirectLinks } from "../direct-links";
 
 vi.mock("three", async (importOriginal) => {
   const actual = await importOriginal<typeof THREE>();
@@ -106,5 +108,52 @@ describe("local car render cadence", () => {
     respawn();
     tick(1000 / 60);
     expect(carMesh.position.distanceTo(spawn)).toBeCloseTo(expectedDistance, 10);
+  });
+});
+
+describe("pose stamps", () => {
+  it("stamps every sent pose, sends the same pose over Direct Links, and marks respawns", () => {
+    game.dispose();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const broadcast = vi.fn();
+    const links = { broadcast, onPose: () => () => {} } as unknown as DirectLinks;
+    const send = vi.mocked(Net.prototype.send);
+    send.mockClear();
+    game = new Game(
+      document.body,
+      new Net(),
+      "local",
+      "Linked",
+      () => {},
+      undefined,
+      undefined,
+      null,
+      undefined,
+      links,
+    );
+    const sendAt = (time: number) => {
+      now = time;
+      vi.advanceTimersByTime(50);
+    };
+    sendAt(1000);
+    sendAt(1050);
+    respawn();
+    sendAt(1100);
+    vi.useRealTimers();
+
+    const states = send.mock.calls
+      .map(([message]) => message)
+      .filter(
+        (message): message is Extract<ClientMessage, { type: "state" }> => message.type === "state",
+      );
+    expect(states.map((state) => state.stamp)).toEqual([
+      { seq: 1, sentAt: 1000, epoch: 0 },
+      { seq: 2, sentAt: 1050, epoch: 0 },
+      { seq: 3, sentAt: 1100, epoch: 1 },
+    ]);
+    // Both paths carry identical values, which is how receivers spot a forged copy.
+    expect(broadcast.mock.calls.map(([pose]) => pose)).toEqual(
+      states.map(({ x, z, rot, speed, stamp }) => ({ stamp, x, z, rot, speed })),
+    );
   });
 });

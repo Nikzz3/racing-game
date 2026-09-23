@@ -159,3 +159,100 @@ describe("connection initialization", () => {
     expect(client.messages).toEqual([]);
   });
 });
+
+function join(client: ClientSocket, roomId: string): void {
+  client.message({ type: "joinRoom", roomId });
+}
+
+function signalsTo(client: ClientSocket): Array<Record<string, unknown>> {
+  return client.messages.filter((message) => message.type === "signal");
+}
+
+describe("Direct Link signaling", () => {
+  const offer = { kind: "description", type: "offer", sdp: "v=0" };
+
+  async function driver(
+    application: RacingApplication,
+    name: string,
+    direct: boolean,
+  ): Promise<{ client: ClientSocket; id: string }> {
+    const client = new ClientSocket();
+    application.connect(client.socket);
+    client.message({ type: "hello", name, direct });
+    await vi.waitFor(() => expect(client.messages[0]?.type).toBe("welcome"));
+    return { client, id: client.messages[0].playerId as string };
+  }
+
+  async function room(): Promise<{
+    application: RacingApplication;
+    roomId: string;
+    ava: Awaited<ReturnType<typeof driver>>;
+    ben: Awaited<ReturnType<typeof driver>>;
+  }> {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    const application = new RacingApplication([{ urls: "stun:stun.example.test:3478" }]);
+    const ava = await driver(application, "Ava", true);
+    const ben = await driver(application, "Ben", true);
+    ava.client.message({ type: "createRoom", roomName: "Dusk" });
+    const roomId = application.rooms.list()[0].id;
+    join(ben.client, roomId);
+    return { application, roomId, ava, ben };
+  }
+
+  it("relays a signal to a Room-mate, stamped with the real sender", async () => {
+    const { ava, ben } = await room();
+    ava.client.message({ type: "signal", to: ben.id, signal: offer, from: "forged" });
+    expect(signalsTo(ben.client)).toEqual([{ type: "signal", from: ava.id, signal: offer }]);
+  });
+
+  it("hands the configured ICE servers to each driver joining a Room", async () => {
+    const { ben } = await room();
+    expect(ben.client.messages).toContainEqual(
+      expect.objectContaining({
+        type: "joined",
+        iceServers: [{ urls: "stun:stun.example.test:3478" }],
+      }),
+    );
+  });
+
+  it("drops signals to drivers outside the sender's Room, to itself, or to unknown ids", async () => {
+    const { application, ava, ben } = await room();
+    const cleo = await driver(application, "Cleo", true);
+    cleo.client.message({ type: "createRoom", roomName: "Dawn" });
+    ava.client.message({ type: "signal", to: cleo.id, signal: offer });
+    cleo.client.message({ type: "signal", to: ben.id, signal: offer });
+    ava.client.message({ type: "signal", to: ava.id, signal: offer });
+    ava.client.message({ type: "signal", to: "nobody", signal: offer });
+    for (const client of [ava.client, ben.client, cleo.client])
+      expect(signalsTo(client)).toEqual([]);
+  });
+
+  it("never signals a client that did not offer Direct Links, nor relays from one", async () => {
+    const { application, roomId, ava } = await room();
+    const old = await driver(application, "Old", false);
+    join(old.client, roomId);
+    ava.client.message({ type: "signal", to: old.id, signal: offer });
+    old.client.message({ type: "signal", to: ava.id, signal: offer });
+    expect(signalsTo(old.client)).toEqual([]);
+    expect(signalsTo(ava.client)).toEqual([]);
+  });
+
+  it("caps how many signals one driver can push through the server", async () => {
+    const { ava, ben } = await room();
+    for (let index = 0; index < 250; index++)
+      ava.client.message({ type: "signal", to: ben.id, signal: offer });
+    expect(signalsTo(ben.client)).toHaveLength(200);
+  });
+
+  it("relays each driver's pose stamp and Direct Link capability in snapshots", async () => {
+    const { application, ava } = await room();
+    const stamp = { seq: 3, sentAt: 150, epoch: 0 };
+    ava.client.message({ type: "state", x: 1, y: 0, z: 2, rot: 0, speed: 5, stamp });
+    application.tick();
+    const snapshot = ava.client.messages.filter(({ type }) => type === "snapshot").at(-1);
+    expect(snapshot?.players).toEqual([
+      expect.objectContaining({ name: "Ava", x: 1, stamp, direct: true }),
+      expect.objectContaining({ name: "Ben", direct: true }),
+    ]);
+  });
+});

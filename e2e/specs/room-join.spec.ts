@@ -37,6 +37,17 @@ async function gapTo(page: Page, playerId: string): Promise<number | undefined> 
   }, playerId);
 }
 
+/** This page's Direct Link to a player, and the path it draws that player's car from. */
+async function directLink(
+  page: Page,
+  playerId: string,
+): Promise<{ link?: string; source?: string } | undefined> {
+  return page.evaluate((id) => {
+    const state = window.__game?.state();
+    return state && { link: state.links[id], source: state.poseSources[id] };
+  }, playerId);
+}
+
 async function resolvedVariant(page: Page, playerId: string): Promise<string | undefined> {
   return page.evaluate((id) => window.__game?.state().variants[id], playerId);
 }
@@ -83,6 +94,15 @@ test("two players create and join a Room, see each other, and collide", async ({
 
   await expect.poll(() => remotePlayerIds(playerA)).toEqual([playerBId]);
   await expect.poll(() => remotePlayerIds(playerB)).toEqual([playerAId]);
+
+  // The server relays the WebRTC negotiation, then each client draws the other's
+  // car from poses arriving over the Direct Link (ADR-0009).
+  await expect
+    .poll(() => directLink(playerA, playerBId))
+    .toEqual({ link: "direct", source: "direct" });
+  await expect
+    .poll(() => directLink(playerB, playerAId))
+    .toEqual({ link: "direct", source: "direct" });
 
   // Under the e2e seam both cars spawn on the same grid slot. They collide rather
   // than drive through each other, so each client shoves its own car clear. Both

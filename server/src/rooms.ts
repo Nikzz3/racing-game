@@ -7,6 +7,7 @@ import {
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
+  type PoseStamp,
   type ReplayFrame,
   type RoomInfo,
   type ServerMessage,
@@ -31,6 +32,12 @@ export interface Player {
   z: number;
   rot: number;
   speed: number;
+  /** Stamp of the last state, relayed so receivers can merge it with Direct Link copies. */
+  stamp?: PoseStamp;
+  /** The client accepts Direct Link signals. */
+  direct: boolean;
+  /** Signals relayed in the current rate-limit window, and when that window opened. */
+  signals: { count: number; windowStart: number };
   timing: TimingState;
   /** Frames of the lap in progress; null once the lap outgrew MAX_REPLAY_FRAMES. */
   lapFrames: ReplayFrame[] | null;
@@ -47,6 +54,8 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     z: 0,
     rot: 0,
     speed: 0,
+    direct: false,
+    signals: { count: 0, windowStart: 0 },
     timing: createTiming(),
     lapFrames: [],
   };
@@ -103,6 +112,8 @@ export class Room {
       lapStartT: player.timing.lapStartT,
       nextCheckpoint: player.timing.next,
       spawns: player.timing.spawns,
+      stamp: player.stamp,
+      ...(player.direct && { direct: true as const }),
     }));
   }
 }
@@ -154,6 +165,7 @@ export class RoomManager {
     if (player.room !== room) this.leave(player);
     player.timing = createTiming();
     player.lapFrames = [];
+    player.stamp = undefined;
     player.room = room;
     room.players.set(player.id, player);
     return room;

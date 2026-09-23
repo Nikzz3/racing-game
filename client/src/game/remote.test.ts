@@ -341,3 +341,117 @@ describe("RemotePlayers obstacles", () => {
     expect(drawn()).toEqual(["201,0"]);
   });
 });
+
+describe("RemotePlayers with Direct Links", () => {
+  // The sender's clock runs 5 s ahead of ours; it sends pose n at 50n ms of our
+  // time, which the relay delivers 60 ms later and a Direct Link 10 ms later.
+  const SENDER_CLOCK = 5000;
+  const sentAt = (seq: number) => SENDER_CLOCK + seq * 50;
+  const stamped = (seq: number, overrides: Partial<ReturnType<typeof makeSnapshot>> = {}) => ({
+    ...makeSnapshot("p1"),
+    x: seq * 10,
+    speed: 20,
+    stamp: { seq, sentAt: sentAt(seq), epoch: 0 },
+    direct: true as const,
+    ...overrides,
+  });
+  const direct = (seq: number, x = seq * 10) => ({
+    stamp: { seq, sentAt: sentAt(seq), epoch: 0 },
+    x,
+    z: 0,
+    rot: 0,
+    speed: 20,
+  });
+
+  let now: number;
+  let mesh: THREE.Group;
+  let remote: RemotePlayers;
+
+  beforeEach(() => {
+    now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    mesh = new THREE.Group();
+    vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
+    remote = new RemotePlayers(makeMockScene(), "me");
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("draws a directly linked car by its sender's clock, with less delay than the relay", () => {
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    for (const seq of [2, 3, 4]) {
+      now = seq * 50 + 10;
+      remote.onDirectPose("p1", direct(seq));
+      now = seq * 50 + 60;
+      remote.onSnapshot([stamped(seq)]);
+    }
+    now = 210;
+    remote.update(1 / 60);
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    // Drawn 80 ms behind the fastest path: sender time 5120, 40% from pose 2 to 3.
+    expect(mesh.position.x).toBeCloseTo(24);
+    expect(remote.obstacles()).toHaveLength(1);
+  });
+
+  it("keeps drawing relayed poses when the Direct Link falls silent", () => {
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    now = 110;
+    remote.onDirectPose("p1", direct(2));
+    for (let seq = 2; seq <= 12; seq++) {
+      now = seq * 50 + 60;
+      remote.onSnapshot([stamped(seq)]);
+    }
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    now = 660;
+    remote.update(1 / 60);
+    expect(mesh.position.x).toBeGreaterThan(80);
+    expect(mesh.position.x).toBeLessThanOrEqual(120);
+  });
+
+  it("stops trusting a Direct Link whose copy of a pose differs from the relayed one", () => {
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    now = 110;
+    remote.onDirectPose("p1", direct(2, 500));
+    now = 160;
+    remote.onSnapshot([stamped(2)]);
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    // Later Direct Link poses are ignored and the forged one is gone.
+    now = 160;
+    remote.onDirectPose("p1", direct(3, 900));
+    // Render time lands exactly on the relayed pose 2.
+    now = 240;
+    remote.update(1 / 60);
+    expect(mesh.position.x).toBe(20);
+  });
+
+  it("ignores Direct Link poses before the relay has placed the car, or far from it", () => {
+    now = 10;
+    remote.onDirectPose("p1", direct(1));
+    remote.onDirectPose("ghost", direct(1));
+    expect(remote.positions()).toEqual([]);
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    remote.onDirectPose("p1", direct(100));
+    remote.onDirectPose("p1", {
+      ...direct(2),
+      stamp: { seq: 2, sentAt: sentAt(2) + 5000, epoch: 0 },
+    });
+    expect(remote.sources()).toEqual({ p1: "relay" });
+  });
+
+  it("starts over once a driver's relayed poses gain stamps", () => {
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 0 }]);
+    now = 60;
+    remote.onSnapshot([stamped(1)]);
+    now = 110;
+    remote.onSnapshot([stamped(2)]);
+    now = 240;
+    remote.update(1 / 60);
+    // Only the stamped poses remain, and render time lands on the newest.
+    expect(mesh.position.x).toBe(20);
+    expect(remote.obstacles()).toHaveLength(1);
+  });
+});
