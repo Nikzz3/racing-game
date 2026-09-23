@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const library = new Map<string, THREE.Group>();
@@ -8,6 +9,11 @@ let ready = false;
 let pending: Promise<void> | undefined;
 // Resolved against Vite's base so the packaged desktop build (base "./") can load it too.
 const ASSET_LIBRARY_URL = `${import.meta.env.BASE_URL}models/rework/sunset-ridge.glb`;
+
+/** The library's geometry is meshopt-compressed by `npm run optimize:glb -w client`. */
+export function createAssetLoader(): GLTFLoader {
+  return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+}
 
 /** Blender collection names are preserved in glTF extras even after Three sanitizes node names. */
 export function registerLibrary(root: THREE.Group): void {
@@ -177,7 +183,7 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
     onProgress(loadProgress);
     if (!ready) loadObservers.add(onProgress);
   }
-  return (pending ??= new GLTFLoader()
+  return (pending ??= createAssetLoader()
     .loadAsync(ASSET_LIBRARY_URL, (event) =>
       reportLoad({
         phase: "loading",

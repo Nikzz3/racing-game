@@ -1,6 +1,6 @@
 /**
- * A Variant is a purely cosmetic car body (see CONTEXT.md): one of the Kenney
- * Car Kit models (CC0, kenney.nl). It travels in `hello` and rides in every
+ * A Variant is a purely cosmetic car body (see CONTEXT.md): one of the cars in
+ * the Blender asset library (`assets/blender/`). It travels in `hello` and rides in every
  * PlayerSnapshot so remote clients render it; no physics or leaderboard impact.
  */
 export const CAR_VARIANTS = [
