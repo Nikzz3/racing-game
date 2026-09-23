@@ -23,7 +23,7 @@ describe("browser replay cadence with slow, uneven render frames", () => {
           checkpoint: timing.next,
           lap: { laps: timing.laps, active: timing.lapStartT !== null },
         }),
-        remotePlayerIds: () => [],
+        remotePositions: () => [],
         playerVariants: () => ({}),
         pacerVariant: () => null,
         pacerState: () => null,

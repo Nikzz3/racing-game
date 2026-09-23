@@ -271,3 +271,34 @@ describe("RemotePlayers positions", () => {
     expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41 }]);
   });
 });
+
+describe("RemotePlayers obstacles", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("offers each remote car's drawn pose and speed to collide with, never the local player's", () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m");
+    rp.onSnapshot([
+      { ...makeSnapshot("m"), x: 99, z: 99 },
+      { ...makeSnapshot("a"), x: 0, z: 0, rot: 0, speed: 10 },
+      { ...makeSnapshot("z"), x: 5, z: 5 },
+    ]);
+    now = 100;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 0, z: 10, rot: 0.5, speed: 30 },
+      { ...makeSnapshot("z"), x: 5, z: 5 },
+    ]);
+    now = 180; // render time is halfway between the two snapshots
+    rp.update(1 / 60);
+    const [a, z] = rp.obstacles();
+    expect(a).toMatchObject({ x: 0, heading: 0.25, speed: 20 });
+    expect(a.z).toBeCloseTo(5);
+    // Opposite players break an exact overlap towards opposite sides.
+    expect(a.side).toBe(1);
+    expect(z.side).toBe(-1);
+  });
+});

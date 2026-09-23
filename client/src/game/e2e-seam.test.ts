@@ -20,7 +20,10 @@ function createBindings(): E2eGameBindings {
       checkpoint: 1,
       lap: { laps: 0, active: true },
     }),
-    remotePlayerIds: () => ["remote-b", "remote-a"],
+    remotePositions: () => [
+      { id: "remote-b", x: 5, z: 6 },
+      { id: "remote-a", x: 7, z: 8 },
+    ],
     sendState: vi.fn(),
     playerVariants: () => ({
       me: "race",
@@ -178,6 +181,7 @@ describe("E2eSeam", () => {
       checkpoint: 1,
       lap: { laps: 0, active: true },
       remotePlayerIds: ["remote-a", "remote-b"],
+      remotePositions: { "remote-a": { x: 7, z: 8 }, "remote-b": { x: 5, z: 6 } },
       variants: { me: "race", "remote-a": "taxi", "remote-b": "van" },
       pacerVariant: "taxi",
       injectionFinished: true,

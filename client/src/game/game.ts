@@ -231,19 +231,20 @@ export class Game {
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
     const injecting = Boolean(this.seam?.driving);
+    // Remote cars move first so the local car collides with them where they are drawn.
+    this.remote.update(dt);
     if (this.seam?.driving) {
       dt = this.seam.advance(elapsed, 3);
     } else {
       input = this.autopilot
         ? autopilotInput(this.car, this.track.samples, 12)
         : this.input.read(dt);
-      this.car.advance(elapsed, input);
+      this.car.advance(elapsed, input, this.remote.obstacles());
     }
     const pose = injecting ? this.car : this.car.getRenderPose();
     this.carMesh.position.set(pose.x, 0, pose.z);
     this.carMesh.rotation.y = pose.heading;
     animateCar(this.carMesh, pose.speed, input.steer, dt);
-    this.remote.update(dt);
     this.checkCrossing(now);
     this.pacer?.update(now, dt);
     followCar(this.bundle.camera, pose.x, pose.z, pose.heading, dt);
@@ -292,7 +293,7 @@ export class Game {
             bestLapMs: this.progress?.bestLapMs ?? null,
           },
         }),
-        remotePlayerIds: () => this.remote.playerIds(),
+        remotePositions: () => this.remote.positions(),
         sendState: () => this.sendState(),
         playerVariants: () => ({
           [this.myId]: resolveVariant(this.myId, this.variant),

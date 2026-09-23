@@ -7,6 +7,7 @@ import {
   ROAD_HALF_WIDTH,
   type TrackSample,
 } from "@racing/shared";
+import { carContact, type CarObstacle } from "./car-collision";
 import type { CarInput } from "./input";
 import { lerpPose, type Pose } from "./pose-interpolation";
 
@@ -46,6 +47,8 @@ const DRAG = 0.01;
 const GRASS_DECEL = 110;
 const STEER_RATE = 1.8;
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
+/** Bounciness of car-to-car hits: 0 kills the closing speed, 1 is a perfect bounce. */
+const CAR_RESTITUTION = 0.3;
 
 /** Render frames accumulate time; the simulation always consumes fixed steps. */
 export const PHYSICS_STEP = 1 / 120;
@@ -103,8 +106,11 @@ export class CarPhysics {
     return lerpPose(this.previousPose, this, amount, this.renderPose);
   }
 
-  /** Pass the raw frame delta so ordinary stalls catch up to the lap clock. */
-  advance(elapsed: number, input: CarInput): void {
+  /**
+   * Pass the raw frame delta so ordinary stalls catch up to the lap clock.
+   * `obstacles` are the other players' cars as drawn this frame; Pacers never collide.
+   */
+  advance(elapsed: number, input: CarInput, obstacles: readonly CarObstacle[] = []): void {
     if (!Number.isFinite(elapsed) || elapsed < 0) return;
     this.stepAccumulator = Math.min(this.stepAccumulator + elapsed, MAX_ACCUMULATED_TIME);
     for (
@@ -113,6 +119,7 @@ export class CarPhysics {
       steps++
     ) {
       this.update(PHYSICS_STEP, input);
+      this.collide(obstacles);
       this.stepAccumulator -= PHYSICS_STEP;
     }
   }
@@ -151,6 +158,37 @@ export class CarPhysics {
     this.heading += steer * STEER_RATE * grip * Math.sign(this.speed || 1) * dt;
     this.x += Math.sin(this.heading) * this.speed * dt;
     this.z += Math.cos(this.heading) * this.speed * dt;
+  }
+
+  /**
+   * Each client only moves its own car, so a hit is resolved from both ends: this
+   * car leaves the overlap and takes its half of an equal-mass impulse, and the
+   * other player's client does the same for theirs. Only the component along the
+   * heading survives, since the model has no sideways velocity; a side-on shove
+   * still moves the car through the positional push.
+   */
+  private collide(obstacles: readonly CarObstacle[]): void {
+    let hit = false;
+    for (const other of obstacles) {
+      const contact = carContact(this, other);
+      if (!contact) continue;
+      hit = true;
+      const { nx, nz, depth } = contact;
+      this.x += nx * depth;
+      this.z += nz * depth;
+      const forwardX = Math.sin(this.heading);
+      const forwardZ = Math.cos(this.heading);
+      const closing =
+        (forwardX * this.speed - Math.sin(other.heading) * other.speed) * nx +
+        (forwardZ * this.speed - Math.cos(other.heading) * other.speed) * nz;
+      if (closing >= 0) continue;
+      const impulse = (-(1 + CAR_RESTITUTION) / 2) * closing;
+      this.speed += impulse * (forwardX * nx + forwardZ * nz);
+    }
+    if (!hit) return;
+    // A shove must never outrun the Room's top speed, or the lap reads as implausible.
+    this.speed = Math.min(Math.max(this.speed, -REVERSE_MAX_SPEED), this.tuning.maxSpeed);
+    this.resolveBarrier();
   }
 
   private resolveBarrier(): void {

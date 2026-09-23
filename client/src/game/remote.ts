@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { PlayerSnapshot, Variant } from "@racing/shared";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
+import type { CarObstacle } from "./car-collision";
 import { interpolateHeading } from "./pose-interpolation";
 
 interface BufferedSnapshot {
@@ -11,6 +12,8 @@ interface RemoteCar {
   mesh: THREE.Group;
   variant: Variant;
   name: string;
+  /** Speed as drawn this frame. */
+  speed: number;
 }
 export interface RemotePosition {
   id: string;
@@ -47,7 +50,7 @@ export class RemotePlayers {
       const mesh = createCarMesh(id, player.name, variant);
       mesh.position.set(player.x, 0, player.z);
       mesh.rotation.y = player.rot;
-      this.cars.set(id, { mesh, variant, name: player.name });
+      this.cars.set(id, { mesh, variant, name: player.name, speed: player.speed });
       this.scene.add(mesh);
     }
     for (const id of this.cars.keys()) {
@@ -71,7 +74,8 @@ export class RemotePlayers {
     const amount =
       span > 0 ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25) : 1;
     const settled = renderTime >= newer.receivedAt;
-    for (const [id, { mesh }] of this.cars) {
+    for (const [id, car] of this.cars) {
+      const { mesh } = car;
       const before = older.players.get(id);
       const after = newer.players.get(id);
       let snap = after ?? before;
@@ -84,7 +88,8 @@ export class RemotePlayers {
       if (snap) {
         mesh.position.set(snap.x, 0, snap.z);
         mesh.rotation.y = snap.rot;
-        animateCar(mesh, snap.speed, 0, dt);
+        car.speed = snap.speed;
+        animateCar(mesh, car.speed, 0, dt);
       } else if (before && after) {
         mesh.position.set(
           before.x + (after.x - before.x) * amount,
@@ -92,13 +97,10 @@ export class RemotePlayers {
           before.z + (after.z - before.z) * amount,
         );
         mesh.rotation.y = interpolateHeading(before.rot, after.rot, amount);
-        animateCar(mesh, before.speed + (after.speed - before.speed) * amount, 0, dt);
+        car.speed = before.speed + (after.speed - before.speed) * amount;
+        animateCar(mesh, car.speed, 0, dt);
       }
     }
-  }
-
-  playerIds(): string[] {
-    return [...this.cars.keys()];
   }
 
   /** Where each remote car is drawn this frame, after interpolation. */
@@ -107,6 +109,17 @@ export class RemotePlayers {
       id,
       x: mesh.position.x,
       z: mesh.position.z,
+    }));
+  }
+
+  /** Where each remote car is drawn this frame, for the local car to collide with. */
+  obstacles(): CarObstacle[] {
+    return [...this.cars].map(([id, { mesh, speed }]) => ({
+      x: mesh.position.x,
+      z: mesh.position.z,
+      heading: mesh.rotation.y,
+      speed,
+      side: id < this.myId ? 1 : -1,
     }));
   }
 

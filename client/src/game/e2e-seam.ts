@@ -35,7 +35,8 @@ export interface E2ePacerState {
 export interface E2eGameBindings {
   step(dt: number, input: CarInput): void;
   localState(): E2eLocalState;
-  remotePlayerIds(): string[];
+  /** Where each remote car is drawn this frame. */
+  remotePositions(): { id: string; x: number; z: number }[];
   /** Pushes local state to the server; the seam paces these off simulated time. */
   sendState(): void;
   /** Resolved (rendered) Variant per player id, local player included. */
@@ -48,6 +49,7 @@ export interface E2eGameBindings {
 
 export interface E2eState extends E2eLocalState {
   remotePlayerIds: string[];
+  remotePositions: Record<string, { x: number; z: number }>;
   variants: Record<string, Variant>;
   pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
@@ -166,9 +168,11 @@ export class E2eSeam {
   }
 
   state(): E2eState {
+    const remotes = this.game.remotePositions();
     return {
       ...this.game.localState(),
-      remotePlayerIds: [...this.game.remotePlayerIds()].sort(),
+      remotePlayerIds: remotes.map(({ id }) => id).sort(),
+      remotePositions: Object.fromEntries(remotes.map(({ id, x, z }) => [id, { x, z }])),
       variants: this.game.playerVariants(),
       pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),

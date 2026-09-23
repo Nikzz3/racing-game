@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
+import { MAX_SPEED_MS, SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
+import { CAR_HALF_LENGTH, CAR_HALF_WIDTH, type CarObstacle } from "./car-collision";
 import { CarPhysics, PHYSICS_STEP, MAX_STEPS_PER_FRAME, MAX_ACCUMULATED_TIME } from "./physics";
 import type { CarInput } from "./input";
 
 const FULL_THROTTLE: CarInput = { throttle: 1, brake: 0, steer: 0 };
 const STEER_GRASS: CarInput = { throttle: 1, brake: 0, steer: 1 };
+const COAST: CarInput = { throttle: 0, brake: 0, steer: 0 };
 
 function spawned(): CarPhysics {
   const car = new CarPhysics("medium", SUNSET_RIDGE.samples);
@@ -13,8 +15,13 @@ function spawned(): CarPhysics {
 }
 
 /** Each PHYSICS_STEP advance drains exactly one step. */
-function runSteps(car: CarPhysics, n: number, input: CarInput): void {
-  for (let i = 0; i < n; i++) car.advance(PHYSICS_STEP, input);
+function runSteps(
+  car: CarPhysics,
+  n: number,
+  input: CarInput,
+  obstacles: CarObstacle[] = [],
+): void {
+  for (let i = 0; i < n; i++) car.advance(PHYSICS_STEP, input, obstacles);
 }
 
 function driveAt(fps: number, durationS: number, input: CarInput): CarPhysics {
@@ -151,5 +158,63 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
     const uncapped = spawned();
     runSteps(uncapped, Math.round(10 / PHYSICS_STEP), FULL_THROTTLE);
     expect(Math.abs(uncapped.x - huge.x)).toBeGreaterThan(1);
+  });
+});
+
+/** A car parked `ahead` metres along the spawned car's heading and `right` metres to its side. */
+function parked(car: CarPhysics, ahead: number, right = 0, speed = 0): CarObstacle {
+  const forwardX = Math.sin(car.heading);
+  const forwardZ = Math.cos(car.heading);
+  return {
+    x: car.x + forwardX * ahead + forwardZ * right,
+    z: car.z + forwardZ * ahead - forwardX * right,
+    heading: car.heading,
+    speed,
+    side: 1,
+  };
+}
+
+function along(car: CarPhysics, other: CarObstacle): number {
+  return (other.x - car.x) * Math.sin(car.heading) + (other.z - car.z) * Math.cos(car.heading);
+}
+
+describe("CarPhysics.advance — other players' cars", () => {
+  it("stops at a parked car instead of driving through it", () => {
+    const car = spawned();
+    const other = parked(car, 12);
+    for (let frame = 0; frame < 120; frame++) {
+      car.advance(1 / 60, FULL_THROTTLE, [other]);
+      expect(along(car, other)).toBeGreaterThanOrEqual(CAR_HALF_LENGTH * 2 - 1e-9);
+    }
+    const ghost = spawned();
+    for (let frame = 0; frame < 120; frame++) ghost.advance(1 / 60, FULL_THROTTLE);
+    expect(along(ghost, other)).toBeLessThan(0);
+  });
+
+  it("gives a rear-ended car its half of the closing speed", () => {
+    const car = spawned();
+    const rammer = parked(car, -(CAR_HALF_LENGTH * 2 - 0.1), 0, 20);
+    runSteps(car, 1, COAST, [rammer]);
+    // Equal masses with restitution 0.3: (1 + 0.3) / 2 of the 20 m/s closing speed.
+    expect(car.speed).toBeCloseTo(13, 6);
+  });
+
+  it("keeps its speed when side-swiped by a car at the same speed, but is pushed clear", () => {
+    const car = spawned();
+    car.speed = 30;
+    const control = spawned();
+    control.speed = 30;
+    const alongside = parked(car, 0, CAR_HALF_WIDTH * 2 - 0.3, 30);
+    runSteps(car, 1, COAST, [alongside]);
+    runSteps(control, 1, COAST);
+    expect(car.speed).toBeCloseTo(control.speed, 9);
+    expect(Math.hypot(car.x - control.x, car.z - control.z)).toBeCloseTo(0.3, 6);
+  });
+
+  it("never shoves a car past the Room's top speed", () => {
+    const car = spawned();
+    const rammer = parked(car, -(CAR_HALF_LENGTH * 2 - 0.1), 0, 400);
+    runSteps(car, 1, COAST, [rammer]);
+    expect(car.speed).toBe(MAX_SPEED_MS.medium);
   });
 });
