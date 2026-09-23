@@ -61,6 +61,10 @@ dependency. `node-datachannel` provides a real WebRTC stack for the unit tests.
     accept the same forgery.
   - The collision rule from ADR-0008 still applies, so an impossible move passes through
     instead of shoving the local car.
+  - A Direct Link pose reaches this client before the server has seen it. So a stamped car is
+    only solid where it could have driven from the pose the server last relayed: within 1.5 ×
+    top speed over the sender-clock time between them. A peer cannot ram with a pose it
+    never reported.
   - These poses are only drawn and collided with. They never reach timing or the leaderboard.
 - **Privacy:** Direct Links reveal each driver's IP address to the other drivers in the Room.
   They never reveal it to the server's other users. This is a deliberate trade for public

@@ -74,6 +74,12 @@ const COPY_TOLERANCE = 1e-6;
 const MIN_SOLID_SPAN_MS = 50;
 /** Headroom over the Room's top speed before a remote car's motion reads as a teleport. */
 const SOLID_SPEED_TOLERANCE = 2.5;
+/**
+ * Headroom over the top speed for how far a stamped car may be drawn from the
+ * pose the server last relayed, measured over the sender-clock time between
+ * them. Tighter than the hop tolerance: it bounds position, not a single step.
+ */
+const REACH_SPEED_TOLERANCE = 1.5;
 
 function sameCopy(a: PoseSample, b: PoseSample): boolean {
   return (
@@ -226,6 +232,15 @@ export class RemotePlayers {
         car.speed = before.speed + (after.speed - before.speed) * amount;
       }
       animateCar(mesh, car.speed, 0, dt);
+      // Direct Link poses reach this client before the server has seen them, so
+      // a stamped car is solid only where it could have driven from the pose the
+      // server last relayed: a peer cannot ram with a pose it never reported.
+      const head = car.relayHead;
+      if (car.solid && head && car.stamped) {
+        const elapsed = Math.max(Math.abs(renderTime - head.t), MIN_SOLID_SPAN_MS);
+        const reach = (this.topSpeed * REACH_SPEED_TOLERANCE * elapsed) / 1000;
+        car.solid = Math.hypot(mesh.position.x - head.x, mesh.position.z - head.z) <= reach;
+      }
     }
   }
 

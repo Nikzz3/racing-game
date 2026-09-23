@@ -347,18 +347,19 @@ describe("RemotePlayers with Direct Links", () => {
   // time, which the relay delivers 60 ms later and a Direct Link 10 ms later.
   const SENDER_CLOCK = 5000;
   const sentAt = (seq: number) => SENDER_CLOCK + seq * 50;
+  // 5 m per 50 ms pose: 100 m/s, just under the default (hard) top speed.
   const stamped = (seq: number, overrides: Partial<ReturnType<typeof makeSnapshot>> = {}) => ({
     ...makeSnapshot("p1"),
-    x: seq * 10,
+    x: seq * 5,
     speed: 20,
     stamp: { seq, sentAt: sentAt(seq), epoch: 0 },
     direct: true as const,
     ...overrides,
   });
-  const direct = (seq: number, x = seq * 10) => ({
+  const direct = (seq: number, x = seq * 5, z = 0) => ({
     stamp: { seq, sentAt: sentAt(seq), epoch: 0 },
     x,
-    z: 0,
+    z,
     rot: 0,
     speed: 20,
   });
@@ -391,7 +392,7 @@ describe("RemotePlayers with Direct Links", () => {
     expect(remote.sources()).toEqual({ p1: "direct" });
     expect(remote.directPoses()).toEqual({ p1: 3 });
     // Drawn 80 ms behind the fastest path: sender time 5120, 40% from pose 2 to 3.
-    expect(mesh.position.x).toBeCloseTo(24);
+    expect(mesh.position.x).toBeCloseTo(12);
     expect(remote.obstacles()).toHaveLength(1);
   });
 
@@ -407,8 +408,8 @@ describe("RemotePlayers with Direct Links", () => {
     expect(remote.sources()).toEqual({ p1: "relay" });
     now = 660;
     remote.update(1 / 60);
-    expect(mesh.position.x).toBeGreaterThan(80);
-    expect(mesh.position.x).toBeLessThanOrEqual(120);
+    expect(mesh.position.x).toBeGreaterThan(40);
+    expect(mesh.position.x).toBeLessThanOrEqual(60);
   });
 
   it("stops trusting a Direct Link whose copy of a pose differs from the relayed one", () => {
@@ -425,7 +426,26 @@ describe("RemotePlayers with Direct Links", () => {
     // Render time lands exactly on the relayed pose 2.
     now = 240;
     remote.update(1 / 60);
-    expect(mesh.position.x).toBe(20);
+    expect(mesh.position.x).toBe(10);
+  });
+
+  it("never collides with a Direct Link pose the car could not have reached from its relayed one", () => {
+    // Each forged hop is a plausible 11 m in 50 ms, so the motion alone looks
+    // drivable; but it veers away from where the server last saw the car.
+    for (const seq of [1, 2, 3]) {
+      now = seq * 50 + 60;
+      remote.onSnapshot([stamped(seq)]);
+    }
+    now = 210;
+    remote.onDirectPose("p1", direct(4, 20, 10));
+    now = 260;
+    remote.onDirectPose("p1", direct(5, 25, 20));
+    // Drawn between the two forged poses, 60 ms of sender time past the relayed one.
+    now = 300;
+    remote.update(1 / 60);
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    expect(mesh.position.z).toBeCloseTo(12);
+    expect(remote.obstacles()).toEqual([]);
   });
 
   it("ignores Direct Link poses before the relay has placed the car, or far ahead of it", () => {
@@ -475,7 +495,7 @@ describe("RemotePlayers with Direct Links", () => {
     now = 240;
     remote.update(1 / 60);
     // Only the stamped poses remain, and render time lands on the newest.
-    expect(mesh.position.x).toBe(20);
+    expect(mesh.position.x).toBe(10);
     expect(remote.obstacles()).toHaveLength(1);
   });
 });
