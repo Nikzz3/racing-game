@@ -271,3 +271,73 @@ describe("RemotePlayers positions", () => {
     expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41 }]);
   });
 });
+
+describe("RemotePlayers obstacles", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("offers each remote car's drawn pose and speed to collide with, never the local player's", () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m");
+    rp.onSnapshot([
+      { ...makeSnapshot("m"), x: 99, z: 99 },
+      { ...makeSnapshot("a"), x: 0, z: 0, rot: 0, speed: 10 },
+      { ...makeSnapshot("z"), x: 5, z: 5 },
+    ]);
+    now = 100;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 0, z: 10, rot: 0.5, speed: 30 },
+      { ...makeSnapshot("z"), x: 5, z: 5 },
+    ]);
+    now = 180; // render time is halfway between the two snapshots
+    rp.update(1 / 60);
+    const [a, z] = rp.obstacles();
+    expect(a).toMatchObject({ x: 0, heading: 0.25, speed: 20 });
+    expect(a.z).toBeCloseTo(5);
+    // Opposite players break an exact overlap towards opposite sides.
+    expect(a.side).toBe(1);
+    expect(z.side).toBe(-1);
+  });
+
+  it("passes through a remote car that teleports, respawns or has only just appeared", () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    const drawn = () => rp.obstacles().map(({ x, z }) => `${x},${z}`);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 0, z: 0 }]);
+    now = 50;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 0, z: 0 },
+      { ...makeSnapshot("joiner"), x: 0, z: 0 },
+    ]);
+    now = 180;
+    rp.update(1 / 60);
+    // The joiner has one snapshot, so no motion to judge yet.
+    expect(drawn()).toEqual(["0,0"]);
+
+    // 10 m in 50 ms is within 2.5 × 90 m/s; 200 m is a forged hop.
+    now = 100;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 10, z: 0 },
+      { ...makeSnapshot("joiner"), x: 200, z: 0 },
+    ]);
+    now = 230;
+    rp.update(1 / 60);
+    expect(drawn()).toEqual(["10,0"]);
+
+    now = 150;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 11, z: 0, spawns: 1 },
+      { ...makeSnapshot("joiner"), x: 201, z: 0 },
+    ]);
+    now = 280;
+    rp.update(1 / 60);
+    expect(drawn()).toEqual(["201,0"]);
+  });
+});

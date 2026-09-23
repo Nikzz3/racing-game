@@ -1,5 +1,6 @@
 import type { Page, WebSocket } from "@playwright/test";
 import type { ServerMessage } from "@racing/shared";
+import { CAR_HALF_WIDTH } from "../../client/src/game/car-collision";
 import { expect, test } from "../fixtures/players";
 import { openRaceSettings, selectCar } from "../fixtures/lobby";
 
@@ -26,11 +27,24 @@ async function remotePlayerIds(page: Page): Promise<string[] | undefined> {
   return page.evaluate(() => window.__game?.state().remotePlayerIds);
 }
 
+/** How far apart this page draws its own car and the other player's. */
+async function gapTo(page: Page, playerId: string): Promise<number | undefined> {
+  return page.evaluate((id) => {
+    const state = window.__game?.state();
+    const other = state?.remotePositions[id];
+    if (!state || !other) return undefined;
+    return Math.hypot(state.position.x - other.x, state.position.z - other.z);
+  }, playerId);
+}
+
 async function resolvedVariant(page: Page, playerId: string): Promise<string | undefined> {
   return page.evaluate((id) => window.__game?.state().variants[id], playerId);
 }
 
-test("two players create and join a Room and see each other", async ({ playerA, playerB }) => {
+test("two players create and join a Room, see each other, and collide", async ({
+  playerA,
+  playerB,
+}) => {
   const playerAIdPromise = playerIdFromWelcome(playerA);
   const playerBIdPromise = playerIdFromWelcome(playerB);
 
@@ -69,6 +83,17 @@ test("two players create and join a Room and see each other", async ({ playerA, 
 
   await expect.poll(() => remotePlayerIds(playerA)).toEqual([playerBId]);
   await expect.poll(() => remotePlayerIds(playerB)).toEqual([playerAId]);
+
+  // Under the e2e seam both cars spawn on the same grid slot. They collide rather
+  // than drive through each other, so each client shoves its own car clear. Both
+  // views are read together: until a player's first state arrives, the other
+  // client draws them at the origin, far from the grid.
+  await expect
+    .poll(async () => {
+      const gaps = await Promise.all([gapTo(playerA, playerBId), gapTo(playerB, playerAId)]);
+      return Math.min(...gaps.map((gap) => gap ?? 0));
+    })
+    .toBeGreaterThanOrEqual(CAR_HALF_WIDTH * 2);
 
   // B's hello carried the taxi Variant; A's client renders B's car with it.
   await expect
