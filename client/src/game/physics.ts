@@ -161,11 +161,11 @@ export class CarPhysics {
   }
 
   /**
-   * Each client only moves its own car, so a hit is resolved from both ends: this
-   * car leaves the overlap and takes its half of an equal-mass impulse, and the
-   * other player's client does the same for theirs. Only the component along the
-   * heading survives, since the model has no sideways velocity; a side-on shove
-   * still moves the car through the positional push.
+   * Each client only moves its own car (ADR-0008): this car leaves the overlap and
+   * takes its half of an equal-mass impulse, and the other player's client
+   * resolves their car against this one as it draws it. Only the component along
+   * the heading survives, since the model has no sideways velocity; a side-on
+   * shove still moves the car through the positional push.
    */
   private collide(obstacles: readonly CarObstacle[]): void {
     let hit = false;
@@ -178,17 +178,23 @@ export class CarPhysics {
       this.z += nz * depth;
       const forwardX = Math.sin(this.heading);
       const forwardZ = Math.cos(this.heading);
+      // The other car's speed is reported by its client; never trust it past this Room's limits.
+      const otherSpeed = this.limitSpeed(other.speed);
       const closing =
-        (forwardX * this.speed - Math.sin(other.heading) * other.speed) * nx +
-        (forwardZ * this.speed - Math.cos(other.heading) * other.speed) * nz;
+        (forwardX * this.speed - Math.sin(other.heading) * otherSpeed) * nx +
+        (forwardZ * this.speed - Math.cos(other.heading) * otherSpeed) * nz;
       if (closing >= 0) continue;
       const impulse = (-(1 + CAR_RESTITUTION) / 2) * closing;
       this.speed += impulse * (forwardX * nx + forwardZ * nz);
     }
     if (!hit) return;
     // A shove must never outrun the Room's top speed, or the lap reads as implausible.
-    this.speed = Math.min(Math.max(this.speed, -REVERSE_MAX_SPEED), this.tuning.maxSpeed);
+    this.speed = this.limitSpeed(this.speed);
     this.resolveBarrier();
+  }
+
+  private limitSpeed(speed: number): number {
+    return Math.min(Math.max(speed, -REVERSE_MAX_SPEED), this.tuning.maxSpeed);
   }
 
   private resolveBarrier(): void {

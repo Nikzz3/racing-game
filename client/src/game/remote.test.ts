@@ -301,4 +301,43 @@ describe("RemotePlayers obstacles", () => {
     expect(a.side).toBe(1);
     expect(z.side).toBe(-1);
   });
+
+  it("passes through a remote car that teleports, respawns or has only just appeared", () => {
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    const drawn = () => rp.obstacles().map(({ x, z }) => `${x},${z}`);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 0, z: 0 }]);
+    now = 50;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 0, z: 0 },
+      { ...makeSnapshot("joiner"), x: 0, z: 0 },
+    ]);
+    now = 180;
+    rp.update(1 / 60);
+    // The joiner has one snapshot, so no motion to judge yet.
+    expect(drawn()).toEqual(["0,0"]);
+
+    // 10 m in 50 ms is within 2.5 × 90 m/s; 200 m is a forged hop.
+    now = 100;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 10, z: 0 },
+      { ...makeSnapshot("joiner"), x: 200, z: 0 },
+    ]);
+    now = 230;
+    rp.update(1 / 60);
+    expect(drawn()).toEqual(["10,0"]);
+
+    now = 150;
+    rp.onSnapshot([
+      { ...makeSnapshot("a"), x: 11, z: 0, spawns: 1 },
+      { ...makeSnapshot("joiner"), x: 201, z: 0 },
+    ]);
+    now = 280;
+    rp.update(1 / 60);
+    expect(drawn()).toEqual(["201,0"]);
+  });
 });

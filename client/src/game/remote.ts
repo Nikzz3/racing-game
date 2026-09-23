@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { PlayerSnapshot, Variant } from "@racing/shared";
+import { MAX_SPEED_MS, type PlayerSnapshot, type Variant } from "@racing/shared";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import type { CarObstacle } from "./car-collision";
 import { interpolateHeading } from "./pose-interpolation";
@@ -14,6 +14,8 @@ interface RemoteCar {
   name: string;
   /** Speed as drawn this frame. */
   speed: number;
+  /** Whether the local car collides with it this frame; see `obstacles()`. */
+  solid: boolean;
 }
 export interface RemotePosition {
   id: string;
@@ -22,6 +24,10 @@ export interface RemotePosition {
 }
 const RENDER_DELAY_MS = 130;
 const SNAPSHOT_LIMIT = 30;
+/** Floor on the span a remote car's motion is judged over: two states can land in one 50 ms tick. */
+const MIN_SOLID_SPAN_MS = 50;
+/** Headroom over the Room's top speed before a remote car's motion reads as a teleport. */
+const SOLID_SPEED_TOLERANCE = 2.5;
 
 /** Buffer network updates so remote cars move continuously between snapshots. */
 export class RemotePlayers {
@@ -31,6 +37,7 @@ export class RemotePlayers {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly myId: string,
+    private readonly topSpeed = MAX_SPEED_MS.hard,
   ) {}
 
   onSnapshot(players: PlayerSnapshot[]): void {
@@ -50,7 +57,7 @@ export class RemotePlayers {
       const mesh = createCarMesh(id, player.name, variant);
       mesh.position.set(player.x, 0, player.z);
       mesh.rotation.y = player.rot;
-      this.cars.set(id, { mesh, variant, name: player.name, speed: player.speed });
+      this.cars.set(id, { mesh, variant, name: player.name, speed: player.speed, solid: false });
       this.scene.add(mesh);
     }
     for (const id of this.cars.keys()) {
@@ -74,11 +81,19 @@ export class RemotePlayers {
     const amount =
       span > 0 ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25) : 1;
     const settled = renderTime >= newer.receivedAt;
+    const maxHop =
+      (this.topSpeed * SOLID_SPEED_TOLERANCE * Math.max(span, MIN_SOLID_SPAN_MS)) / 1000;
     for (const [id, car] of this.cars) {
       const { mesh } = car;
       const before = older.players.get(id);
       const after = newer.players.get(id);
       let snap = after ?? before;
+      car.solid = Boolean(
+        before &&
+        after &&
+        before.spawns === after.spawns &&
+        Math.hypot(after.x - before.x, after.z - before.z) <= maxHop,
+      );
       if (before && after) {
         // A respawn is a discontinuity, not a velocity to interpolate or
         // extrapolate: hold the old pose until it lands, then sit on spawn.
@@ -112,15 +127,27 @@ export class RemotePlayers {
     }));
   }
 
-  /** Where each remote car is drawn this frame, for the local car to collide with. */
+  /**
+   * Where each remote car is drawn this frame, for the local car to collide with.
+   * Poses are reported by other clients and relayed unchecked, so a car is only
+   * solid while its drawn motion is one a car could make in this Room: a
+   * teleport — a respawn, a player just joining from the origin, or a forged
+   * position — passes through instead of shoving the local car.
+   */
   obstacles(): CarObstacle[] {
-    return [...this.cars].map(([id, { mesh, speed }]) => ({
-      x: mesh.position.x,
-      z: mesh.position.z,
-      heading: mesh.rotation.y,
-      speed,
-      side: id < this.myId ? 1 : -1,
-    }));
+    return [...this.cars].flatMap(([id, { mesh, speed, solid }]) =>
+      solid
+        ? [
+            {
+              x: mesh.position.x,
+              z: mesh.position.z,
+              heading: mesh.rotation.y,
+              speed,
+              side: id < this.myId ? (1 as const) : (-1 as const),
+            },
+          ]
+        : [],
+    );
   }
 
   resolvedVariants(): Record<string, Variant> {

@@ -211,10 +211,19 @@ describe("CarPhysics.advance — other players' cars", () => {
     expect(Math.hypot(car.x - control.x, car.z - control.z)).toBeCloseTo(0.3, 6);
   });
 
-  it("never shoves a car past the Room's top speed", () => {
+  it("never trusts another car's reported speed past the Room's top speed", () => {
     const car = spawned();
     const rammer = parked(car, -(CAR_HALF_LENGTH * 2 - 0.1), 0, 400);
     runSteps(car, 1, COAST, [rammer]);
-    expect(car.speed).toBe(MAX_SPEED_MS.medium);
+    expect(car.speed).toBeCloseTo(((1 + 0.3) / 2) * MAX_SPEED_MS.medium, 6);
+  });
+
+  it("never bounces a car back faster than it can reverse", () => {
+    const car = spawned();
+    car.speed = MAX_SPEED_MS.medium;
+    const oncoming = { ...parked(car, CAR_HALF_LENGTH * 2 - 0.1, 0, MAX_SPEED_MS.medium) };
+    oncoming.heading += Math.PI;
+    runSteps(car, 1, COAST, [oncoming]);
+    expect(car.speed).toBe(-14);
   });
 });
