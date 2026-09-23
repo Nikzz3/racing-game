@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { WebSocket } from "ws";
+import { WebSocket } from "ws";
 import { pool } from "./db";
 import { createPlayer, RoomManager, ROOM_TTL_MS } from "./rooms";
+import { MAX_BUFFERED_BYTES } from "./transport";
 
 vi.mock("./db", () => ({ pool: { query: vi.fn() } }));
 
@@ -66,5 +67,35 @@ describe("room lifecycle", () => {
     expect(second.room).toBeNull();
     expect(room.players.size).toBe(0);
     expect(manager.list()).toEqual([]);
+  });
+});
+
+function socket(bufferedAmount: number) {
+  const sent: string[] = [];
+  const ws = {
+    readyState: WebSocket.OPEN,
+    bufferedAmount,
+    send: (data: string) => sent.push(data),
+  } as unknown as WebSocket;
+  return { ws, sent };
+}
+
+describe("snapshot delivery", () => {
+  it("skips a backlogged driver's snapshot but still delivers other messages", () => {
+    const manager = new RoomManager();
+    const room = manager.create("Race", "medium");
+    const draining = socket(0);
+    const stalled = socket(MAX_BUFFERED_BYTES + 1);
+    manager.join(createPlayer("a", draining.ws), room.id);
+    manager.join(createPlayer("b", stalled.ws), room.id);
+
+    room.broadcastSnapshot(1000);
+    expect(draining.sent.map((data) => JSON.parse(data))).toEqual([
+      { type: "snapshot", t: 1000, players: room.snapshot() },
+    ]);
+    expect(stalled.sent).toEqual([]);
+
+    room.broadcast({ type: "left" });
+    expect(stalled.sent).toEqual([JSON.stringify({ type: "left" })]);
   });
 });

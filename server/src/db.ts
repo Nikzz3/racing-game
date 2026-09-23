@@ -60,4 +60,10 @@ export async function initDb(): Promise<void> {
     ALTER TABLE replays DROP CONSTRAINT IF EXISTS replays_pkey;
     ALTER TABLE replays ADD PRIMARY KEY (name, track, difficulty);
   `);
+
+  // Serves each board's top N (topEntries) and its Track Record (bestTime) as
+  // an index range read instead of a scan and sort of every lap ever set.
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS best_laps_board_idx ON best_laps (track, difficulty, time_ms)",
+  );
 }
