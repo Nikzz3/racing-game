@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import {
   asDifficulty,
+  ClockOffset,
   MAX_SPEED_MS,
   minPlausibleLapMs,
   resolveTrack,
@@ -31,6 +32,10 @@ export interface Player {
   z: number;
   rot: number;
   speed: number;
+  /** Server time the stored position was current; null before the first state. */
+  stateT: number | null;
+  /** Relates the driver's state timestamps to the server clock. */
+  clock: ClockOffset;
   timing: TimingState;
   /** Frames of the lap in progress; null once the lap outgrew MAX_REPLAY_FRAMES. */
   lapFrames: ReplayFrame[] | null;
@@ -47,6 +52,8 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     z: 0,
     rot: 0,
     speed: 0,
+    stateT: null,
+    clock: new ClockOffset(),
     timing: createTiming(),
     lapFrames: [],
   };
@@ -110,6 +117,7 @@ export class Room {
       lapStartT: player.timing.lapStartT,
       nextCheckpoint: player.timing.next,
       spawns: player.timing.spawns,
+      t: player.stateT ?? undefined,
     }));
   }
 }
