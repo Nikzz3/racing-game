@@ -3,6 +3,7 @@ import type { Variant } from "@racing/shared";
 import { getModel } from "../game/models";
 import { createCarMesh } from "../game/car";
 import { disposeRenderer } from "../game/scene";
+import { renderQuality } from "../game/quality";
 
 /**
  * Render the same Blender cars used on the track, sharing a single temporary context.
@@ -21,9 +22,10 @@ export function renderVariantThumbnails(
   const camera = new THREE.PerspectiveCamera(35, 720 / 420, 0.1, 100);
   const setup = (): void => {
     try {
+      // Eight still frames: MSAA is worth it on any GPU, just not in software.
       renderer = new THREE.WebGLRenderer({
         alpha: true,
-        antialias: true,
+        antialias: renderQuality().tier !== "low",
         preserveDrawingBuffer: true,
       });
     } catch {

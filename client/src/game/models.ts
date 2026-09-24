@@ -2,9 +2,11 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { renderQuality } from "./quality";
 
 const library = new Map<string, THREE.Group>();
 const materials = new Map<string, THREE.MeshStandardMaterial>();
+const textures = new Set<THREE.Texture>();
 let ready = false;
 let pending: Promise<void> | undefined;
 // Resolved against Vite's base so the packaged desktop build (base "./") can load it too.
@@ -32,7 +34,7 @@ export function registerLibrary(root: THREE.Group): void {
         if (!(material instanceof THREE.MeshStandardMaterial)) continue;
         materials.set(material.name, material);
         for (const texture of [material.map, material.normalMap, material.roughnessMap]) {
-          if (texture) texture.anisotropy = 8;
+          if (texture) textures.add(texture);
         }
       }
     });
@@ -50,6 +52,12 @@ export function registerLibrary(root: THREE.Group): void {
     }
     library.set(name, group);
   });
+  setTextureAnisotropy(renderQuality().anisotropy);
+}
+
+/** Anisotropic filtering of the library's surfaces, applied by each context that uploads them. */
+export function setTextureAnisotropy(level: number): void {
+  for (const texture of textures) texture.anisotropy = level;
 }
 
 /** Nature is static. Bake diffuse tints into linear vertex colors so equivalent

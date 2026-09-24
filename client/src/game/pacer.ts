@@ -104,6 +104,11 @@ export class PacerOverlay {
     this.mesh.visible = false;
   }
 
+  /** The hidden car, for linking its shaders before it first appears. */
+  get model(): THREE.Object3D {
+    return this.mesh;
+  }
+
   resolvedVariant(): Variant {
     return this.variant;
   }

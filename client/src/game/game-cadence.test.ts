@@ -12,7 +12,12 @@ vi.mock("three", async (importOriginal) => {
       domElement = document.createElement("canvas");
       shadowMap = {};
       setPixelRatio() {}
+      getPixelRatio() {
+        return 1;
+      }
       setSize() {}
+      extensions = { has: () => true };
+      compileAsync = () => Promise.resolve();
       render = vi.fn();
       forceContextLoss() {}
       dispose() {}
@@ -22,14 +27,17 @@ vi.mock("three", async (importOriginal) => {
 vi.mock("./trackMesh", () => ({ buildTrack() {} }));
 
 let now = 0;
-let frame: FrameRequestCallback;
+let frame: FrameRequestCallback | undefined;
 let game: Game;
 let carMesh: THREE.Group;
 
-beforeEach(() => {
+beforeEach(async () => {
   now = 0;
+  frame = undefined;
   vi.spyOn(performance, "now").mockImplementation(() => now);
   vi.spyOn(Math, "random").mockReturnValue(0.5);
+  // jsdom has no 2D canvas for the precompiled name tag; the race starts regardless.
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubGlobal("devicePixelRatio", 1);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     frame = callback;
@@ -40,6 +48,8 @@ beforeEach(() => {
   const add = vi.spyOn(THREE.Scene.prototype, "add");
   game = new Game(document.body, new Net(), "local", "Test room", () => {});
   carMesh = add.mock.calls.flat().find((object) => object instanceof THREE.Group)! as THREE.Group;
+  // The frame loop starts once the shaders are linked.
+  await vi.waitFor(() => expect(frame).toBeDefined());
 });
 afterEach(() => {
   game?.dispose();
@@ -50,7 +60,7 @@ afterEach(() => {
 
 function tick(milliseconds: number): void {
   now += milliseconds;
-  frame(now);
+  frame!(now);
 }
 function throttle(): void {
   window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
