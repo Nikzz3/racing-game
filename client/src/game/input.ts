@@ -19,7 +19,7 @@ const DRIVING_KEYS = new Set([
 ]);
 const STEER_CHANGE_PER_SECOND = 3;
 
-/** Combines held keyboard keys with the analog touch joystick. */
+/** Combines held keyboard keys with the on-screen touch pedals and steering slider. */
 export class Input {
   private readonly keys = new Set<string>();
   private smoothSteer = 0;

@@ -1,3 +1,4 @@
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures/db";
 import { selectCar } from "../fixtures/lobby";
 
@@ -85,12 +86,63 @@ test.describe("touch controls", () => {
     await select.click();
     await selectTrack.click();
     await createAndRace.click();
-    await expect(page.locator(".hud-map")).toBeInViewport();
-    await expect(page.locator(".hud-speed")).toBeInViewport();
-    await expect(page.locator(".joystick")).toBeInViewport();
-    const dial = (await page.locator(".hud-speed").boundingBox())!;
-    const joystick = (await page.locator(".joystick").boundingBox())!;
-    expect(dial.y + dial.height).toBeLessThanOrEqual(joystick.y);
+    await expectTouchHudFits(page);
     await page.screenshot({ path: testInfo.outputPath("race-hud-phone.png") });
+
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expectTouchHudFits(page);
+    await page.screenshot({ path: testInfo.outputPath("race-hud-phone-landscape.png") });
   });
 });
+
+type Box = { x: number; y: number; width: number; height: number };
+
+async function boxOf(locator: Locator): Promise<Box> {
+  await expect(locator).toBeInViewport({ ratio: 1 });
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+function expectApart(a: Box, b: Box, what: string): void {
+  const overlap =
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  expect(overlap, `${what} overlap: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`).toBe(false);
+}
+
+/** The pedals sit on the left, the steering slider on the right, and neither covers the HUD. */
+async function expectTouchHudFits(page: Page): Promise<void> {
+  const { width } = page.viewportSize()!;
+  const gas = await boxOf(page.getByRole("button", { name: "Accelerate", exact: true }));
+  const brake = await boxOf(page.getByRole("button", { name: "Brake", exact: true }));
+  const pedals = await boxOf(page.locator(".touch-pedals"));
+  const steer = await boxOf(page.locator(".touch-steer"));
+  const map = await boxOf(page.locator(".hud-map"));
+  const actions = await boxOf(page.locator(".hud-actions"));
+  const speed = await boxOf(page.locator(".hud-speed"));
+  expect(gas.y + gas.height).toBeLessThanOrEqual(brake.y);
+  expect(pedals.x + pedals.width).toBeLessThanOrEqual(width / 2);
+  expect(steer.x).toBeGreaterThanOrEqual(width / 2);
+  expectApart(pedals, map, "pedals and minimap");
+  expectApart(pedals, actions, "pedals and race actions");
+  expectApart(map, actions, "minimap and race actions");
+  expectApart(steer, speed, "steering slider and speed dial");
+  // Warnings are laid out while hidden, so their boxes are checked before they ever show.
+  const offTrack = await boxOf(page.locator(".offtrack-warn"));
+  const checkpointMissed = await boxOf(page.locator(".cp-miss-warn"));
+  expectApart(offTrack, checkpointMissed, "the two warnings");
+  for (const [warning, name] of [
+    [offTrack, "off-track warning"],
+    [checkpointMissed, "checkpoint warning"],
+  ] as const) {
+    for (const [control, controlName] of [
+      [pedals, "pedals"],
+      [steer, "steering slider"],
+      [map, "minimap"],
+      [actions, "race actions"],
+      [speed, "speed dial"],
+    ] as const) {
+      expectApart(warning, control, `${name} and ${controlName}`);
+    }
+  }
+}
