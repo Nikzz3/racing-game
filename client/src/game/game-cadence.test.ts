@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
+import type { PlayerSnapshot } from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
+import { Hud } from "../ui/hud";
 
 const linking = vi.hoisted(() => ({ programs: [] as { isReady(): boolean }[] }));
 vi.mock("three", async (importOriginal) => {
@@ -137,5 +139,50 @@ describe("local car render cadence", () => {
     // A poll after dispose() would read the disposed renderer's programs.
     expect(isReady).toHaveBeenCalledTimes(polls);
     expect(frame).toBeUndefined();
+  });
+});
+
+describe("local lap timer", () => {
+  it("ticks with the frames however late each snapshot carrying the lap start arrives", () => {
+    const shown = vi.spyOn(Hud.prototype, "setCurrentLap");
+    const me: PlayerSnapshot = {
+      id: "local",
+      name: "Racer",
+      x: 0,
+      y: 0,
+      z: 0,
+      rot: 0,
+      speed: 0,
+      laps: 0,
+      lastLapMs: null,
+      bestLapMs: null,
+      // On the server's clock, which reads 50 s behind this one.
+      lapStartT: -60_000,
+      nextCheckpoint: 1,
+      spawns: 0,
+    };
+    let seed = 3;
+    const late = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return 10 + (seed / 2_147_483_648) * 40;
+    };
+    let broadcast = 0;
+    let arrives = late();
+    const lap: { at: number; ms: number }[] = [];
+    for (let i = 0; i < 180; i++) {
+      tick(1000 / 60);
+      // Snapshots land between frames, 10-50 ms after the server's 50 ms tick.
+      while (arrives <= now) {
+        game.onMessage({ type: "snapshot", t: broadcast - 50_000, players: [me] });
+        broadcast += 50;
+        arrives = Math.max(arrives, broadcast + late());
+      }
+      if (i >= 30) lap.push({ at: now, ms: shown.mock.lastCall![0]! });
+    }
+    for (let i = 1; i < lap.length; i++) {
+      const elapsed = lap[i].at - lap[i - 1].at;
+      expect(lap[i].ms - lap[i - 1].ms).toBeGreaterThanOrEqual(0.95 * elapsed - 1e-9);
+      expect(lap[i].ms - lap[i - 1].ms).toBeLessThanOrEqual(1.05 * elapsed + 1e-9);
+    }
   });
 });
