@@ -12,6 +12,25 @@ export interface CompletedLap {
   message: Extract<ServerMessage, { type: "lap" }>;
 }
 
+/** Furthest behind its arrival a state's time may fall, so a paused or wrong sender clock degrades to arrival stamps. */
+const MAX_STATE_AGE_MS = 1000;
+
+/**
+ * When a reported pose was current, on the server clock, for other clients to
+ * interpolate by. The sender's timestamp keeps its states evenly spaced however
+ * the network or the snapshot tick bunched them; without one, arrival stands
+ * in. Only rendering reads it: lap timing stays on arrival (ADR-0005).
+ */
+function stateTime(player: Player, sentAt: number | undefined, arrival: number): number {
+  let t = arrival;
+  if (sentAt !== undefined) {
+    player.clock.observe(sentAt, arrival);
+    // The offset includes this very message, so t never lands after arrival.
+    t = Math.max(sentAt + player.clock.offset!, arrival - MAX_STATE_AGE_MS);
+  }
+  return Math.max(t, player.stateT ?? t);
+}
+
 /**
  * Apply a position report. On lap completion the finished recording and the
  * driver's identity are captured synchronously, before any persistence await,
@@ -30,6 +49,7 @@ export function recordState(
   player.z = z;
   player.rot = rot;
   player.speed = speed;
+  player.stateT = stateTime(player, state.t, now);
 
   const timing = player.timing;
   settleSpawn(timing);

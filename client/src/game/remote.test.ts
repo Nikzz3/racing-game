@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as THREE from "three";
 
 vi.mock("./car", async (importOriginal) => {
@@ -6,11 +6,26 @@ vi.mock("./car", async (importOriginal) => {
   return { ...original, createCarMesh: vi.fn(), animateCar: vi.fn() };
 });
 
-import type { Variant } from "@racing/shared";
+import type { PlayerSnapshot, Variant } from "@racing/shared";
 import { createCarMesh, disposeCarMesh, resolveVariant } from "./car";
-import { RemotePlayers } from "./remote";
+import { INTERPOLATION_DELAY_MS, RemotePlayers } from "./remote";
+import { ServerClock } from "./server-clock";
 
-function makeSnapshot(id: string, name = "Player", variant?: Variant) {
+/** Draw the cars as they were at server time `t`. */
+function drawAt(remote: RemotePlayers, t: number): void {
+  remote.update(1 / 60, t + INTERPOLATION_DELAY_MS);
+}
+
+/** Deterministic noise in [0, 1). */
+function noise(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return state / 2_147_483_648;
+  };
+}
+
+function makeSnapshot(id: string, name = "Player", variant?: Variant): PlayerSnapshot {
   return {
     id,
     name,
@@ -50,56 +65,170 @@ function makeMockScene() {
 }
 
 describe("RemotePlayers movement", () => {
-  let now: number;
   let mesh: THREE.Group;
   let remote: RemotePlayers;
 
   beforeEach(() => {
-    now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
     mesh = new THREE.Group();
     vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
     remote = new RemotePlayers(makeMockScene(), "me");
   });
 
-  afterEach(() => vi.restoreAllMocks());
-
   it.each([100, 5])(
     "teleports a respawning car from %i m out without sweeping or overshooting",
     (x) => {
-      remote.onSnapshot([{ ...makeSnapshot("p1"), x, speed: 50 }]);
-      now = 100;
-      remote.onSnapshot([{ ...makeSnapshot("p1"), spawns: 1 }]);
+      remote.onSnapshot([{ ...makeSnapshot("p1"), x, speed: 50 }], 0);
+      remote.onSnapshot([{ ...makeSnapshot("p1"), spawns: 1 }], 100);
 
-      // Rendering is delayed by 130 ms; retain the old pose until the respawn.
-      now = 180;
-      remote.update(1 / 60);
+      // Retain the old pose until the respawn is due, then sit on the spawn.
+      drawAt(remote, 50);
       expect(mesh.position.x).toBe(x);
-      now = 240;
-      remote.update(1 / 60);
+      drawAt(remote, 110);
       expect(mesh.position.x).toBe(0);
-      now = 300;
-      remote.update(1 / 60);
+      drawAt(remote, 170);
       expect(mesh.position.x).toBe(0);
     },
   );
 
   it("still interpolates ordinary high-speed movement", () => {
-    remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 110 }]);
-    now = 100;
-    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 11, speed: 110 }]);
-    now = 180;
-    remote.update(1 / 60);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 110 }], 0);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 11, speed: 110 }], 100);
+    drawAt(remote, 50);
     expect(mesh.position.x).toBeCloseTo(5.5);
   });
 
   it("interpolates a long jump that is not a respawn, such as stall catch-up", () => {
-    remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 100 }]);
-    now = 50;
-    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 60, speed: 100 }]);
-    now = 155;
-    remote.update(1 / 60);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 100 }], 0);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 60, speed: 100 }], 50);
+    drawAt(remote, 25);
     expect(mesh.position.x).toBeCloseTo(30);
+  });
+
+  it("extrapolates briefly past the newest state, then holds", () => {
+    remote.onSnapshot([{ ...makeSnapshot("p1"), speed: 100 }], 0);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 5, speed: 100 }], 50);
+    drawAt(remote, 60);
+    expect(mesh.position.x).toBeCloseTo(6);
+    drawAt(remote, 500);
+    expect(mesh.position.x).toBeCloseTo(6.25);
+  });
+
+  it("places each car by when its state was current, not by the snapshot carrying it", () => {
+    remote.onSnapshot([{ ...makeSnapshot("p1"), t: 10 }], 50);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 5, t: 60 }], 100);
+    drawAt(remote, 35);
+    expect(mesh.position.x).toBeCloseTo(2.5);
+  });
+
+  it("does not stall a car when a snapshot repeats its state", () => {
+    // The tick at 100 found no new state; the one at 150 carries two sends' travel.
+    remote.onSnapshot([{ ...makeSnapshot("p1"), t: 10 }], 50);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), t: 10 }], 100);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 10, t: 110 }], 150);
+    const drawn = [35, 60, 85].map((t) => {
+      drawAt(remote, t);
+      return mesh.position.x;
+    });
+    expect(drawn[0]).toBeCloseTo(2.5);
+    expect(drawn[1]).toBeCloseTo(5);
+    expect(drawn[2]).toBeCloseTo(7.5);
+  });
+
+  it("drops the broadcast time a joiner stood in on once its own state times arrive", () => {
+    // Before its first state a player sits at the origin, stamped with the snapshot's time.
+    remote.onSnapshot([makeSnapshot("p1")], 100);
+    remote.onSnapshot([{ ...makeSnapshot("p1"), x: 40, t: 80 }], 150);
+    drawAt(remote, 200);
+    expect(mesh.position.x).toBe(40);
+    expect(remote.obstacles()).toEqual([]);
+  });
+
+  it("keeps a car's motion when a new name or Variant rebuilds it", () => {
+    const rebuilt = new THREE.Group();
+    vi.mocked(createCarMesh).mockReturnValueOnce(mesh).mockReturnValueOnce(rebuilt);
+    remote.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
+    remote.onSnapshot([{ ...makeSnapshot("p1", "Player", "van"), x: 10 }], 100);
+    drawAt(remote, 50);
+    expect(rebuilt.position.x).toBeCloseTo(5);
+    expect(remote.obstacles()).toHaveLength(1);
+  });
+});
+
+describe("RemotePlayers under network jitter", () => {
+  const SPEED = 60;
+  const FRAME_MS = 1000 / 60;
+
+  /**
+   * One remote car driving at a constant SPEED, relayed as in a Room. Its client
+   * samples a pose every 60 Hz frame and sends the latest on a 15.6 ms-grained
+   * Windows timer (46.8 or 62.4 ms apart), so against the server's own 50 ms
+   * broadcast tick some snapshots repeat a state and the next carries two sends'
+   * travel. Snapshots then cross a jittery network, and a receiver busy in a
+   * frame (some of them long) handles them only at the next. Returns the drawn
+   * speed on each receiver frame after the first second.
+   */
+  function drawnSpeeds(stamped: boolean, seed = 1): number[] {
+    const random = noise(seed);
+    const mesh = new THREE.Group();
+    vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
+    const remote = new RemotePlayers(makeMockScene(), "me");
+    const clock = new ServerClock();
+    // The receiver's clock is unrelated to the server's.
+    const LOCAL_OFFSET = -1_000_000;
+
+    // States as the server stores them: arrival, and the sender's pose time mapped by the offset.
+    const states: { arrival: number; t: number; x: number }[] = [];
+    for (let sent = 0; sent < 10_000; sent += random() < 0.5 ? 46.8 : 62.4) {
+      const pose = Math.floor(sent / FRAME_MS) * FRAME_MS;
+      states.push({ arrival: sent + 5 + random() * 20, t: pose + 5, x: (SPEED * pose) / 1000 });
+    }
+    const snapshots: { tick: number; delivered: number; state: (typeof states)[number] }[] = [];
+    let latest = -1;
+    let delivered = 0;
+    for (let tick = 50; tick < 10_000; tick += 50) {
+      while (latest + 1 < states.length && states[latest + 1].arrival <= tick) latest++;
+      if (latest < 0) continue;
+      // One TCP stream: snapshots arrive in order.
+      delivered = Math.max(delivered, tick + 10 + random() * 30);
+      snapshots.push({ tick, delivered, state: states[latest] });
+    }
+
+    const speeds: number[] = [];
+    let next = 0;
+    let previous: { frame: number; x: number } | null = null;
+    for (let frame = 0; frame < 9_000; frame += random() < 0.05 ? 40 : FRAME_MS) {
+      for (; next < snapshots.length && snapshots[next].delivered <= frame; next++) {
+        const { tick, state } = snapshots[next];
+        clock.observe(tick, frame + LOCAL_OFFSET);
+        const t = stamped ? state.t : undefined;
+        remote.onSnapshot([{ ...makeSnapshot("p1"), x: state.x, speed: SPEED, t }], tick);
+      }
+      remote.update(1 / 60, clock.now(frame + LOCAL_OFFSET));
+      if (previous && frame >= 1_000) {
+        speeds.push(((mesh.position.x - previous.x) / (frame - previous.frame)) * 1000);
+      }
+      previous = { frame, x: mesh.position.x };
+    }
+    return speeds;
+  }
+
+  const worst = (speeds: number[]) => Math.max(...speeds.map((v) => Math.abs(v / SPEED - 1)));
+
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
+    "draws a car at constant speed from its sender's state times (run %i)",
+    (seed) => {
+      // The clock's own corrections are bounded at 5%, far below what the eye catches.
+      expect(worst(drawnSpeeds(true, seed))).toBeLessThan(0.06);
+    },
+  );
+
+  it("falls back to the broadcast time for states without their own, as older servers send", () => {
+    const speeds = drawnSpeeds(false);
+    const mean = speeds.reduce((sum, v) => sum + v, 0) / speeds.length;
+    expect(mean).toBeCloseTo(SPEED, 0);
+    expect(Math.min(...speeds)).toBeGreaterThanOrEqual(0);
+    // The repeats this relay produces are what per-player state times remove.
+    expect(worst(speeds)).toBeGreaterThan(0.5);
   });
 });
 
@@ -142,9 +271,9 @@ describe("RemotePlayers name-tag disposal", () => {
     const { mesh, disposeTexture, disposeMaterial } = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(mesh);
 
-    rp.onSnapshot([makeSnapshot("p1")]);
+    rp.onSnapshot([makeSnapshot("p1")], 0);
     expect(createCarMesh).toHaveBeenCalledOnce();
-    rp.onSnapshot([]);
+    rp.onSnapshot([], 0);
 
     expect(disposeMaterial).toHaveBeenCalledOnce();
     expect(disposeTexture).toHaveBeenCalledOnce();
@@ -155,7 +284,7 @@ describe("RemotePlayers name-tag disposal", () => {
     const b = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(a.mesh).mockReturnValueOnce(b.mesh);
 
-    rp.onSnapshot([makeSnapshot("p1"), makeSnapshot("p2")]);
+    rp.onSnapshot([makeSnapshot("p1"), makeSnapshot("p2")], 0);
     rp.dispose();
 
     expect(a.disposeMaterial).toHaveBeenCalledOnce();
@@ -168,8 +297,8 @@ describe("RemotePlayers name-tag disposal", () => {
     const { mesh, disposeTexture, disposeMaterial } = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(mesh);
 
-    rp.onSnapshot([makeSnapshot("p1")]);
-    rp.onSnapshot([]);
+    rp.onSnapshot([makeSnapshot("p1")], 0);
+    rp.onSnapshot([], 0);
     rp.dispose();
 
     expect(disposeMaterial).toHaveBeenCalledOnce();
@@ -189,7 +318,7 @@ describe("RemotePlayers variants", () => {
   });
 
   it("builds the remote mesh with the snapshot's variant", () => {
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
     expect(createCarMesh).toHaveBeenCalledWith("p1", "Player", "taxi");
     expect(rp.resolvedVariants()).toEqual({ p1: "taxi" });
   });
@@ -198,8 +327,8 @@ describe("RemotePlayers variants", () => {
     const first = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(first.mesh);
 
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
-    rp.onSnapshot([makeSnapshot("p1", "Player", "van")]);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "van")], 0);
 
     expect(createCarMesh).toHaveBeenCalledTimes(2);
     expect(createCarMesh).toHaveBeenLastCalledWith("p1", "Player", "van");
@@ -209,91 +338,88 @@ describe("RemotePlayers variants", () => {
   });
 
   it("keeps the mesh when repeat snapshots carry the same variant", () => {
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
     expect(createCarMesh).toHaveBeenCalledOnce();
   });
 
   it("rebuilds a changed name and releases the old name tag", () => {
     const first = makeMeshWithSprite();
     vi.mocked(createCarMesh).mockReturnValueOnce(first.mesh);
-    rp.onSnapshot([makeSnapshot("p1", "Before", "taxi")]);
-    rp.onSnapshot([makeSnapshot("p1", "After", "taxi")]);
+    rp.onSnapshot([makeSnapshot("p1", "Before", "taxi")], 0);
+    rp.onSnapshot([makeSnapshot("p1", "After", "taxi")], 0);
     expect(createCarMesh).toHaveBeenLastCalledWith("p1", "After", "taxi");
     expect(first.disposeTexture).toHaveBeenCalledOnce();
     expect(first.disposeMaterial).toHaveBeenCalledOnce();
   });
 
   it("resolves an absent variant to the stable hash fallback, without churn", () => {
-    rp.onSnapshot([makeSnapshot("p1")]);
-    rp.onSnapshot([makeSnapshot("p1")]);
+    rp.onSnapshot([makeSnapshot("p1")], 0);
+    rp.onSnapshot([makeSnapshot("p1")], 0);
     expect(createCarMesh).toHaveBeenCalledOnce();
     expect(rp.resolvedVariants()).toEqual({ p1: resolveVariant("p1") });
   });
 
   it("swaps back to the hash fallback when a variant goes absent", () => {
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
-    rp.onSnapshot([makeSnapshot("p1")]);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
+    rp.onSnapshot([makeSnapshot("p1")], 0);
     expect(createCarMesh).toHaveBeenCalledTimes(2);
     expect(rp.resolvedVariants()).toEqual({ p1: resolveVariant("p1") });
   });
 
   it("forgets a player's variant when they leave", () => {
-    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")]);
-    rp.onSnapshot([]);
+    rp.onSnapshot([makeSnapshot("p1", "Player", "taxi")], 0);
+    rp.onSnapshot([], 0);
     expect(rp.resolvedVariants()).toEqual({});
   });
 });
 
 describe("RemotePlayers positions", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("reports each remote car where its mesh is drawn, and forgets leavers", () => {
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
     vi.mocked(createCarMesh)
       .mockReset()
       .mockImplementation(() => new THREE.Group());
     const rp = new RemotePlayers(makeMockScene(), "me");
-    rp.onSnapshot([
-      { ...makeSnapshot("me"), x: 99, z: 99 },
-      { ...makeSnapshot("p1"), x: 10, z: -20 },
-      { ...makeSnapshot("p2"), x: 30, z: 40 },
-    ]);
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("me"), x: 99, z: 99 },
+        { ...makeSnapshot("p1"), x: 10, z: -20 },
+        { ...makeSnapshot("p2"), x: 30, z: 40 },
+      ],
+      0,
+    );
     expect(rp.positions()).toEqual([
       { id: "p1", x: 10, z: -20 },
       { id: "p2", x: 30, z: 40 },
     ]);
-    now = 100;
-    rp.onSnapshot([{ ...makeSnapshot("p2"), x: 31, z: 41 }]);
-    now = 230; // render time lands exactly on the newest snapshot
-    rp.update(1 / 60);
+    rp.onSnapshot([{ ...makeSnapshot("p2"), x: 31, z: 41 }], 100);
+    drawAt(rp, 100); // render time lands exactly on the newest state
     expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41 }]);
   });
 });
 
 describe("RemotePlayers obstacles", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("offers each remote car's drawn pose and speed to collide with, never the local player's", () => {
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
     vi.mocked(createCarMesh)
       .mockReset()
       .mockImplementation(() => new THREE.Group());
     const rp = new RemotePlayers(makeMockScene(), "m");
-    rp.onSnapshot([
-      { ...makeSnapshot("m"), x: 99, z: 99 },
-      { ...makeSnapshot("a"), x: 0, z: 0, rot: 0, speed: 10 },
-      { ...makeSnapshot("z"), x: 5, z: 5 },
-    ]);
-    now = 100;
-    rp.onSnapshot([
-      { ...makeSnapshot("a"), x: 0, z: 10, rot: 0.5, speed: 30 },
-      { ...makeSnapshot("z"), x: 5, z: 5 },
-    ]);
-    now = 180; // render time is halfway between the two snapshots
-    rp.update(1 / 60);
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("m"), x: 99, z: 99 },
+        { ...makeSnapshot("a"), x: 0, z: 0, rot: 0, speed: 10 },
+        { ...makeSnapshot("z"), x: 5, z: 5 },
+      ],
+      0,
+    );
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("a"), x: 0, z: 10, rot: 0.5, speed: 30 },
+        { ...makeSnapshot("z"), x: 5, z: 5 },
+      ],
+      100,
+    );
+    drawAt(rp, 50); // halfway between the two states
     const [a, z] = rp.obstacles();
     expect(a).toMatchObject({ x: 0, heading: 0.25, speed: 20 });
     expect(a.z).toBeCloseTo(5);
@@ -303,41 +429,87 @@ describe("RemotePlayers obstacles", () => {
   });
 
   it("passes through a remote car that teleports, respawns or has only just appeared", () => {
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
     vi.mocked(createCarMesh)
       .mockReset()
       .mockImplementation(() => new THREE.Group());
     const rp = new RemotePlayers(makeMockScene(), "m", 90);
     const drawn = () => rp.obstacles().map(({ x, z }) => `${x},${z}`);
-    rp.onSnapshot([{ ...makeSnapshot("a"), x: 0, z: 0 }]);
-    now = 50;
-    rp.onSnapshot([
-      { ...makeSnapshot("a"), x: 0, z: 0 },
-      { ...makeSnapshot("joiner"), x: 0, z: 0 },
-    ]);
-    now = 180;
-    rp.update(1 / 60);
-    // The joiner has one snapshot, so no motion to judge yet.
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 0, z: 0 }], 0);
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("a"), x: 0, z: 0 },
+        { ...makeSnapshot("joiner"), x: 0, z: 0 },
+      ],
+      50,
+    );
+    drawAt(rp, 50);
+    // The joiner has one state, so no motion to judge yet.
     expect(drawn()).toEqual(["0,0"]);
 
     // 10 m in 50 ms is within 2.5 × 90 m/s; 200 m is a forged hop.
-    now = 100;
-    rp.onSnapshot([
-      { ...makeSnapshot("a"), x: 10, z: 0 },
-      { ...makeSnapshot("joiner"), x: 200, z: 0 },
-    ]);
-    now = 230;
-    rp.update(1 / 60);
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("a"), x: 10, z: 0 },
+        { ...makeSnapshot("joiner"), x: 200, z: 0 },
+      ],
+      100,
+    );
+    drawAt(rp, 100);
     expect(drawn()).toEqual(["10,0"]);
 
-    now = 150;
-    rp.onSnapshot([
-      { ...makeSnapshot("a"), x: 11, z: 0, spawns: 1 },
-      { ...makeSnapshot("joiner"), x: 201, z: 0 },
-    ]);
-    now = 280;
-    rp.update(1 / 60);
+    rp.onSnapshot(
+      [
+        { ...makeSnapshot("a"), x: 11, z: 0, spawns: 1 },
+        { ...makeSnapshot("joiner"), x: 201, z: 0 },
+      ],
+      150,
+    );
+    drawAt(rp, 150);
     expect(drawn()).toEqual(["201,0"]);
+  });
+
+  it("judges a car's motion over the time between its own states", () => {
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    // 20 m in two ticks is a car's motion, though only one snapshot apart:
+    // the tick in between repeated the older state.
+    rp.onSnapshot([{ ...makeSnapshot("a"), t: 0 }], 50);
+    rp.onSnapshot([{ ...makeSnapshot("a"), t: 0 }], 100);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 20, t: 100 }], 150);
+    drawAt(rp, 50);
+    expect(rp.obstacles()).toHaveLength(1);
+  });
+
+  it("passes through a hop whose sender stretched its state times beyond what the server saw elapse", () => {
+    const mesh = new THREE.Group();
+    vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    // States broadcast one tick apart, but claiming a second between them:
+    // 60 m in 1.05 s would pass for a car, 60 m in one 50 ms tick does not.
+    rp.onSnapshot([{ ...makeSnapshot("a"), t: -950 }], 50);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 60, t: 100 }], 100);
+    drawAt(rp, -425);
+    expect(mesh.position.x).toBeCloseTo(30);
+    expect(rp.obstacles()).toEqual([]);
+    drawAt(rp, 100);
+    expect(rp.obstacles()).toEqual([]);
+  });
+
+  it("passes through a car that reappears far away after its sender went quiet", () => {
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    // Parked, then two silent seconds in which every tick repeats the last state:
+    // the repeats fold into one sample, but the silence is no time a car drove.
+    for (let t = 0; t <= 1000; t += 50) rp.onSnapshot([{ ...makeSnapshot("a"), t }], t);
+    for (let t = 1050; t < 3000; t += 50) rp.onSnapshot([{ ...makeSnapshot("a"), t: 1000 }], t);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 400, t: 3000 }], 3000);
+    for (const t of [2990, 3007]) {
+      drawAt(rp, t);
+      expect(rp.obstacles()).toEqual([]);
+    }
   });
 });

@@ -4,14 +4,23 @@ import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car
 import type { CarObstacle } from "./car-collision";
 import { interpolateHeading } from "./pose-interpolation";
 
-interface BufferedSnapshot {
-  receivedAt: number;
-  players: Map<string, PlayerSnapshot>;
+/** A remote car's reported state, at the server time it was current. */
+interface Sample {
+  t: number;
+  /** Broadcast time of the snapshot that first carried it: unlike `t`, never the sender's say. */
+  seen: number;
+  x: number;
+  z: number;
+  rot: number;
+  speed: number;
+  spawns: number;
 }
 interface RemoteCar {
   mesh: THREE.Group;
   variant: Variant;
   name: string;
+  /** Distinct states in time order. */
+  samples: Sample[];
   /** Speed as drawn this frame. */
   speed: number;
   /** Whether the local car collides with it this frame; see `obstacles()`. */
@@ -22,16 +31,43 @@ export interface RemotePosition {
   x: number;
   z: number;
 }
-const RENDER_DELAY_MS = 130;
-const SNAPSHOT_LIMIT = 30;
-/** Floor on the span a remote car's motion is judged over: two states can land in one 50 ms tick. */
+/**
+ * How far behind the server clock remote cars are drawn. The state after the
+ * newest one held can be a send interval (50 ms) away, waits up to a broadcast
+ * tick (50 ms) on the server, and carries a pose up to a render frame (17 ms)
+ * older than its send; the rest absorbs network jitter and coarse timers. A
+ * state later than that is briefly extrapolated, then held.
+ */
+export const INTERPOLATION_DELAY_MS = 150;
+const SAMPLE_LIMIT = 30;
+/** Floor on the span a remote car's motion is judged over: states can land a few ms, or one tick, apart. */
 const MIN_SOLID_SPAN_MS = 50;
-/** Headroom over the Room's top speed before a remote car's motion reads as a teleport. */
+/**
+ * Ceiling on it: an honest sender's next state is at most two ticks behind its
+ * last, so a longer gap is silence (a pause, a stall, a hostile client waiting
+ * to land a far hop), not time the car spent driving.
+ */
+const MAX_SOLID_SPAN_MS = 100;
+/** Headroom over the Room's top speed before a remote car's motion reads as a teleport; two sends can share a tick. */
 const SOLID_SPEED_TOLERANCE = 2.5;
+/** How far past its newest state a car is extrapolated, as a fraction of the last span. */
+const MAX_EXTRAPOLATION = 1.25;
 
-/** Buffer network updates so remote cars move continuously between snapshots. */
+/**
+ * Keep samples in time order: a repeat replaces the newest (keeping when it
+ * was first seen), and newer times supersede what they precede.
+ */
+function record(samples: Sample[], sample: Sample): void {
+  while (samples.length > 0 && samples[samples.length - 1].t >= sample.t) {
+    const superseded = samples.pop()!;
+    if (superseded.t === sample.t) sample.seen = Math.min(sample.seen, superseded.seen);
+  }
+  samples.push(sample);
+  if (samples.length > SAMPLE_LIMIT) samples.shift();
+}
+
+/** Buffer each remote car's states so it moves continuously between them. */
 export class RemotePlayers {
-  private snapshots: BufferedSnapshot[] = [];
   private readonly cars = new Map<string, RemoteCar>();
 
   constructor(
@@ -40,72 +76,57 @@ export class RemotePlayers {
     private readonly topSpeed = MAX_SPEED_MS.hard,
   ) {}
 
-  onSnapshot(players: PlayerSnapshot[]): void {
-    const others = new Map(
-      players.filter((player) => player.id !== this.myId).map((player) => [player.id, player]),
-    );
-    this.snapshots.push({ receivedAt: performance.now(), players: others });
-    if (this.snapshots.length > SNAPSHOT_LIMIT) this.snapshots.shift();
-
-    for (const [id, player] of others) {
-      const variant = resolveVariant(id, player.variant);
-      const existing = this.cars.get(id);
-      if (existing) {
-        if (existing.variant === variant && existing.name === player.name) continue;
-        this.removeCar(id);
-      }
-      const mesh = createCarMesh(id, player.name, variant);
-      mesh.position.set(player.x, 0, player.z);
-      mesh.rotation.y = player.rot;
-      this.cars.set(id, { mesh, variant, name: player.name, speed: player.speed, solid: false });
-      this.scene.add(mesh);
+  /**
+   * Take in a snapshot broadcast at server time `t`. Each player's state is
+   * placed at its own time (`PlayerSnapshot.t`), or at `t` from a server that
+   * does not send one.
+   */
+  onSnapshot(players: PlayerSnapshot[], t: number): void {
+    const present = new Set<string>();
+    for (const player of players) {
+      if (player.id === this.myId) continue;
+      present.add(player.id);
+      const { x, z, rot, speed, spawns } = player;
+      record(this.car(player).samples, { t: player.t ?? t, seen: t, x, z, rot, speed, spawns });
     }
     for (const id of this.cars.keys()) {
-      if (!others.has(id)) this.removeCar(id);
+      if (!present.has(id)) this.removeCar(id);
     }
   }
 
-  update(dt: number): void {
-    if (this.snapshots.length === 0) return;
-    const renderTime = performance.now() - RENDER_DELAY_MS;
-    let older = this.snapshots[0];
-    let newer = this.snapshots[this.snapshots.length - 1];
-    for (let index = this.snapshots.length - 1; index > 0; index--) {
-      if (this.snapshots[index - 1].receivedAt <= renderTime) {
-        older = this.snapshots[index - 1];
-        newer = this.snapshots[index];
-        break;
-      }
-    }
-    const span = newer.receivedAt - older.receivedAt;
-    const amount =
-      span > 0 ? Math.min(Math.max((renderTime - older.receivedAt) / span, 0), 1.25) : 1;
-    const settled = renderTime >= newer.receivedAt;
-    const maxHop =
-      (this.topSpeed * SOLID_SPEED_TOLERANCE * Math.max(span, MIN_SOLID_SPAN_MS)) / 1000;
-    for (const [id, car] of this.cars) {
-      const { mesh } = car;
-      const before = older.players.get(id);
-      const after = newer.players.get(id);
-      let snap = after ?? before;
-      car.solid = Boolean(
-        before &&
-        after &&
-        before.spawns === after.spawns &&
-        Math.hypot(after.x - before.x, after.z - before.z) <= maxHop,
+  /** Draw every remote car as it was `INTERPOLATION_DELAY_MS` before `serverNow`. */
+  update(dt: number, serverNow: number): void {
+    const renderT = serverNow - INTERPOLATION_DELAY_MS;
+    for (const car of this.cars.values()) {
+      const { mesh, samples } = car;
+      // The last state at or before the render time and the one after it, or
+      // the first two (clamped) or the last two (extrapolated).
+      let index = samples.length - 1;
+      while (index > 1 && samples[index - 1].t > renderT) index--;
+      const before = samples[Math.max(index - 1, 0)];
+      const after = samples[index];
+      const span = after.t - before.t;
+      // Judged over no longer than the server saw pass between the two states,
+      // so a sender cannot stretch its timestamps to pass off a teleport as
+      // motion, and never over more than two ticks of silence.
+      const judged = Math.min(
+        Math.max(Math.min(span, after.seen - before.seen), MIN_SOLID_SPAN_MS),
+        MAX_SOLID_SPAN_MS,
       );
-      if (before && after) {
+      const maxHop = (this.topSpeed * SOLID_SPEED_TOLERANCE * judged) / 1000;
+      car.solid =
+        before !== after &&
+        before.spawns === after.spawns &&
+        Math.hypot(after.x - before.x, after.z - before.z) <= maxHop;
+      if (span <= 0 || before.spawns !== after.spawns) {
         // A respawn is a discontinuity, not a velocity to interpolate or
         // extrapolate: hold the old pose until it lands, then sit on spawn.
-        const teleported = before.spawns !== after.spawns;
-        snap = teleported ? (settled ? after : before) : undefined;
-      }
-      if (snap) {
+        const snap = renderT >= after.t ? after : before;
         mesh.position.set(snap.x, 0, snap.z);
         mesh.rotation.y = snap.rot;
         car.speed = snap.speed;
-        animateCar(mesh, car.speed, 0, dt);
-      } else if (before && after) {
+      } else {
+        const amount = Math.min(Math.max((renderT - before.t) / span, 0), MAX_EXTRAPOLATION);
         mesh.position.set(
           before.x + (after.x - before.x) * amount,
           0,
@@ -113,8 +134,8 @@ export class RemotePlayers {
         );
         mesh.rotation.y = interpolateHeading(before.rot, after.rot, amount);
         car.speed = before.speed + (after.speed - before.speed) * amount;
-        animateCar(mesh, car.speed, 0, dt);
       }
+      animateCar(mesh, car.speed, 0, dt);
     }
   }
 
@@ -156,7 +177,28 @@ export class RemotePlayers {
 
   dispose(): void {
     for (const id of this.cars.keys()) this.removeCar(id);
-    this.snapshots = [];
+  }
+
+  /** The player's car, (re)built when it is new or its name or Variant changed; its states carry over. */
+  private car(player: PlayerSnapshot): RemoteCar {
+    const variant = resolveVariant(player.id, player.variant);
+    const existing = this.cars.get(player.id);
+    if (existing?.variant === variant && existing.name === player.name) return existing;
+    if (existing) this.removeCar(player.id);
+    const mesh = createCarMesh(player.id, player.name, variant);
+    mesh.position.set(player.x, 0, player.z);
+    mesh.rotation.y = player.rot;
+    const car: RemoteCar = {
+      mesh,
+      variant,
+      name: player.name,
+      samples: existing?.samples ?? [],
+      speed: player.speed,
+      solid: false,
+    };
+    this.cars.set(player.id, car);
+    this.scene.add(mesh);
+    return car;
   }
 
   private removeCar(id: string): void {
