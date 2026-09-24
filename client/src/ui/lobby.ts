@@ -18,12 +18,13 @@ import {
 } from "@racing/shared";
 import { renderVariantThumbnails } from "./garage-thumbs";
 import { GarageStage } from "./garage-stage";
-import { CHEAP_RENDER } from "../game/scene";
+import { CHEAP_RENDER } from "../game/quality";
 import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
+import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } from "../game/touch";
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
-import { escapeHtml as html, formatMs } from "../util";
+import { escapeHtml as html, formatMs, whenIdle } from "../util";
 
 export interface LobbyCallbacks {
   onCreate(roomName: string, track: TrackSlug, difficulty: Difficulty): void;
@@ -64,6 +65,10 @@ const LABELS: Record<Variant, string> = {
   taxi: "Taxi",
   police: "Police",
   van: "Van",
+};
+const STEERING_LABELS: Record<SteeringMode, string> = {
+  slider: "Slider",
+  buttons: "Buttons",
 };
 /** GitHub releases page where the desktop installers (`v*` tags) are published. */
 export const DESKTOP_DOWNLOAD_URL = "https://github.com/Nikzz3/racing-game/releases";
@@ -166,6 +171,9 @@ export class Lobby {
   private choice: Choice;
   private track: TrackSlug = DEFAULT_TRACK_SLUG;
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
+  /** Touch steering preference; the picker only shows on touch screens (CSS). */
+  private steeringMode: SteeringMode =
+    asSteeringMode(localStorage.getItem("racer-steering")) ?? DEFAULT_STEERING;
   // Records-panel browse filters. They follow the race selection whenever it
   // changes, but changing them never touches the race selection.
   private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
@@ -186,6 +194,8 @@ export class Lobby {
   private stage: GarageStage | null = null;
   private trackStage: TrackStage | null = null;
   private pointerStart: { x: number; y: number } | null = null;
+  /** The Pacer picker only shows on Race Setup, so it repaints when that screen opens. */
+  private pickerStale = false;
 
   constructor(
     parent: HTMLElement,
@@ -226,7 +236,7 @@ export class Lobby {
             <div class="settings-inner"><div class="settings-heading"><h1>RACE <span>SETUP.</span></h1><div class="setup-selections"><button class="change-selection change-car" type="button" data-change-car aria-label="Change car"><img class="selected-car-thumb" alt="" hidden><span class="selected-car-name"></span><span class="change-label">Change car</span></button><button class="change-selection change-track" type="button" data-change-track aria-label="Change track"><span class="selected-track-name"></span><span class="change-label">Change track</span></button></div></div>
             <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist">${SETUP_TABS.map((tab, i) => radio("setup-menu-item", `aria-controls="setup-${tab}-panel" id="setup-${tab}-tab" data-setup-tab="${tab}"`, `<span>0${i + 1}</span>${tab === "race" ? "Race" : "Records"}<span class="setup-menu-arrow">→</span>`, "aria-selected")).join("")}</nav>
             <div class="setup-workspace">
-              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
+              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
               <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
             </div></div></div>
           </section>
@@ -284,6 +294,7 @@ export class Lobby {
     this.check(".garage-card", "variant", this.choice);
     this.check(".track-card", "track", this.track);
     this.check(".diff-opt", "diff", this.difficulty);
+    this.check(".steering-opt", "steering", this.steeringMode);
     this.check("[data-setup-tab]", "setupTab", this.setupTab, "aria-selected");
     this.paintHero();
     this.paintTrack();
@@ -339,6 +350,10 @@ export class Lobby {
   get selectedVariant(): Variant {
     return this.choice === "random" ? this.randomRoll : this.choice;
   }
+  /** How the on-screen touch controls steer in the next race. */
+  get steering(): SteeringMode {
+    return this.steeringMode;
+  }
   get armedPacer(): ArmedPacer | null {
     return this.pacer;
   }
@@ -369,6 +384,12 @@ export class Lobby {
     else if (data.aiRecord) this.callbacks.onReferenceLap();
     else if (data.track) this.chooseTrack(data.track);
     else if (data.diff) this.chooseDifficulty(data.diff as Difficulty);
+    else if (data.steering) this.chooseSteering(data.steering as SteeringMode);
+  }
+  private chooseSteering(mode: SteeringMode): void {
+    this.steeringMode = mode;
+    localStorage.setItem("racer-steering", mode);
+    this.check(".steering-opt", "steering", mode);
   }
   private chooseDifficulty(difficulty: Difficulty): void {
     this.difficulty = difficulty;
@@ -497,6 +518,13 @@ export class Lobby {
         event.preventDefault();
         this.chooseDifficulty(DIFFICULTIES[next]);
         this.find(`.diff-opt[data-diff="${DIFFICULTIES[next]}"]`).focus();
+      } else if (target?.closest(".steering-picker")) {
+        const index = STEERING_MODES.indexOf(this.steeringMode);
+        const next = step(event.key, index, STEERING_MODES.length);
+        if (next === -1) return;
+        event.preventDefault();
+        this.chooseSteering(STEERING_MODES[next]);
+        this.find(`.steering-opt[data-steering="${STEERING_MODES[next]}"]`).focus();
       } else if (target?.closest(".setup-menu")) {
         const next = step(event.key, SETUP_TABS.indexOf(this.setupTab), SETUP_TABS.length);
         if (next === -1) return;
@@ -525,6 +553,7 @@ export class Lobby {
   }
   private setScreen(screen: Screen): void {
     this.screen = screen;
+    if (screen === "settings" && this.pickerStale) this.paintPicker();
     this.stage?.setScreen(screen);
     this.trackStage?.setActive(screen === "track");
     this.find(".lobby-deck").dataset.screen = screen;
@@ -571,15 +600,6 @@ export class Lobby {
       this.paintHero();
       return true;
     }
-    this.images = renderVariantThumbnails(CAR_VARIANTS);
-    for (const choice of CHOICES) {
-      const url = this.images.get(choice === "random" ? this.randomRoll : choice);
-      if (!url) continue;
-      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
-      img.src = url;
-      img.hidden = false;
-    }
-    this.find(".showroom-loading").hidden = true;
     const shown = this.root.style.display !== "none";
     if (!this.stage) {
       try {
@@ -598,9 +618,43 @@ export class Lobby {
         // Exact circuit outlines remain available without WebGL.
       }
     }
+    // The live garage hides the still previews until Race Setup, so they render one
+    // car per idle callback, selected car first, after the garage's first frame.
+    // Without the live garage they are the carousel and render right away.
+    const selected = this.selectedVariant;
+    renderVariantThumbnails(
+      [selected, ...CAR_VARIANTS.filter((variant) => variant !== selected)],
+      (variant, url) => this.paintThumbnail(variant, url),
+      this.stage ? whenIdle : (task) => task(),
+    );
+    // Bake the AI Record before the player reaches the Race Setup picker.
+    whenIdle(() => {
+      if (this.aiEligible()) this.getReferenceLap();
+    });
+    this.find(".showroom-loading").hidden = true;
     this.paintTrack();
     this.paintHero();
     return this.stage !== null;
+  }
+  private paintThumbnail(variant: Variant, url: string): void {
+    this.images.set(variant, url);
+    for (const choice of CHOICES) {
+      if ((choice === "random" ? this.randomRoll : choice) !== variant) continue;
+      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
+      img.src = url;
+      img.hidden = false;
+    }
+    if (variant === this.selectedVariant) this.paintSelectedThumbnail();
+  }
+  private paintSelectedThumbnail(): void {
+    // Thumbnails arrive over idle callbacks; until this car's is ready, show none
+    // rather than the previous car's.
+    const url = this.images.get(this.selectedVariant);
+    for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
+      const img = this.find<HTMLImageElement>(selector);
+      if (url) img.src = url;
+      img.hidden = !url;
+    }
   }
   private paintHero(): void {
     const index = CHOICES.indexOf(this.choice);
@@ -619,13 +673,7 @@ export class Lobby {
         offset === 0 ? "current" : offset === -1 ? "previous" : offset === 1 ? "next" : "offstage";
       slide.setAttribute("aria-hidden", String(offset !== 0));
     });
-    const url = this.images.get(this.selectedVariant);
-    if (!url) return;
-    for (const selector of [".selected-car-thumb", ".setup-car-image"]) {
-      const img = this.find<HTMLImageElement>(selector);
-      img.src = url;
-      img.hidden = false;
-    }
+    this.paintSelectedThumbnail();
   }
   setRooms(rooms: RoomInfo[]): void {
     this.rooms = rooms;
@@ -717,6 +765,12 @@ export class Lobby {
       );
       this.pacer = entry ? replayPacer(entry) : null;
     }
+    // Painting the picker bakes the AI Record, which is too slow for startup.
+    if (this.screen === "settings") this.paintPicker();
+    else this.pickerStale = true;
+  }
+  private paintPicker(): void {
+    this.pickerStale = false;
     const ai = this.aiEligible() ? this.getReferenceLap() : null;
     const choices = this.eligible.map((e, i) => ({
       time: e.timeMs,
@@ -794,6 +848,9 @@ export class Lobby {
     }
   }
   show(): void {
+    // Joining a room passes through here while the lobby is still up. Skip the
+    // full garage redraw that the race would cover right away.
+    if (this.root.style.display !== "none") return;
     this.root.style.display = "";
     this.stage?.setActive(true);
     this.trackStage?.setActive(this.screen === "track");
@@ -801,6 +858,6 @@ export class Lobby {
   hide(): void {
     this.root.style.display = "none";
     this.stage?.setActive(false);
-    this.trackStage?.setActive(false);
+    this.trackStage?.release();
   }
 }

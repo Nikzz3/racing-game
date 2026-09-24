@@ -2,11 +2,25 @@ import { trackPath, type PlayerSnapshot, type Track } from "@racing/shared";
 import type { RemotePosition } from "../game/remote";
 import { escapeHtml, formatMs } from "../util";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
 // Cosmetic gauge calibration; physics and network speeds remain in world units.
 const DISPLAY_SPEED_SCALE = 0.5;
 const DIAL_MAX_KMH = 200;
+// The lap time redraws at most this often (20 Hz): every new string re-rasters the
+// 48px digits, and nobody reads milliseconds at 60 Hz anyway.
+const LAP_TIMER_STEP_MS = 50;
+
+/**
+ * Places a circuit-map marker, in whole circuit units (a third of a pixel on the
+ * full-size map). The marker is its own compositor layer and CSS turns the two
+ * custom properties into a translate(), so moving it never repaints the map;
+ * unchanged positions skip the write entirely.
+ */
+function placeMapDot(dot: HTMLElement, x: number, z: number): void {
+  const mx = String(Math.round(x)),
+    mz = String(Math.round(z));
+  if (dot.style.getPropertyValue("--x") !== mx) dot.style.setProperty("--x", mx);
+  if (dot.style.getPropertyValue("--z") !== mz) dot.style.setProperty("--z", mz);
+}
 
 export class Hud {
   private readonly root = document.createElement("div");
@@ -14,8 +28,9 @@ export class Hud {
   private readonly fields = new Map<string, HTMLElement>();
   private standings = "";
   private dial = "";
-  private dot = "";
-  private readonly remoteDots = new Map<string, SVGCircleElement>();
+  private lapShown: number | null = null;
+  private checkpointFill = "";
+  private readonly remoteDots = new Map<string, HTMLElement>();
   constructor(
     parent: HTMLElement,
     roomName: string,
@@ -28,13 +43,14 @@ export class Hud {
     this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
     <div class="hud-panel hud-timer"><div class="hud-timer-label">LAP TIME</div><div class="hud-cur-lap">--:--.---</div><div class="hud-lap-small"><span>LAST <b class="hud-last">--:--.---</b></span><span>BEST <b class="hud-best">--:--.---</b></span></div></div>
     <div class="hud-panel hud-standings"><h3>BEST LAPS</h3><table><tbody></tbody></table></div>
-    <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
-    ${track ? `<div class="hud-map"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path d="${trackPath(track)}"/><g class="hud-map-remotes"></g><circle class="hud-map-driver" r="10" cx="${track.samples[0].x}" cy="${track.samples[0].z}"/></svg><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
+    <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-shadow" d="M 36 155 A 84 84 0 1 1 164 155"/><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
+    ${track ? `<div class="hud-map"><div class="hud-map-plot"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path class="hud-map-shadow" d="${trackPath(track)}"/><path d="${trackPath(track)}"/></svg><div class="hud-map-remotes"></div><i class="hud-map-dot hud-map-driver"></i></div><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
     <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}</div>
     <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div><div class="toasts" role="status" aria-live="polite"></div>`;
     parent.append(this.root);
     this.el(".hud-leave").onclick = onLeave;
     if (onRespawn) this.el(".hud-respawn").onclick = onRespawn;
+    if (track) placeMapDot(this.el(".hud-map-driver"), track.samples[0].x, track.samples[0].z);
   }
   private el(selector: string): HTMLElement {
     let element = this.fields.get(selector);
@@ -58,13 +74,7 @@ export class Hud {
   }
   setPosition(x: number, z: number): void {
     const dot = this.el(".hud-map-driver");
-    if (!dot) return;
-    const cx = x.toFixed(1),
-      cy = z.toFixed(1);
-    if (cx + cy === this.dot) return;
-    this.dot = cx + cy;
-    dot.setAttribute("cx", cx);
-    dot.setAttribute("cy", cy);
+    if (dot) placeMapDot(dot, x, z);
   }
   /** Mirror the other drivers in the room onto the circuit map. */
   setRemotePositions(positions: RemotePosition[]): void {
@@ -75,16 +85,12 @@ export class Hud {
       seen.add(id);
       let dot = this.remoteDots.get(id);
       if (!dot) {
-        dot = document.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("class", "hud-map-remote");
-        dot.setAttribute("r", "8");
+        dot = document.createElement("i");
+        dot.className = "hud-map-dot hud-map-remote";
         this.remoteDots.set(id, dot);
         group.append(dot);
       }
-      const cx = x.toFixed(1),
-        cy = z.toFixed(1);
-      if (dot.getAttribute("cx") !== cx) dot.setAttribute("cx", cx);
-      if (dot.getAttribute("cy") !== cy) dot.setAttribute("cy", cy);
+      placeMapDot(dot, x, z);
     }
     for (const [id, dot] of this.remoteDots) {
       if (seen.has(id)) continue;
@@ -93,6 +99,11 @@ export class Hud {
     }
   }
   setCurrentLap(time: number | null): void {
+    const shown = this.lapShown;
+    // A reset (respawn, new lap) or a cleared clock shows at once; ticking waits a step.
+    if (time !== null && shown !== null && time >= shown && time - shown < LAP_TIMER_STEP_MS)
+      return;
+    this.lapShown = time;
     this.text(".hud-cur-lap", formatMs(time));
   }
   setOffTrack(off: boolean): void {
@@ -104,8 +115,13 @@ export class Hud {
   setMyProgress(player: PlayerSnapshot): void {
     this.text(".hud-lap", `LAP ${player.laps}`);
     this.text(".hud-cp", `CP ${player.nextCheckpoint}/${this.checkpointCount}`);
-    this.el(".hud-checkpoint-bar i").style.width =
-      `${Math.min(100, (player.nextCheckpoint / this.checkpointCount) * 100)}%`;
+    // Scaling, not resizing, keeps the fill's 0.3s ease on the compositor
+    // instead of forcing a layout on every frame of each checkpoint's animation.
+    const fill = `scaleX(${Math.min(1, player.nextCheckpoint / this.checkpointCount)})`;
+    if (fill !== this.checkpointFill) {
+      this.checkpointFill = fill;
+      this.el(".hud-checkpoint-bar i").style.transform = fill;
+    }
     this.text(".hud-last", formatMs(player.lastLapMs));
     this.text(".hud-best", formatMs(player.bestLapMs));
   }

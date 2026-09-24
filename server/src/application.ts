@@ -94,7 +94,7 @@ export class RacingApplication {
         this.rooms.close(room);
         changed = true;
       } else if (room.players.size) {
-        room.broadcast({ type: "snapshot", t: now, players: room.snapshot() });
+        room.broadcastSnapshot(now);
       }
     }
     if (changed) this.broadcastRooms();

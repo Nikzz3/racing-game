@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { CAR_VARIANTS, ROAD_HALF_WIDTH, TRACKS } from "@racing/shared";
 import { createCarMesh } from "./car";
-import { getMaterial, getModel, registerLibrary } from "./models";
+import { createAssetLoader, getMaterial, getModel, registerLibrary } from "./models";
 import { garageBayX } from "../ui/garage-camera";
 
 beforeAll(async () => {
@@ -14,7 +13,7 @@ beforeAll(async () => {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   // Node cannot decode browser images. Validate their embedded bytes, then leave
   // pixel decoding to the browser check while these tests exercise real meshes.
-  const loader = new GLTFLoader().register((parser) => ({
+  const loader = createAssetLoader().register((parser) => ({
     name: "test-embedded-textures",
     async loadTexture(index) {
       const definition = parser.json.textures[index];
@@ -32,9 +31,10 @@ beforeAll(async () => {
 
 describe("Blender asset integration", () => {
   it.each([
-    ["tree_default", 12684],
-    ["tree_detailed", 12684],
-    ["tree_oak", 12684],
+    // optimize-glb.mjs simplifies the three broadleaf trees from 12,684 triangles.
+    ["tree_default", 2992],
+    ["tree_detailed", 2994],
+    ["tree_oak", 2994],
     ["tree_pineDefaultA", 3788],
     ["tree_pineDefaultB", 3668],
   ] as const)(
@@ -51,6 +51,15 @@ describe("Blender asset integration", () => {
       );
     },
   );
+
+  // Every car is drawn in the garage and in races, so a stray modifier costs every frame.
+  it.each(CAR_VARIANTS)("keeps the %s car at a real-time triangle budget", (variant) => {
+    let triangles = 0;
+    getModel(`car:${variant}`)!.traverse((part) => {
+      if (part instanceof THREE.Mesh) triangles += part.geometry.index!.count / 3;
+    });
+    expect(triangles).toBeLessThan(100_000);
+  });
 
   it.each(CAR_VARIANTS)("connects both %s mirrors to the cabin", (variant) => {
     const car = getModel(`car:${variant}`)!;

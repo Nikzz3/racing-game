@@ -8,6 +8,8 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Start the asset library download while the app script loads; models.ts reuses it. -->
+    <link rel="preload" href="/models/rework/sunset-ridge.glb" as="fetch" crossorigin />
     <title>Sunset Ridge Racing</title>
   </head>
   <body>

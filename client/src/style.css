@@ -897,12 +897,14 @@ a {
   color: #b8b8be;
   letter-spacing: 0;
 }
-.diff-options {
+.diff-options,
+.steering-options {
   display: flex;
   gap: 7px;
 }
 .diff-opt,
-.board-diff-opt {
+.board-diff-opt,
+.steering-opt {
   flex: 1;
   padding: 14px 8px;
   background: #24262dcc;
@@ -914,11 +916,13 @@ a {
     color 0.2s;
 }
 .diff-opt:hover,
-.board-diff-opt:hover {
+.board-diff-opt:hover,
+.steering-opt:hover {
   border-color: #efad6570;
 }
 .diff-opt.active,
-.board-diff-opt.active {
+.board-diff-opt.active,
+.steering-opt.active {
   background: #efad6518;
   border-color: var(--accent);
   color: var(--accent);
@@ -1755,11 +1759,12 @@ a {
 }
 .hud-checkpoint-bar i {
   display: block;
-  width: 0;
   height: 100%;
   background: #ffc078;
   box-shadow: 0 0 10px #f8ac5670;
-  transition: width 0.3s ease;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
 }
 .hud-timer {
   top: 31px;
@@ -1773,6 +1778,9 @@ a {
   color: #dad6d0;
   margin-bottom: 3px;
 }
+/* The HUD sits in one full-screen layer over the WebGL canvas. Anything that
+   changes while driving gets its own small layer, so a new digit re-rasters just
+   that layer (with a lighter shadow blur), not the HUD layer and its gradient. */
 .hud-cur-lap {
   font:
     48px/1.1 "Barlow Condensed",
@@ -1780,6 +1788,8 @@ a {
     sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  text-shadow: 0 2px 4px #0009;
+  will-change: transform;
 }
 .hud-lap-small {
   display: flex;
@@ -1845,7 +1855,8 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 3px 12px #0006);
+  contain: strict;
+  will-change: transform;
 }
 .speed-dial {
   position: absolute;
@@ -1854,6 +1865,11 @@ a {
   height: 100%;
   fill: none;
   stroke-width: 4;
+}
+.speed-dial-shadow {
+  stroke: #0003;
+  stroke-width: 10;
+  transform: translateY(3px);
 }
 .speed-dial-track {
   stroke: #fff4;
@@ -1870,6 +1886,7 @@ a {
     sans-serif;
   font-variant-numeric: tabular-nums;
   margin: 10px 8px 0 0;
+  text-shadow: 0 3px 5px #000a;
 }
 .speed-unit {
   font: 10px var(--mono);
@@ -1878,17 +1895,26 @@ a {
   color: #ffdbb3;
 }
 .hud-map {
+  --map-h: 170px;
+  /* One circuit unit: the map's viewBox is 500 units tall. */
+  --map-unit: calc(var(--map-h) / 500);
   position: absolute;
   left: 35px;
   bottom: 70px;
   width: 190px;
   text-align: center;
 }
+.hud-map-plot {
+  position: relative;
+  width: calc(530 * var(--map-unit));
+  height: var(--map-h);
+  margin: 0 auto;
+}
 .hud-map svg {
+  display: block;
   width: 100%;
-  height: 170px;
+  height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 2px 5px #0009);
 }
 .hud-map path {
   fill: none;
@@ -1896,14 +1922,34 @@ a {
   stroke-width: 7;
   stroke-linejoin: round;
 }
-.hud-map circle {
-  fill: #ffd098;
-  stroke: #1b1719;
-  stroke-width: 4;
+/* A pre-drawn shadow: a drop-shadow filter would re-blur the map on every repaint. */
+.hud-map .hud-map-shadow {
+  stroke: #0004;
+  stroke-width: 17;
+  transform: translateY(6px);
+}
+/* Markers move by transform on their own layers (see placeMapDot in hud.ts), so the
+   static track above is rasterized once. */
+.hud-map-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(24 * var(--map-unit));
+  aspect-ratio: 1;
+  border: calc(4 * var(--map-unit)) solid #1b1719;
+  border-radius: 50%;
+  background: #ffd098;
+  box-shadow: 0 1px 3px #0009;
+  transform: translate(
+    calc((var(--x, 0) + 265) * var(--map-unit) - 50%),
+    calc((var(--z, 0) + 250) * var(--map-unit) - 50%)
+  );
+  will-change: transform;
 }
 .hud-map .hud-map-remote {
-  fill: #9fd4ff;
-  stroke-width: 3;
+  width: calc(19 * var(--map-unit));
+  border-width: calc(3 * var(--map-unit));
+  background: #9fd4ff;
 }
 .hud-map span {
   display: block;
@@ -1911,7 +1957,7 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: #f5dcc1;
-  margin-top: 8px;
+  margin-top: 13px;
 }
 .hud-actions {
   position: absolute;
@@ -1924,7 +1970,8 @@ a {
 .hud-leave,
 .hud-respawn,
 .replay-exit {
-  background: #151720a6;
+  /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
+  background: #151720d9;
   border: 1px solid #ffffff2a;
   border-radius: 2px;
   padding: 10px 15px;
@@ -1932,7 +1979,6 @@ a {
   font: 10px var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  backdrop-filter: blur(10px);
 }
 .hud-leave:hover,
 .hud-respawn:hover,
@@ -2051,6 +2097,8 @@ a {
 .replay-time {
   font: 14px var(--mono);
   color: #eee0cf;
+  /* Ticks every frame: keep it off the full-screen overlay layer (see .hud-cur-lap). */
+  will-change: transform;
 }
 .replay-exit {
   margin-top: 20px;
@@ -2069,30 +2117,161 @@ a {
   padding: 20px 40px;
   white-space: nowrap;
 }
-.joystick {
+/* Touch driving controls: steering slider bottom-left, pedals bottom-right. Hidden unless
+   the primary pointer is coarse; the --touch-* sizes are set in those media blocks and the
+   HUD is laid out around them. */
+.touch-pedals,
+.touch-steer {
   display: none;
   position: absolute;
-  bottom: 28px;
-  right: 25px;
-  width: 136px;
-  height: 136px;
-  background: #11131c88;
-  border: 1px solid #ffce8d60;
-  border-radius: 50%;
+  z-index: 20;
   touch-action: none;
   user-select: none;
-  z-index: 20;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.joystick-knob {
+.touch-pedals {
+  right: var(--touch-edge);
+  bottom: var(--touch-edge);
+  flex-direction: column;
+  gap: var(--touch-pedal-gap);
+}
+.touch-pedal {
+  width: var(--touch-pedal-width);
+  height: var(--touch-pedal-height);
+  padding: 0;
+  background: #11131c88;
+  border: 1px solid #ffce8d60;
+  border-left: 3px solid #ffc582;
+  border-radius: 12px;
+  color: #fff1de;
+  font:
+    italic 800 26px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  letter-spacing: 0.08em;
+  text-shadow: 0 2px 8px #0008;
+  box-shadow: 0 3px 12px #0006;
+  backdrop-filter: blur(10px);
+  touch-action: none;
+}
+.touch-brake {
+  border-color: #ff9d7a60;
+  border-left-color: #e8795b;
+  color: #ffdccf;
+}
+.touch-gas.pressed {
+  background: #ffc582;
+  border-color: #ffe0b8;
+  color: #1b1719;
+  text-shadow: none;
+  box-shadow: 0 0 18px #f8ac5690;
+}
+.touch-brake.pressed {
+  background: #d5654a;
+  border-color: #ffb49c;
+  color: #fff3ea;
+  text-shadow: none;
+  box-shadow: 0 0 18px #e8795b90;
+}
+.touch-steer {
+  left: var(--touch-edge);
+  bottom: var(--touch-edge);
+  width: var(--touch-steer-width);
+  height: var(--touch-steer-height);
+  background: #11131c88;
+  border: 1px solid #ffce8d60;
+  border-radius: 999px;
+  box-shadow: 0 3px 12px #0006;
+  backdrop-filter: blur(10px);
+}
+.touch-steer::before,
+.touch-steer::after {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #ffce8d90;
+  font:
+    italic 800 26px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  pointer-events: none;
+}
+.touch-steer::before {
+  content: "\2039";
+  left: 16px;
+}
+.touch-steer::after {
+  content: "\203A";
+  right: 16px;
+}
+.touch-steer-knob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 58px;
-  height: 58px;
+  width: var(--touch-knob-size);
+  height: var(--touch-knob-size);
   background: #edb77f;
+  border: 2px solid #ffe0b8;
   border-radius: 50%;
+  box-shadow: 0 2px 10px #0008;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  will-change: transform;
+}
+/* Arrow-button steering (the lobby's Steering: Buttons preference): two held buttons in the
+   slider's footprint, styled like the pedals, so the HUD layout is the same in either mode. */
+.touch-arrows {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: var(--touch-edge);
+  bottom: var(--touch-edge);
+  width: var(--touch-steer-width);
+  height: var(--touch-steer-height);
+  gap: var(--touch-pedal-gap);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-arrow {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 6px;
+  background: #11131c88;
+  border: 1px solid #ffce8d60;
+  border-radius: 12px;
+  color: #fff1de;
+  font:
+    800 58px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  text-shadow: 0 2px 8px #0008;
+  box-shadow: 0 3px 12px #0006;
+  backdrop-filter: blur(10px);
+  touch-action: none;
+}
+.touch-arrow.pressed {
+  background: #ffc582;
+  border-color: #ffe0b8;
+  color: #1b1719;
+  text-shadow: none;
+  box-shadow: 0 0 18px #f8ac5690;
+}
+/* The Steering preference only matters with on-screen controls. */
+.steering-picker {
+  display: none;
+}
+@media (pointer: coarse) {
+  .touch-arrows {
+    display: flex;
+  }
+  .steering-picker {
+    display: grid;
+  }
 }
 .connect-error {
   position: fixed;
@@ -2189,12 +2368,10 @@ a {
     max-width: 70px;
   }
   .hud-map {
+    --map-h: 105px;
     width: 116px;
     left: 18px;
     bottom: 72px;
-  }
-  .hud-map svg {
-    height: 105px;
   }
   .hud-map span {
     font-size: 7px;
@@ -2247,17 +2424,84 @@ a {
   }
 }
 @media (pointer: coarse) {
-  .joystick {
+  :root {
+    --touch-edge: 18px;
+    --touch-pedal-width: 112px;
+    --touch-pedal-height: 72px;
+    --touch-pedal-gap: 10px;
+    --touch-steer-width: clamp(140px, calc(50vw - var(--touch-edge) - 6px), 210px);
+    --touch-steer-height: 68px;
+    --touch-knob-size: 56px;
+    --touch-dial-size: 120px;
+    --touch-pedals-top: calc(
+      var(--touch-edge) + 2 * var(--touch-pedal-height) + var(--touch-pedal-gap)
+    );
+    --touch-steer-top: calc(var(--touch-edge) + var(--touch-steer-height));
+  }
+  .touch-pedals {
+    display: flex;
+  }
+  .touch-steer {
     display: block;
   }
+  /* Left column: minimap over the race actions over the slider, the actions kept 20px clear
+     of it so a stray steering thumb can't reach "Leave race". Right column: dial over pedals. */
+  .hud-actions {
+    left: var(--touch-edge);
+    bottom: calc(var(--touch-steer-top) + 20px);
+  }
+  .hud-map {
+    left: var(--touch-edge);
+    bottom: calc(var(--touch-steer-top) + 66px);
+  }
   .hud-speed {
-    bottom: 174px;
-    width: 120px;
-    height: 120px;
-    right: 32px;
+    bottom: calc(var(--touch-pedals-top) + 10px);
+    width: var(--touch-dial-size);
+    height: var(--touch-dial-size);
+    right: calc(var(--touch-edge) + (var(--touch-pedal-width) - var(--touch-dial-size)) / 2);
   }
   .speed-value {
     font-size: 52px;
+  }
+  .offtrack-warn {
+    bottom: calc(var(--touch-pedals-top) + 190px);
+  }
+  .cp-miss-warn {
+    bottom: calc(var(--touch-pedals-top) + 240px);
+  }
+}
+/* Portrait phones: the standings move under the lap timer and share the height above the
+   controls with a warning slot, so neither can reach the other however full the room is. */
+@media (pointer: coarse) and (max-width: 600px) and (min-height: 501px) {
+  :root {
+    --touch-standings-top: 110px;
+    --touch-warn-bottom: calc(var(--touch-pedals-top) + 10px + var(--touch-dial-size) + 14px);
+  }
+  .hud-standings {
+    top: var(--touch-standings-top);
+    left: auto;
+    right: var(--touch-edge);
+    /* 100px holds both warnings plus a gap above them. */
+    max-height: min(
+      24vh,
+      calc(100% - var(--touch-standings-top) - var(--touch-warn-bottom) - 100px)
+    );
+  }
+  .hud-map {
+    width: 100px;
+  }
+  .hud-map svg {
+    height: 80px;
+  }
+  .offtrack-warn,
+  .cp-miss-warn {
+    padding: 9px 16px;
+  }
+  .offtrack-warn {
+    bottom: var(--touch-warn-bottom);
+  }
+  .cp-miss-warn {
+    bottom: calc(var(--touch-warn-bottom) + 40px);
   }
 }
 @media (max-height: 500px) {
@@ -2277,11 +2521,9 @@ a {
     transform: translateX(-50%);
   }
   .hud-map {
+    --map-h: 90px;
     width: 100px;
     bottom: 55px;
-  }
-  .hud-map svg {
-    height: 90px;
   }
   .hud-speed {
     width: 120px;
@@ -2296,6 +2538,79 @@ a {
   }
   .toasts {
     top: 115px;
+  }
+}
+@media (pointer: coarse) and (max-height: 500px) {
+  :root {
+    --touch-edge: 12px;
+    --touch-pedal-height: 60px;
+    --touch-pedal-gap: 8px;
+    /* Narrows on small phones so the bottom row (slider, minimap, dial, pedals) still fits. */
+    --touch-steer-width: clamp(150px, calc(100vw - 384px), 200px);
+    --touch-steer-height: 60px;
+    --touch-knob-size: 50px;
+    /* Level with the pedal tops, 8px over the dial. */
+    --touch-warn-bottom: var(--touch-pedals-top);
+    /* The warning slot's height: the checkpoint warning sits 36px up, and is 48px tall. */
+    --touch-warn-stack: 84px;
+  }
+  .touch-pedal {
+    font-size: 23px;
+  }
+  /* One bottom row: slider and minimap on the left, dial and pedals on the right, the race
+     actions above the slider. The warnings sit centred above the row, the standings to the
+     right of them. */
+  .hud-actions {
+    bottom: calc(var(--touch-steer-top) + 20px);
+  }
+  .hud-map {
+    left: calc(var(--touch-edge) + var(--touch-steer-width) + 16px);
+    bottom: var(--touch-edge);
+    width: 90px;
+  }
+  .hud-map svg {
+    height: 72px;
+  }
+  .hud-speed {
+    right: calc(var(--touch-edge) + var(--touch-pedal-width) + 12px);
+    bottom: var(--touch-edge);
+  }
+  .offtrack-warn,
+  .cp-miss-warn {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+  .cp-miss-warn span {
+    margin-top: 4px;
+  }
+  .offtrack-warn {
+    bottom: var(--touch-warn-bottom);
+  }
+  .cp-miss-warn {
+    bottom: calc(var(--touch-warn-bottom) + 36px);
+  }
+  /* Narrowed from 230px so it clears the centred lap timer on a 667px-wide phone. */
+  .hud-top-left {
+    left: 20px;
+    width: 200px;
+  }
+  .hud-standings {
+    max-height: calc(100% - 15px - var(--touch-pedals-top) - 20px);
+    overflow: auto;
+    pointer-events: auto;
+  }
+}
+/* Narrow landscape phones: the centred warnings reach under the standings, so the standings
+   end above the warning slot, level with the lap progress and timer beside them. */
+@media (pointer: coarse) and (max-height: 500px) and (max-width: 660px) {
+  .hud-standings {
+    max-height: calc(100% - 15px - var(--touch-warn-bottom) - var(--touch-warn-stack) - 8px);
+  }
+}
+/* Narrower still, the slider is at its 150px floor and the bottom row has no room for the map. */
+@media (pointer: coarse) and (max-height: 500px) and (max-width: 539px) {
+  .hud-map {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

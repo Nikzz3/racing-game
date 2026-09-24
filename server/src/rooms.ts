@@ -17,7 +17,7 @@ import {
 import { pool } from "./db";
 import { SerialQueues } from "./serial";
 import { createTiming, type TimingState } from "./timing";
-import { sendEncoded } from "./transport";
+import { sendEncoded, sendLatest } from "./transport";
 
 export const ROOM_TTL_MS = 60 * 60 * 1000;
 
@@ -94,6 +94,13 @@ export class Room {
   broadcast(message: ServerMessage): void {
     const data = JSON.stringify(message);
     for (const player of this.players.values()) sendEncoded(player.ws, data);
+  }
+
+  /** Positions are superseded every tick, so a backlogged driver skips them. */
+  broadcastSnapshot(now: number): void {
+    const message: ServerMessage = { type: "snapshot", t: now, players: this.snapshot() };
+    const data = JSON.stringify(message);
+    for (const player of this.players.values()) sendLatest(player.ws, data);
   }
 
   snapshot(): PlayerSnapshot[] {

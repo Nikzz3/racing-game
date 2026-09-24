@@ -180,6 +180,7 @@ export class RacingApp {
             message.track,
             pacer,
             this.lobby.selectedVariant,
+            this.lobby.steering,
             this.links,
           );
           this.view = game;

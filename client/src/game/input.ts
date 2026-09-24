@@ -19,7 +19,7 @@ const DRIVING_KEYS = new Set([
 ]);
 const STEER_CHANGE_PER_SECOND = 3;
 
-/** Combines held keyboard keys with the analog touch joystick. */
+/** Combines held keyboard keys with the on-screen touch pedals and steering controls. */
 export class Input {
   private readonly keys = new Set<string>();
   private smoothSteer = 0;
@@ -65,16 +65,20 @@ export class Input {
   }
 
   read(dt: number): CarInput {
-    const target = this.held("KeyA", "ArrowLeft") - this.held("KeyD", "ArrowRight");
+    // Every steering source (A/D, the touch slider or arrow buttons) sets one target, and the
+    // car's steer moves toward it at a fixed rate: keys and arrows don't snap to full lock,
+    // and a quick thumb flick on the slider eases in instead of jerking the car.
+    const touch = this.touch?.read();
+    const keys = this.held("KeyA", "ArrowLeft") - this.held("KeyD", "ArrowRight");
+    const target = Math.max(-1, Math.min(1, keys + (touch?.steer ?? 0)));
     const difference = target - this.smoothSteer;
     const step = STEER_CHANGE_PER_SECOND * Math.max(0, dt);
     this.smoothSteer =
       Math.abs(difference) <= step ? target : this.smoothSteer + Math.sign(difference) * step;
-    const touch = this.touch?.read();
     return {
       throttle: Math.max(this.held("KeyW", "ArrowUp"), touch?.throttle ?? 0),
       brake: Math.max(this.held("KeyS", "ArrowDown"), touch?.brake ?? 0),
-      steer: Math.max(-1, Math.min(1, this.smoothSteer + (touch?.steer ?? 0))),
+      steer: this.smoothSteer,
     };
   }
 

@@ -4,7 +4,7 @@ import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUnifo
 import { CAR_VARIANTS, type Variant } from "@racing/shared";
 import { createCarMesh, disposeCarMesh } from "../game/car";
 import { getModel } from "../game/models";
-import { CHEAP_RENDER } from "../game/scene";
+import { renderQuality } from "../game/quality";
 import { GarageCamera, garageBayX } from "./garage-camera";
 
 /** Persistent Blender workshop behind the lobby's car and circuit controls. */
@@ -50,17 +50,18 @@ export class GarageStage {
     private readonly host: HTMLElement,
     private readonly interactionHost: HTMLElement,
   ) {
-    // Same e2e trade as the race scene: under software WebGL the shadow pass and
-    // MSAA make every carousel step, and so every Playwright click, seconds long.
+    // The lobby only redraws while something moves, so it keeps MSAA on medium,
+    // where the race turns it off; software rendering still skips it and shadows.
+    const quality = renderQuality();
     this.renderer = new THREE.WebGLRenderer({
       alpha: true,
-      antialias: !CHEAP_RENDER,
+      antialias: quality.tier !== "low",
     });
-    this.renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, quality.maxPixelRatio, 1.5));
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
-    this.renderer.shadowMap.enabled = !CHEAP_RENDER;
+    this.renderer.shadowMap.enabled = quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
     canvas.className = "garage-stage-canvas";
@@ -76,7 +77,7 @@ export class GarageStage {
     environment.dispose();
     pmrem.dispose();
     this.light.position.set(-3, 6, 5);
-    this.light.castShadow = !CHEAP_RENDER;
+    this.light.castShadow = quality.shadows;
     this.light.shadow.mapSize.set(1024, 1024);
     Object.assign(this.light.shadow.camera, {
       left: -7,
@@ -150,13 +151,17 @@ export class GarageStage {
   }
 
   setActive(active: boolean): void {
-    if (!active) this.endDrag();
     this.active = active;
     cancelAnimationFrame(this.animation);
     this.animation = 0;
     if (active) {
       this.resize();
       this.schedule();
+    } else {
+      this.endDrag();
+      // The lobby is hidden behind a race or replay. Free the full-screen
+      // multisampled drawing buffer until resize() restores it on return.
+      if (!this.disposed) this.renderer.setSize(1, 1, false);
     }
   }
 

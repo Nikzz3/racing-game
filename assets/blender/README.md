@@ -5,6 +5,42 @@
 glTF Binary through File > Export > glTF 2.0. Export the active scene with collection
 hierarchy, including hidden objects, and exclude cameras and lights.
 
+After every export, run `npm run optimize:glb -w client` before committing the GLB. The
+script (`client/scripts/optimize-glb.mjs`) rewrites the file in place. Apart from the
+repair and the tree simplification below, the output renders the same as the export:
+
+- Known defects in this `.blend` are patched (the `REPAIRS` list in the script). The race
+  car's front-left rim, `car_race_Brushed alloy`, has been about 730,000 triangles of
+  spiky, corrupted geometry since the garage-lobby export. Its other three rims are the
+  clean 1,876-triangle part, and the script points the front-left rim at the rear-left
+  rim's mesh. That drops the race car from 778,430 triangles to 50,750. Each repair
+  applies only while its object is still that dense. To fix the defect in Blender, replace
+  that object's mesh data with the rear-left rim's mesh (`car_race_Brushed alloy.001`).
+  Then delete the repair from the script.
+- Any `nature:` model over 6,000 triangles is simplified to about 3,000 with
+  meshoptimizer. The race scatters 220 trees, drawn in both the color and shadow passes,
+  and `tree_default`, `tree_detailed`, and `tree_oak` were 12,684 triangles each; the two
+  pines are about 3,700 and stay as exported. The trees keep their silhouettes and flat
+  shading, but the canopies lose their small raised leaf clusters. The preview dioramas
+  share the oak's meshes, so their trees are simplified too. The simplified models are far
+  below the threshold, so a second run leaves them alone.
+- The 16-bit normal-map PNGs become 8-bit PNGs. Browsers decode textures to 8 bits per
+  channel before WebGL upload, so what reaches the GPU stays the same. Other PNGs are
+  recompressed losslessly, and JPEGs are not touched.
+- UV sets on surfaces whose material has no texture are dropped, because nothing reads
+  them. Vertex colors and normals stay.
+- Identical vertex buffers, index buffers, meshes, and images are stored once. Materials
+  keep their names, because the game looks some of them up by name.
+- Geometry is compressed with `EXT_meshopt_compression` in lossless mode (no quantization
+  and no filters). Decoded positions, normals, UVs, and indices come out bit-identical;
+  the only change is that meshopt may rotate the vertex order inside a triangle, which
+  keeps its winding. `client/src/game/models.ts` registers three's `MeshoptDecoder`.
+
+The script can be run again safely: a second run produces a byte-identical file. It warns
+about any mesh with more than 100,000 vertices, which usually means a modifier was
+applied or left at too high a level in Blender. Pass input and output paths to write
+somewhere else: `npm run optimize:glb -w client -- in.glb out.glb`.
+
 Use View > Local View > Toggle Local View to return from an isolated asset to the
 complete workshop.
 

@@ -10,6 +10,11 @@ function makeParent(): HTMLElement {
   return el;
 }
 
+/** A circuit-map marker's position, in the circuit units the HUD hands to CSS. */
+function position(dot: HTMLElement): string[] {
+  return [dot.style.getPropertyValue("--x"), dot.style.getPropertyValue("--z")];
+}
+
 describe("Hud pacer chip", () => {
   let parent: HTMLElement;
   let hud: Hud;
@@ -78,10 +83,32 @@ describe("Hud circuit map", () => {
   afterEach(() => parent.remove());
 
   const remoteDots = () =>
-    [...parent.querySelectorAll<SVGCircleElement>(".hud-map-remote")].map((dot) => [
-      dot.getAttribute("cx"),
-      dot.getAttribute("cy"),
-    ]);
+    [...parent.querySelectorAll<HTMLElement>(".hud-map-remote")].map(position);
+  const driver = () => parent.querySelector<HTMLElement>(".hud-map-driver")!;
+
+  it("starts the local driver on the first track sample", () => {
+    const start = TRACKS[0].samples[0];
+    expect(position(driver())).toEqual([String(Math.round(start.x)), String(Math.round(start.z))]);
+  });
+
+  it("moves the local driver in whole circuit units, writing only on change", () => {
+    hud.setPosition(12.4, -7.6);
+    expect(position(driver())).toEqual(["12", "-8"]);
+    const writes = vi.spyOn(driver().style, "setProperty");
+    hud.setPosition(11.6, -8.4);
+    expect(writes).not.toHaveBeenCalled();
+    hud.setPosition(11.6, -9);
+    expect(writes).toHaveBeenCalledOnce();
+    expect(position(driver())).toEqual(["12", "-9"]);
+  });
+
+  it("keeps the track outline out of the per-frame markers", () => {
+    const svg = parent.querySelector(".hud-map svg")!;
+    const before = svg.innerHTML;
+    hud.setPosition(40, 50);
+    hud.setRemotePositions([{ id: "p1", x: 10, z: -20 }]);
+    expect(svg.innerHTML).toBe(before);
+  });
 
   it("draws one marker per other driver behind the local driver", () => {
     hud.setRemotePositions([
@@ -89,12 +116,11 @@ describe("Hud circuit map", () => {
       { id: "p2", x: 30.25, z: 40 },
     ]);
     expect(remoteDots()).toEqual([
-      ["10.0", "-20.0"],
-      ["30.3", "40.0"],
+      ["10", "-20"],
+      ["30", "40"],
     ]);
-    const svg = parent.querySelector(".hud-map svg")!;
-    const order = [...svg.querySelectorAll("circle")].map((c) => c.className.baseVal);
-    expect(order.at(-1)).toBe("hud-map-driver");
+    const markers = [...parent.querySelectorAll(".hud-map-dot")];
+    expect(markers.at(-1)).toBe(driver());
   });
 
   it("moves an existing marker instead of recreating it", () => {
@@ -102,7 +128,7 @@ describe("Hud circuit map", () => {
     const before = parent.querySelector(".hud-map-remote");
     hud.setRemotePositions([{ id: "p1", x: 5, z: 6 }]);
     expect(parent.querySelector(".hud-map-remote")).toBe(before);
-    expect(remoteDots()).toEqual([["5.0", "6.0"]]);
+    expect(remoteDots()).toEqual([["5", "6"]]);
   });
 
   it("removes the marker of a driver who left", () => {
@@ -111,11 +137,80 @@ describe("Hud circuit map", () => {
       { id: "p2", x: 1, z: 1 },
     ]);
     hud.setRemotePositions([{ id: "p2", x: 1, z: 1 }]);
-    expect(remoteDots()).toEqual([["1.0", "1.0"]]);
+    expect(remoteDots()).toEqual([["1", "1"]]);
   });
 
   it("is a no-op without a track", () => {
     const bare = new Hud(makeParent(), "Bare", vi.fn(), 3);
     expect(() => bare.setRemotePositions([{ id: "p1", x: 0, z: 0 }])).not.toThrow();
+    expect(() => bare.setPosition(0, 0)).not.toThrow();
+  });
+});
+
+describe("Hud checkpoint bar", () => {
+  it("scales the fill to the share of gates collected, writing only on change", () => {
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 4);
+    const fill = parent.querySelector<HTMLElement>(".hud-checkpoint-bar i")!;
+    const player = {
+      id: "me",
+      name: "Me",
+      x: 0,
+      y: 0,
+      z: 0,
+      rot: 0,
+      speed: 0,
+      laps: 0,
+      lastLapMs: null,
+      bestLapMs: null,
+      lapStartT: 0,
+      nextCheckpoint: 1,
+      spawns: 0,
+    };
+    hud.setMyProgress(player);
+    expect(fill.style.transform).toBe("scaleX(0.25)");
+    const writes = vi.spyOn(fill.style, "transform", "set");
+    hud.setMyProgress(player);
+    expect(writes).not.toHaveBeenCalled();
+    hud.setMyProgress({ ...player, nextCheckpoint: 3 });
+    expect(fill.style.transform).toBe("scaleX(0.75)");
+    parent.remove();
+  });
+});
+
+describe("Hud lap timer", () => {
+  let parent: HTMLElement;
+  let hud: Hud;
+  let lap: HTMLElement;
+
+  beforeEach(() => {
+    parent = makeParent();
+    hud = new Hud(parent, "Test Room", vi.fn(), 3);
+    lap = parent.querySelector<HTMLElement>(".hud-cur-lap")!;
+  });
+  afterEach(() => parent.remove());
+
+  it("redraws a running lap at most every 50ms", () => {
+    hud.setCurrentLap(1_000);
+    expect(lap.textContent).toBe("0:01.000");
+    hud.setCurrentLap(1_016);
+    hud.setCurrentLap(1_049);
+    expect(lap.textContent).toBe("0:01.000");
+    hud.setCurrentLap(1_050);
+    expect(lap.textContent).toBe("0:01.050");
+    hud.setCurrentLap(1_067);
+    expect(lap.textContent).toBe("0:01.050");
+    hud.setCurrentLap(1_117);
+    expect(lap.textContent).toBe("0:01.117");
+  });
+
+  it("shows a restarted or cleared clock at once", () => {
+    hud.setCurrentLap(61_234);
+    hud.setCurrentLap(12);
+    expect(lap.textContent).toBe("0:00.012");
+    hud.setCurrentLap(null);
+    expect(lap.textContent).toBe("--:--.---");
+    hud.setCurrentLap(20);
+    expect(lap.textContent).toBe("0:00.020");
   });
 });

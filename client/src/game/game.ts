@@ -20,7 +20,7 @@ import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import { Input, type CarInput } from "./input";
-import { TouchControls } from "./touch";
+import { TouchControls, type SteeringMode } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
@@ -33,16 +33,32 @@ import {
   type SceneBundle,
 } from "./scene";
 import { buildTrack } from "./trackMesh";
+import { AdaptiveResolution, CHEAP_RENDER, downgradeQuality, renderQuality } from "./quality";
 import { checkpointMissed } from "./checkpoint-miss";
 import { E2eSeam } from "./e2e-seam";
 import { autopilotInput } from "./harness";
 
 const SEND_MS = 50;
+/** Start anyway if the driver never reports the shaders ready, e.g. after a context loss. */
+const PRECOMPILE_LIMIT_MS = 5000;
 const IDLE: CarInput = { throttle: 0, brake: 0, steer: 0 };
 
 declare global {
   interface Window {
     __autopilot?: (enabled: boolean) => void;
+  }
+}
+
+/** A hidden remote car with a name tag, whose materials the first opponent will need. */
+function compileTemplate(variant?: Variant): THREE.Group | null {
+  try {
+    const template = createCarMesh("compile", "compile", variant);
+    template.visible = false;
+    return template;
+  } catch (error) {
+    // The first opponent's shaders then link when it arrives.
+    console.warn("Remote car shaders could not precompile", error);
+    return null;
   }
 }
 
@@ -59,6 +75,8 @@ export class Game {
   private readonly checkpoints: number[];
   private readonly sendTimer: ReturnType<typeof setInterval>;
   private seam: E2eSeam | null = null;
+  private readonly started: Promise<void>;
+  private readonly resolution: AdaptiveResolution | null;
   private pacer: PacerOverlay | null = null;
   private pacerTimes: (number | null)[] = [];
   private nextCheckpoint = 0;
@@ -84,6 +102,7 @@ export class Game {
     trackSlug = DEFAULT_TRACK_SLUG,
     armedPacer?: ArmedPacer | null,
     private readonly variant?: Variant,
+    steering?: SteeringMode,
     private readonly links: DirectLinks | null = null,
   ) {
     this.track = resolveTrack(trackSlug);
@@ -107,7 +126,7 @@ export class Game {
       () => this.respawn(),
       this.track,
     );
-    this.touch = new TouchControls(parent);
+    this.touch = new TouchControls(parent, steering);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
     this.input.attach();
@@ -126,7 +145,53 @@ export class Game {
     window.__autopilot = (enabled) => {
       this.autopilot = enabled;
     };
+    // Software WebGL under e2e is always slow, and its tier is already the cheapest.
+    this.resolution = CHEAP_RENDER
+      ? null
+      : new AdaptiveResolution(this.bundle.renderer.getPixelRatio(), renderQuality().minPixelRatio);
+    this.started = this.start();
+  }
+  /**
+   * Link every shader, and draw once, before the first frame instead of stalling
+   * the first frames of the race. The scene already holds the (hidden) Pacer; the
+   * remote-car template covers the first opponent's materials and name tag, and
+   * the draw links the shadow pass's depth shaders, which compiling skips.
+   */
+  private async start(): Promise<void> {
+    const { renderer, scene, camera } = this.bundle;
+    const template = compileTemplate(this.variant);
+    if (template) scene.add(template);
+    try {
+      renderer.compile(scene, camera);
+      // Without parallel compilation the draw below links them just as synchronously.
+      if (renderer.extensions.has("KHR_parallel_shader_compile")) await this.shadersLinked();
+      if (!this.disposed) {
+        updateSun(this.bundle.sun, this.car.x, this.car.z);
+        renderer.render(scene, camera);
+      }
+    } catch (error) {
+      console.warn("Shaders could not precompile", error);
+    }
+    // Removed but not disposed: disposing would release the programs it just linked.
+    if (template) scene.remove(template);
+    if (this.disposed) return;
+    this.restartFrameClock();
     this.animation = requestAnimationFrame(this.frame);
+  }
+  /**
+   * Poll the driver's parallel link, not compileAsync(), whose poller outlives a race
+   * left early and then reads the disposed renderer.
+   */
+  private async shadersLinked(): Promise<void> {
+    // three types info.programs without the readiness check its programs carry.
+    const programs = (this.bundle.renderer.info.programs ?? []) as unknown as {
+      isReady(): boolean;
+    }[];
+    const deadline = performance.now() + PRECOMPILE_LIMIT_MS;
+    while (!this.disposed && performance.now() < deadline) {
+      if (programs.every((program) => program.isReady())) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
   private resize = (): void => {
     const width = this.container.clientWidth,
@@ -171,9 +236,15 @@ export class Game {
     this.hud.hidePacerChip();
   }
   receiveReplayFrames(frames: ReplayFrame[], variant?: Variant): void {
-    if (!this.pacer) return;
-    this.pacer.setFrames(frames, variant);
-    this.pacerTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
+    // A recorded Variant rebuilds the Pacer, disposing materials the precompile may
+    // still be waiting on, so the frames wait for it; the race has not started yet.
+    void this.started.then(() => {
+      if (!this.pacer || this.disposed) return;
+      this.pacer.setFrames(frames, variant);
+      this.pacerTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
+      // Link a rebuilt Pacer now, not when it first appears mid-lap.
+      this.bundle.renderer.compile(this.pacer.model, this.bundle.camera, this.bundle.scene);
+    });
   }
   onMessage(message: ServerMessage): void {
     if (message.type === "snapshot") {
@@ -235,6 +306,7 @@ export class Game {
   }
   private frame = (now: number): void => {
     if (this.disposed) return;
+    this.adaptResolution(now);
     const elapsed = Math.max(0, (now - this.previous) / 1000);
     this.previous = now;
     let dt = Math.min(elapsed, 0.05),
@@ -285,6 +357,11 @@ export class Game {
     if (!injecting) this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animation = requestAnimationFrame(this.frame);
   };
+  private adaptResolution(now: number): void {
+    const step = this.resolution?.frame(now) ?? null;
+    if (step === "downgrade") downgradeQuality();
+    else if (step !== null) this.bundle.renderer.setPixelRatio(step);
+  }
   private installSeam(): void {
     if (!import.meta.env.VITE_E2E) return;
     this.seam = new E2eSeam(

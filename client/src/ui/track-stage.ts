@@ -1,13 +1,15 @@
 import * as THREE from "three";
 import type { TrackSlug } from "@racing/shared";
 import { getModel } from "../game/models";
-import { CHEAP_RENDER } from "../game/scene";
+import { renderQuality } from "../game/quality";
 
 /** Displays the miniature circuit authored in Blender. Cached geometry stays shared. */
 export class TrackStage {
+  private readonly quality = renderQuality();
+  // Like the garage, the circuit only redraws while it slides in, so it keeps MSAA on medium.
   private readonly renderer = new THREE.WebGLRenderer({
     alpha: true,
-    antialias: !CHEAP_RENDER,
+    antialias: this.quality.tier !== "low",
   });
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
@@ -23,11 +25,11 @@ export class TrackStage {
   private direction = 1;
 
   constructor(private readonly host: HTMLElement) {
-    this.renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.quality.maxPixelRatio, 1.5));
     this.renderer.setClearColor(0, 0);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = !CHEAP_RENDER;
+    this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
     canvas.setAttribute("aria-hidden", "true");
@@ -36,7 +38,7 @@ export class TrackStage {
     this.camera.position.set(0, 7.5, 9.5);
     this.camera.lookAt(0, 0, 0);
     this.light.position.set(-3, 8, 4);
-    this.light.castShadow = !CHEAP_RENDER;
+    this.light.castShadow = this.quality.shadows;
     this.light.shadow.mapSize.set(1024, 1024);
     this.light.shadow.normalBias = 0.04;
     Object.assign(this.light.shadow.camera, {
@@ -82,6 +84,16 @@ export class TrackStage {
     cancelAnimationFrame(this.animation);
     this.animation = 0;
     if (active) this.resize();
+  }
+
+  /**
+   * Deactivates and frees the drawing buffer while the lobby is hidden. Leaving the
+   * circuit screen only deactivates, since the canvas stays visible as it slides out.
+   * `setActive(true)` restores the buffer.
+   */
+  release(): void {
+    this.setActive(false);
+    if (!this.disposed) this.renderer.setSize(1, 1, false);
   }
 
   private resize = (): void => {

@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { nearestCenterline, ROAD_HALF_WIDTH, type TrackSample } from "@racing/shared";
 import { disposeMaterials } from "./car";
-import { getMaterial, getModel, instancedFromModel } from "./models";
+import { getMaterial, getModel, instancedFromModel, setTextureAnisotropy } from "./models";
+import { renderQuality } from "./quality";
 
 export interface SceneBundle {
   scene: THREE.Scene;
@@ -12,10 +13,6 @@ export interface SceneBundle {
 // A low sun casts tree silhouettes across the verge and lights the starting straight.
 const SUN = new THREE.Vector3(150, 30, -65);
 const HORIZON = 0xe4ad80;
-// The e2e suite renders under software WebGL, where the shadow pass and MSAA
-// dominate frame time and the seam's per-frame step cap turns slow frames into
-// slow laps (docs/agents/e2e-testing.md). Nothing in the suite asserts on either.
-export const CHEAP_RENDER = Boolean(import.meta.env.VITE_E2E);
 const FOLLOW_DISTANCE = 10;
 const EYE_HEIGHT = 4.6;
 const look = new THREE.Vector3();
@@ -32,13 +29,14 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
     0.1,
     1500,
   );
+  const quality = renderQuality();
   const renderer = new THREE.WebGLRenderer({
-    antialias: !CHEAP_RENDER,
+    antialias: quality.antialias,
     powerPreference: "high-performance",
   });
-  renderer.setPixelRatio(CHEAP_RENDER ? 1 : Math.min(devicePixelRatio, 1.75));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, quality.maxPixelRatio));
   renderer.setSize(container.clientWidth, container.clientHeight);
-  renderer.shadowMap.enabled = !CHEAP_RENDER;
+  renderer.shadowMap.enabled = quality.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
@@ -46,7 +44,7 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   scene.add(new THREE.HemisphereLight(0xbcc8e2, 0x745038, 1.25));
   const sun = new THREE.DirectionalLight(0xffb45f, 3.8);
   sun.position.copy(SUN);
-  sun.castShadow = !CHEAP_RENDER;
+  sun.castShadow = quality.shadows;
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, {
     left: -65,
@@ -66,6 +64,8 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   for (let index = 0; index < positions.count; index++) {
     uv.setXY(index, positions.getX(index) / 4, positions.getY(index) / 4);
   }
+  // Textures upload per context, so a new race picks up a lowered tier's filtering.
+  setTextureAnisotropy(quality.anisotropy);
   const groundMaterial =
     getMaterial("leafy_grass")?.clone() ??
     new THREE.MeshStandardMaterial({ color: 0x73834d, roughness: 1 });
@@ -76,7 +76,24 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   ground.userData.owned = true;
   scene.add(ground);
   scatterEnvironment(scene, samples);
+  // Everything added so far stays put; only the sun and its target follow the car.
+  // The root never moves either, so it stops re-forcing every descendant's update.
+  for (const child of scene.children)
+    if (child !== sun && child !== sun.target) freezeStatic(child);
+  scene.matrixAutoUpdate = false;
   return { scene, camera, renderer, sun };
+}
+
+/**
+ * Bake the transforms of scenery that never moves again. Three otherwise
+ * recomposes every object's matrix each frame, and the scattered nature alone
+ * is hundreds of instanced batches. Call once the subtree is fully placed.
+ */
+export function freezeStatic(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  root.traverse((part) => {
+    part.matrixAutoUpdate = false;
+  });
 }
 
 function createSunsetSky(): THREE.Mesh {

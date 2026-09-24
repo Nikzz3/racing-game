@@ -9,6 +9,26 @@ interface MovingParts {
   fronts: THREE.Object3D[];
   radius: number;
 }
+interface BodyFit {
+  scale: number;
+  lift: number;
+}
+// Exact bounds visit every vertex, which takes milliseconds per car and far
+// longer for the densest models. Library models never change, so fit each once
+// instead of stalling a frame whenever a car spawns mid-race.
+const bodyFits = new WeakMap<THREE.Object3D, BodyFit>();
+/** `body` is a fresh, unscaled clone of `source`, measured on the first call only. */
+function bodyFit(source: THREE.Object3D, body: THREE.Object3D): BodyFit {
+  let fit = bodyFits.get(source);
+  if (!fit) {
+    const bounds = new THREE.Box3().setFromObject(body, true);
+    const scale = 4.2 / Math.max(0.01, bounds.max.z - bounds.min.z);
+    fit = { scale, lift: -bounds.min.y * scale };
+    bodyFits.set(source, fit);
+  }
+  return fit;
+}
+
 export function resolveVariant(id: string, variant?: Variant): Variant {
   return variant ?? CAR_VARIANTS[hashString(id) % CAR_VARIANTS.length];
 }
@@ -18,10 +38,9 @@ export function createCarMesh(id: string, name?: string, variant?: Variant): THR
   const source = getModel(`car:${resolveVariant(id, variant)}`);
   if (source) {
     const body = source.clone(true);
-    const bounds = new THREE.Box3().setFromObject(body, true);
-    const scale = 4.2 / Math.max(0.01, bounds.max.z - bounds.min.z);
+    const { scale, lift } = bodyFit(source, body);
     body.scale.setScalar(scale);
-    body.position.y = -bounds.min.y * scale;
+    body.position.y = lift;
     const wheels: THREE.Object3D[] = [];
     body.traverse((part) => {
       if (part instanceof THREE.Mesh) {
