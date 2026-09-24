@@ -178,6 +178,26 @@ describe("DirectLinks", { timeout: 20_000 }, () => {
     }, LINKED);
   });
 
+  it("stays on the relay, without throwing, when the ICE config cannot build a connection", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const build = vi.fn(() => {
+      throw new TypeError("Invalid ICE server URL");
+    });
+    const signals: PeerSignal[] = [];
+    const links = new DirectLinks("b", [], (_, signal) => signals.push(signal), build);
+    open.push(links);
+    // A snapshot must still reach the race view: setMembers cannot throw.
+    expect(() => links.setMembers([member("a"), member("b"), member("c")])).not.toThrow();
+    await links.receiveSignal("a", { kind: "description", type: "offer", sdp: "v=0" });
+    links.setMembers([member("a"), member("b"), member("c")]);
+    expect(links.states()).toEqual({});
+    expect(signals).toEqual([]);
+    // The config is bad for every peer, so it is tried once, not on every snapshot.
+    expect(build).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
   it("ignores an offer from a driver whose id says it should answer", async () => {
     const { drivers, signals } = track(room(["a", "b"], false));
     await drivers.get("a")!.receiveSignal("b", { kind: "description", type: "offer", sdp: "v=0" });

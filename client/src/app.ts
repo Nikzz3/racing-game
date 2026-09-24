@@ -202,8 +202,9 @@ export class RacingApp {
         return;
       }
       default:
-        if (message.type === "snapshot") this.links?.setMembers(message.players);
+        // The race view first: Direct Links are an extra, never a reason to miss a snapshot.
         if (this.view instanceof Game) this.view.onMessage(message);
+        if (message.type === "snapshot") this.links?.setMembers(message.players);
     }
   }
   private async openReplay(

@@ -89,6 +89,8 @@ export class DirectLinks {
   private readonly links = new Map<string, Link>();
   private readonly listeners = new Set<(id: string, pose: DirectPose) => void>();
   private disposed = false;
+  /** Building a peer connection threw: the ICE config is unusable for every peer. */
+  private unusable = false;
 
   constructor(
     private readonly myId: string,
@@ -105,7 +107,7 @@ export class DirectLinks {
 
   /** Follow the Room's membership: link to new capable drivers, drop departed ones. */
   setMembers(players: PlayerSnapshot[]): void {
-    if (this.disposed) return;
+    if (this.disposed || this.unusable) return;
     const members = new Set(
       players.filter((player) => player.id !== this.myId && player.direct).map(({ id }) => id),
     );
@@ -116,7 +118,7 @@ export class DirectLinks {
   }
 
   async receiveSignal(from: string, signal: PeerSignal): Promise<void> {
-    if (this.disposed || from === this.myId) return;
+    if (this.disposed || this.unusable || from === this.myId) return;
     let link = this.links.get(from);
     try {
       if (signal.kind === "candidate") {
@@ -135,7 +137,8 @@ export class DirectLinks {
         if (this.myId < from) return;
         if (link) this.close(from);
         if (this.links.size >= MAX_LINKS) return;
-        link = this.open(from);
+        link = this.open(from) ?? undefined;
+        if (!link) return;
         await this.accept(link, { type: "offer", sdp: signal.sdp });
         const answer = await link.pc.createAnswer();
         await link.pc.setLocalDescription(answer);
@@ -179,14 +182,28 @@ export class DirectLinks {
     this.listeners.clear();
   }
 
-  private open(id: string, attempt = 1): Link {
-    const pc = this.createPeerConnection({ iceServers: this.iceServers });
-    const channel = pc.createDataChannel("poses", {
-      negotiated: true,
-      id: 0,
-      ordered: false,
-      maxRetransmits: 0,
-    });
+  /**
+   * Start a link, or null when a peer connection cannot be built at all. That
+   * throws synchronously (a malformed ICE server, say) and would do so for every
+   * peer, so Direct Links stand down and every pair stays on the relay.
+   */
+  private open(id: string, attempt = 1): Link | null {
+    let pc: RTCPeerConnection | undefined;
+    let channel: RTCDataChannel;
+    try {
+      pc = this.createPeerConnection({ iceServers: this.iceServers });
+      channel = pc.createDataChannel("poses", {
+        negotiated: true,
+        id: 0,
+        ordered: false,
+        maxRetransmits: 0,
+      });
+    } catch (error) {
+      console.warn("Direct Links unavailable; using the relay", error);
+      pc?.close();
+      this.unusable = true;
+      return null;
+    }
     channel.binaryType = "arraybuffer";
     const link: Link = {
       pc,
@@ -226,7 +243,8 @@ export class DirectLinks {
     return link;
   }
 
-  private async offer(id: string, link: Link): Promise<void> {
+  private async offer(id: string, link: Link | null): Promise<void> {
+    if (!link) return;
     try {
       const offer = await link.pc.createOffer();
       await link.pc.setLocalDescription(offer);

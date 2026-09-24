@@ -7,6 +7,8 @@ export const DEFAULT_ICE_SERVERS: IceServer[] = [
 ];
 
 const isString = (value: unknown): value is string => typeof value === "string";
+/** Schemes RTCPeerConnection accepts; anything else makes its constructor throw. */
+const ICE_URL = /^(stuns?|turns?):/;
 
 /**
  * Read the ICE servers handed to clients for Direct Links from the `ICE_SERVERS`
@@ -20,10 +22,16 @@ export function parseIceServers(raw: string | undefined): IceServer[] {
     if (!Array.isArray(value)) throw new TypeError("not an array");
     return value.map((entry: unknown) => {
       const { urls, username, credential } = (entry ?? {}) as Record<string, unknown>;
-      if (!(isString(urls) || (Array.isArray(urls) && urls.every(isString))))
-        throw new TypeError("urls must be a string or string array");
+      const list: unknown[] = Array.isArray(urls) ? urls : [urls];
+      if (list.length === 0 || !list.every((url) => isString(url) && ICE_URL.test(url)))
+        throw new TypeError("urls must be one or more stun:, stuns:, turn: or turns: URLs");
+      if (
+        list.some((url) => (url as string).startsWith("turn")) &&
+        !(isString(username) && isString(credential))
+      )
+        throw new TypeError("a TURN server needs a username and credential");
       return {
-        urls,
+        urls: urls as string | string[],
         ...(isString(username) && { username }),
         ...(isString(credential) && { credential }),
       };

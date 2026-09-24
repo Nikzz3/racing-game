@@ -14,9 +14,17 @@ describe("parseIceServers", () => {
 
   it("falls back to the default rather than handing clients a malformed list", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (const raw of ["not json", "{}", '[{"urls":5}]', "[null]"])
+    for (const raw of [
+      "not json",
+      "{}",
+      '[{"urls":5}]',
+      "[null]",
+      '[{"urls":[]}]',
+      '[{"urls":"https://turn.example.test"}]',
+      '[{"urls":["stun:ok.example.test","turn:turn.example.test"]}]',
+    ])
       expect(parseIceServers(raw)).toBe(DEFAULT_ICE_SERVERS);
-    expect(error).toHaveBeenCalledTimes(4);
+    expect(error).toHaveBeenCalledTimes(7);
     error.mockRestore();
   });
 });
