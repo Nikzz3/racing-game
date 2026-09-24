@@ -42,6 +42,12 @@ export const INTERPOLATION_DELAY_MS = 150;
 const SAMPLE_LIMIT = 30;
 /** Floor on the span a remote car's motion is judged over: states can land a few ms, or one tick, apart. */
 const MIN_SOLID_SPAN_MS = 50;
+/**
+ * Ceiling on it: an honest sender's next state is at most two ticks behind its
+ * last, so a longer gap is silence (a pause, a stall, a hostile client waiting
+ * to land a far hop), not time the car spent driving.
+ */
+const MAX_SOLID_SPAN_MS = 100;
 /** Headroom over the Room's top speed before a remote car's motion reads as a teleport; two sends can share a tick. */
 const SOLID_SPEED_TOLERANCE = 2.5;
 /** How far past its newest state a car is extrapolated, as a fraction of the last span. */
@@ -101,8 +107,12 @@ export class RemotePlayers {
       const after = samples[index];
       const span = after.t - before.t;
       // Judged over no longer than the server saw pass between the two states,
-      // so a sender cannot stretch its timestamps to pass off a teleport as motion.
-      const judged = Math.max(Math.min(span, after.seen - before.seen), MIN_SOLID_SPAN_MS);
+      // so a sender cannot stretch its timestamps to pass off a teleport as
+      // motion, and never over more than two ticks of silence.
+      const judged = Math.min(
+        Math.max(Math.min(span, after.seen - before.seen), MIN_SOLID_SPAN_MS),
+        MAX_SOLID_SPAN_MS,
+      );
       const maxHop = (this.topSpeed * SOLID_SPEED_TOLERANCE * judged) / 1000;
       car.solid =
         before !== after &&

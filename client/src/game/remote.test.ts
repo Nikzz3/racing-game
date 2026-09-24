@@ -496,4 +496,20 @@ describe("RemotePlayers obstacles", () => {
     drawAt(rp, 100);
     expect(rp.obstacles()).toEqual([]);
   });
+
+  it("passes through a car that reappears far away after its sender went quiet", () => {
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation(() => new THREE.Group());
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    // Parked, then two silent seconds in which every tick repeats the last state:
+    // the repeats fold into one sample, but the silence is no time a car drove.
+    for (let t = 0; t <= 1000; t += 50) rp.onSnapshot([{ ...makeSnapshot("a"), t }], t);
+    for (let t = 1050; t < 3000; t += 50) rp.onSnapshot([{ ...makeSnapshot("a"), t: 1000 }], t);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 400, t: 3000 }], 3000);
+    for (const t of [2990, 3007]) {
+      drawAt(rp, t);
+      expect(rp.obstacles()).toEqual([]);
+    }
+  });
 });
