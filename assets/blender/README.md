@@ -7,7 +7,7 @@ hierarchy, including hidden objects, and exclude cameras and lights.
 
 After every export, run `npm run optimize:glb -w client` before committing the GLB. The
 script (`client/scripts/optimize-glb.mjs`) rewrites the file in place. Apart from the
-repair below, the output renders the same as the export:
+repair and the tree simplification below, the output renders the same as the export:
 
 - Known defects in this `.blend` are patched (the `REPAIRS` list in the script). The race
   car's front-left rim, `car_race_Brushed alloy`, has been about 730,000 triangles of
@@ -17,6 +17,13 @@ repair below, the output renders the same as the export:
   applies only while its object is still that dense. To fix the defect in Blender, replace
   that object's mesh data with the rear-left rim's mesh (`car_race_Brushed alloy.001`).
   Then delete the repair from the script.
+- Any `nature:` model over 6,000 triangles is simplified to about 3,000 with
+  meshoptimizer. The race scatters 220 trees, drawn in both the color and shadow passes,
+  and `tree_default`, `tree_detailed`, and `tree_oak` were 12,684 triangles each; the two
+  pines are about 3,700 and stay as exported. The trees keep their silhouettes and flat
+  shading, but the canopies lose their small raised leaf clusters. The preview dioramas
+  share the oak's meshes, so their trees are simplified too. The simplified models are far
+  below the threshold, so a second run leaves them alone.
 - The 16-bit normal-map PNGs become 8-bit PNGs. Browsers decode textures to 8 bits per
   channel before WebGL upload, so what reaches the GPU stays the same. Other PNGs are
   recompressed losslessly, and JPEGs are not touched.
