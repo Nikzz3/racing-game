@@ -1774,6 +1774,9 @@ a {
   color: #dad6d0;
   margin-bottom: 3px;
 }
+/* The HUD sits in one full-screen layer over the WebGL canvas. Anything that
+   changes while driving gets its own small layer, so a new digit re-rasters just
+   that layer (with a lighter shadow blur), not the HUD layer and its gradient. */
 .hud-cur-lap {
   font:
     48px/1.1 "Barlow Condensed",
@@ -1781,6 +1784,8 @@ a {
     sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+  text-shadow: 0 2px 4px #0009;
+  will-change: transform;
 }
 .hud-lap-small {
   display: flex;
@@ -1846,7 +1851,8 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 3px 12px #0006);
+  contain: strict;
+  will-change: transform;
 }
 .speed-dial {
   position: absolute;
@@ -1855,6 +1861,11 @@ a {
   height: 100%;
   fill: none;
   stroke-width: 4;
+}
+.speed-dial-shadow {
+  stroke: #0003;
+  stroke-width: 10;
+  transform: translateY(3px);
 }
 .speed-dial-track {
   stroke: #fff4;
@@ -1871,6 +1882,7 @@ a {
     sans-serif;
   font-variant-numeric: tabular-nums;
   margin: 10px 8px 0 0;
+  text-shadow: 0 3px 5px #000a;
 }
 .speed-unit {
   font: 10px var(--mono);
@@ -1879,17 +1891,26 @@ a {
   color: #ffdbb3;
 }
 .hud-map {
+  --map-h: 170px;
+  /* One circuit unit: the map's viewBox is 500 units tall. */
+  --map-unit: calc(var(--map-h) / 500);
   position: absolute;
   left: 35px;
   bottom: 70px;
   width: 190px;
   text-align: center;
 }
+.hud-map-plot {
+  position: relative;
+  width: calc(530 * var(--map-unit));
+  height: var(--map-h);
+  margin: 0 auto;
+}
 .hud-map svg {
+  display: block;
   width: 100%;
-  height: 170px;
+  height: 100%;
   overflow: visible;
-  filter: drop-shadow(0 2px 5px #0009);
 }
 .hud-map path {
   fill: none;
@@ -1897,14 +1918,34 @@ a {
   stroke-width: 7;
   stroke-linejoin: round;
 }
-.hud-map circle {
-  fill: #ffd098;
-  stroke: #1b1719;
-  stroke-width: 4;
+/* A pre-drawn shadow: a drop-shadow filter would re-blur the map on every repaint. */
+.hud-map .hud-map-shadow {
+  stroke: #0004;
+  stroke-width: 17;
+  transform: translateY(6px);
+}
+/* Markers move by transform on their own layers (see placeMapDot in hud.ts), so the
+   static track above is rasterized once. */
+.hud-map-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(24 * var(--map-unit));
+  aspect-ratio: 1;
+  border: calc(4 * var(--map-unit)) solid #1b1719;
+  border-radius: 50%;
+  background: #ffd098;
+  box-shadow: 0 1px 3px #0009;
+  transform: translate(
+    calc((var(--x, 0) + 265) * var(--map-unit) - 50%),
+    calc((var(--z, 0) + 250) * var(--map-unit) - 50%)
+  );
+  will-change: transform;
 }
 .hud-map .hud-map-remote {
-  fill: #9fd4ff;
-  stroke-width: 3;
+  width: calc(19 * var(--map-unit));
+  border-width: calc(3 * var(--map-unit));
+  background: #9fd4ff;
 }
 .hud-map span {
   display: block;
@@ -1912,7 +1953,7 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: #f5dcc1;
-  margin-top: 8px;
+  margin-top: 13px;
 }
 .hud-actions {
   position: absolute;
@@ -1925,7 +1966,8 @@ a {
 .hud-leave,
 .hud-respawn,
 .replay-exit {
-  background: #151720a6;
+  /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
+  background: #151720d9;
   border: 1px solid #ffffff2a;
   border-radius: 2px;
   padding: 10px 15px;
@@ -1933,7 +1975,6 @@ a {
   font: 10px var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  backdrop-filter: blur(10px);
 }
 .hud-leave:hover,
 .hud-respawn:hover,
@@ -2052,6 +2093,8 @@ a {
 .replay-time {
   font: 14px var(--mono);
   color: #eee0cf;
+  /* Ticks every frame: keep it off the full-screen overlay layer (see .hud-cur-lap). */
+  will-change: transform;
 }
 .replay-exit {
   margin-top: 20px;
@@ -2094,6 +2137,7 @@ a {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  will-change: transform;
 }
 .connect-error {
   position: fixed;
@@ -2190,12 +2234,10 @@ a {
     max-width: 70px;
   }
   .hud-map {
+    --map-h: 105px;
     width: 116px;
     left: 18px;
     bottom: 72px;
-  }
-  .hud-map svg {
-    height: 105px;
   }
   .hud-map span {
     font-size: 7px;
@@ -2278,11 +2320,9 @@ a {
     transform: translateX(-50%);
   }
   .hud-map {
+    --map-h: 90px;
     width: 100px;
     bottom: 55px;
-  }
-  .hud-map svg {
-    height: 90px;
   }
   .hud-speed {
     width: 120px;

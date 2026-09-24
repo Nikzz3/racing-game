@@ -31,9 +31,10 @@ beforeAll(async () => {
 
 describe("Blender asset integration", () => {
   it.each([
-    ["tree_default", 12684],
-    ["tree_detailed", 12684],
-    ["tree_oak", 12684],
+    // optimize-glb.mjs simplifies the three broadleaf trees from 12,684 triangles.
+    ["tree_default", 2992],
+    ["tree_detailed", 2994],
+    ["tree_oak", 2994],
     ["tree_pineDefaultA", 3788],
     ["tree_pineDefaultB", 3668],
   ] as const)(

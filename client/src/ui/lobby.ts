@@ -18,7 +18,7 @@ import {
 } from "@racing/shared";
 import { renderVariantThumbnails } from "./garage-thumbs";
 import { GarageStage } from "./garage-stage";
-import { CHEAP_RENDER } from "../game/scene";
+import { CHEAP_RENDER } from "../game/quality";
 import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import type { ConnectionState } from "../net";

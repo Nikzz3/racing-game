@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { Game } from "./game";
 import { Net } from "../net";
 
+const linking = vi.hoisted(() => ({ programs: [] as { isReady(): boolean }[] }));
 vi.mock("three", async (importOriginal) => {
   const actual = await importOriginal<typeof THREE>();
   return {
@@ -12,7 +13,17 @@ vi.mock("three", async (importOriginal) => {
       domElement = document.createElement("canvas");
       shadowMap = {};
       setPixelRatio() {}
+      getPixelRatio() {
+        return 1;
+      }
       setSize() {}
+      extensions = { has: () => true };
+      compile() {}
+      info = {
+        get programs() {
+          return linking.programs;
+        },
+      };
       render = vi.fn();
       forceContextLoss() {}
       dispose() {}
@@ -22,14 +33,17 @@ vi.mock("three", async (importOriginal) => {
 vi.mock("./trackMesh", () => ({ buildTrack() {} }));
 
 let now = 0;
-let frame: FrameRequestCallback;
+let frame: FrameRequestCallback | undefined;
 let game: Game;
 let carMesh: THREE.Group;
 
-beforeEach(() => {
+beforeEach(async () => {
   now = 0;
+  frame = undefined;
   vi.spyOn(performance, "now").mockImplementation(() => now);
   vi.spyOn(Math, "random").mockReturnValue(0.5);
+  // jsdom has no 2D canvas for the precompiled name tag; the race starts regardless.
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.stubGlobal("devicePixelRatio", 1);
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
     frame = callback;
@@ -40,8 +54,11 @@ beforeEach(() => {
   const add = vi.spyOn(THREE.Scene.prototype, "add");
   game = new Game(document.body, new Net(), "local", "Test room", () => {});
   carMesh = add.mock.calls.flat().find((object) => object instanceof THREE.Group)! as THREE.Group;
+  // The frame loop starts once the shaders are linked.
+  await vi.waitFor(() => expect(frame).toBeDefined());
 });
 afterEach(() => {
+  linking.programs = [];
   game?.dispose();
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -50,7 +67,7 @@ afterEach(() => {
 
 function tick(milliseconds: number): void {
   now += milliseconds;
-  frame(now);
+  frame!(now);
 }
 function throttle(): void {
   window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW" }));
@@ -106,5 +123,19 @@ describe("local car render cadence", () => {
     respawn();
     tick(1000 / 60);
     expect(carMesh.position.distanceTo(spawn)).toBeCloseTo(expectedDistance, 10);
+  });
+
+  it("stops waiting for the shader link once the race is left", async () => {
+    frame = undefined;
+    const isReady = vi.fn(() => false);
+    linking.programs = [{ isReady }];
+    const early = new Game(document.body, new Net(), "early", "Test room", () => {});
+    await vi.waitFor(() => expect(isReady).toHaveBeenCalled());
+    early.dispose();
+    const polls = isReady.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // A poll after dispose() would read the disposed renderer's programs.
+    expect(isReady).toHaveBeenCalledTimes(polls);
+    expect(frame).toBeUndefined();
   });
 });
