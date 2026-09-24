@@ -97,6 +97,7 @@ test.describe("touch controls", () => {
       [375, 667, "race-hud-portrait-375x667.png"],
       [844, 390, "race-hud-landscape-844x390.png"],
       [667, 375, "race-hud-landscape-667x375.png"],
+      [568, 320, "race-hud-landscape-568x320.png"],
     ] as const) {
       await page.setViewportSize({ width, height });
       await expectTouchHudFits(page);

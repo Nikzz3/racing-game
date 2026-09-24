@@ -115,6 +115,7 @@ function mountSetup(): Lobby {
 const track = (slug: string) => `button[data-track="${slug}"]`;
 const diff = (d: string) => `button[data-diff="${d}"]`;
 const boardDiff = (d: string) => `.board-diff-opt[data-board-diff="${d}"]`;
+const steering = (mode: string) => `.steering-opt[data-steering="${mode}"]`;
 const card = (variant: string) => `.garage-card[data-variant="${variant}"]`;
 
 beforeEach(() => {
@@ -755,6 +756,55 @@ describe("Lobby difficulty keyboard navigation", () => {
     press(hard, "ArrowDown");
     expect(document.activeElement).toBe(q(diff("easy")));
     expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe("Lobby steering preference", () => {
+  it("is a Steering radio group on Race Setup that defaults to the slider", () => {
+    mountSetup();
+    const group = q(".settings-screen .steering-picker");
+    expect(group.getAttribute("role")).toBe("radiogroup");
+    expect(group.getAttribute("aria-label")).toBe("Steering");
+    expect(q(steering("slider")).textContent).toBe("Slider");
+    expect(q(steering("buttons")).textContent).toBe("Buttons");
+    expect(checked(steering("slider"))).toBe("true");
+    expect(checked(steering("buttons"))).toBe("false");
+    expect(lobby.steering).toBe("slider");
+    expect(localStorage.getItem("racer-steering")).toBeNull();
+  });
+
+  it("choosing Buttons persists across a remount", () => {
+    mountSetup();
+    click(steering("buttons"));
+    expect(checked(steering("buttons"))).toBe("true");
+    expect(checked(steering("slider"))).toBe("false");
+    expect(lobby.steering).toBe("buttons");
+    expect(localStorage.getItem("racer-steering")).toBe("buttons");
+    parent.replaceChildren();
+    mount();
+    expect(lobby.steering).toBe("buttons");
+    expect(checked(steering("buttons"))).toBe("true");
+  });
+
+  it("falls back to the slider for an unknown saved value", () => {
+    localStorage.setItem("racer-steering", "joystick");
+    mount();
+    expect(lobby.steering).toBe("slider");
+    expect(checked(steering("slider"))).toBe("true");
+  });
+
+  it("moves with the arrow keys as one tab stop", () => {
+    mountSetup();
+    const slider = q(steering("slider"));
+    slider.focus();
+    expect(parent.querySelectorAll('.steering-opt[tabindex="0"]')).toHaveLength(1);
+    press(slider, "ArrowRight");
+    expect(document.activeElement).toBe(q(steering("buttons")));
+    expect(lobby.steering).toBe("buttons");
+    expect(localStorage.getItem("racer-steering")).toBe("buttons");
+    press(q(steering("buttons")), "ArrowRight");
+    expect(lobby.steering).toBe("slider");
+    expect(parent.querySelectorAll('.steering-opt[tabindex="0"]')).toHaveLength(1);
   });
 });
 

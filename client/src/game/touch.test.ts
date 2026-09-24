@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TouchControls } from "./touch";
+import { asSteeringMode, TouchControls } from "./touch";
 
 const NEUTRAL = { throttle: 0, brake: 0, steer: 0 };
 
@@ -47,7 +47,11 @@ function find(selector: string): HTMLElement {
 }
 
 function pointer(element: HTMLElement, type: string, id: number, x = 0): PointerEvent {
-  const event = new PointerEvent(type, { pointerId: id, clientX: x, cancelable: true });
+  const event = new PointerEvent(type, {
+    pointerId: id,
+    clientX: x,
+    cancelable: true,
+  });
   element.dispatchEvent(event);
   return event;
 }
@@ -55,6 +59,7 @@ function pointer(element: HTMLElement, type: string, id: number, x = 0): Pointer
 describe("touch driving controls", () => {
   it("renders the pedal buttons and steering slider", () => {
     const { gas, brake } = setup();
+    expect(document.querySelector(".touch-arrows")).toBeNull();
     expect([...document.querySelector(".touch-pedals")!.children]).toEqual([gas, brake]);
     expect(gas.getAttribute("aria-label")).toBe("Accelerate");
     expect(gas.textContent).toBe("GAS");
@@ -135,7 +140,10 @@ describe("touch driving controls", () => {
   it("suppresses the long-press context menu", () => {
     const { gas, knob } = setup();
     for (const element of [gas, knob]) {
-      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
       element.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(true);
     }
@@ -167,5 +175,93 @@ describe("touch driving controls", () => {
     expect(document.querySelector(".touch-pedals, .touch-steer")).toBeNull();
     pointer(gas, "pointerdown", 1);
     expect(controls!.read()).toEqual(NEUTRAL);
+  });
+});
+
+describe("touch arrow-button steering", () => {
+  function setupArrows(): {
+    gas: HTMLElement;
+    left: HTMLElement;
+    right: HTMLElement;
+  } {
+    controls = new TouchControls(document.body, "buttons");
+    return {
+      gas: find(".touch-pedals > .touch-gas"),
+      left: find(".touch-arrows > .touch-arrow.touch-left"),
+      right: find(".touch-arrows > .touch-arrow.touch-right"),
+    };
+  }
+
+  it("renders left and right arrow buttons instead of the slider", () => {
+    const { left, right } = setupArrows();
+    expect(document.querySelector(".touch-steer")).toBeNull();
+    expect([...document.querySelector(".touch-arrows")!.children]).toEqual([left, right]);
+    expect(left.getAttribute("aria-label")).toBe("Steer left");
+    expect(right.getAttribute("aria-label")).toBe("Steer right");
+    expect((left as HTMLButtonElement).type).toBe("button");
+    expect((right as HTMLButtonElement).type).toBe("button");
+  });
+
+  it("steers left to positive and right to negative, and both held to neutral", () => {
+    const { left, right } = setupArrows();
+    expect(pointer(left, "pointerdown", 1).defaultPrevented).toBe(true);
+    expect(left.classList.contains("pressed")).toBe(true);
+    expect(controls!.read()).toEqual({ throttle: 0, brake: 0, steer: 1 });
+    pointer(right, "pointerdown", 2);
+    expect(right.classList.contains("pressed")).toBe(true);
+    expect(controls!.read().steer).toBe(0);
+    pointer(left, "pointerup", 1);
+    expect(left.classList.contains("pressed")).toBe(false);
+    expect(controls!.read().steer).toBe(-1);
+    pointer(right, "pointercancel", 2);
+    expect(right.classList.contains("pressed")).toBe(false);
+    expect(controls!.read().steer).toBe(0);
+  });
+
+  it("holds an arrow and a pedal with separate pointers", () => {
+    const { gas, left } = setupArrows();
+    pointer(gas, "pointerdown", 1);
+    pointer(left, "pointerdown", 2);
+    pointer(left, "pointerdown", 3);
+    pointer(left, "pointerup", 3);
+    expect(controls!.read().throttle).toBe(1);
+    expect(controls!.read().steer).toBe(1);
+  });
+
+  it("releases the arrows when the window loses focus", () => {
+    const { left, right } = setupArrows();
+    pointer(left, "pointerdown", 1);
+    pointer(right, "pointerdown", 2);
+    pointer(right, "pointerup", 2);
+    window.dispatchEvent(new Event("blur"));
+    expect(controls!.read().steer).toBe(0);
+    expect(left.classList.contains("pressed")).toBe(false);
+  });
+
+  it("suppresses the long-press context menu", () => {
+    const { right } = setupArrows();
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    right.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("removes its DOM and stops listening when disposed", () => {
+    const { left } = setupArrows();
+    controls!.dispose();
+    expect(document.querySelector(".touch-pedals, .touch-arrows")).toBeNull();
+    pointer(left, "pointerdown", 1);
+    expect(controls!.read().steer).toBe(0);
+  });
+});
+
+describe("asSteeringMode", () => {
+  it("accepts the two modes and rejects anything else", () => {
+    expect(asSteeringMode("slider")).toBe("slider");
+    expect(asSteeringMode("buttons")).toBe("buttons");
+    expect(asSteeringMode("joystick")).toBeNull();
+    expect(asSteeringMode(null)).toBeNull();
   });
 });

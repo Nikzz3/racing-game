@@ -1,5 +1,6 @@
 import type { CDPSession, Locator } from "@playwright/test";
-import { expect, test } from "../fixtures/game-seam";
+import { expect, test, type GameSeamFixture } from "../fixtures/game-seam";
+import { createRoom, openRaceSettings } from "../fixtures/lobby";
 
 test.use({ hasTouch: true });
 
@@ -37,6 +38,29 @@ async function knobOffset(steer: Locator, knob: Locator): Promise<number> {
   return thumb!.x + thumb!.width / 2 - (track!.x + track!.width / 2);
 }
 
+// CI renders at a few frames per second, and the physics clock caps catch-up per frame,
+// so simulated seconds pass several times slower than real ones.
+const slow = { timeout: 60_000 };
+
+/**
+ * Steering eases back to centre after a release rather than snapping, so the car keeps
+ * turning briefly. Resolves with the state once the car moves between two reads without
+ * turning.
+ */
+async function straightened(game: GameSeamFixture) {
+  let last = await game.state();
+  await expect
+    .poll(async () => {
+      const previous = last;
+      last = await game.state();
+      const moved =
+        last.position.x !== previous.position.x || last.position.z !== previous.position.z;
+      return moved && Math.abs(last.heading - previous.heading) < 1e-6;
+    }, slow)
+    .toBe(true);
+  return last;
+}
+
 test("drives with a pedal and the steering slider held at once", async ({ page, game }) => {
   // A landscape phone; kept small because software WebGL cost scales with pixels.
   await page.setViewportSize({ width: 568, height: 320 });
@@ -49,9 +73,6 @@ test("drives with a pedal and the steering slider held at once", async ({ page, 
   const cdp = await page.context().newCDPSession(page);
   const speed = async () => (await game.state()).speed;
   const heading = async () => (await game.state()).heading;
-  // CI renders at a few frames per second, and the physics clock caps catch-up per frame,
-  // so simulated seconds pass several times slower than real ones.
-  const slow = { timeout: 60_000 };
 
   // Finger A holds GAS: the car accelerates in a straight line.
   const gasFinger: Finger = { id: 1, ...(await centreOf(gas)) };
@@ -76,12 +97,12 @@ test("drives with a pedal and the steering slider held at once", async ({ page, 
   await expect.poll(heading, slow).toBeGreaterThan(beforeTurn.heading + 0.4);
   expect(await speed()).toBeGreaterThan(0);
 
-  // Lifting both fingers releases the pedal and recentres the knob; the car then coasts
-  // straight, losing speed without turning.
+  // Lifting both fingers releases the pedal and recentres the knob; once the steering has
+  // eased back to centre the car coasts straight, losing speed without turning.
   await touch(cdp, "touchEnd", []);
   await expect(gas).not.toHaveClass(/\bpressed\b/);
   await expect.poll(async () => Math.abs(await knobOffset(steer, knob))).toBeLessThan(1);
-  const released = await game.state();
+  const released = await straightened(game);
   await expect.poll(speed, slow).toBeLessThan(released.speed - 2);
   expect(await heading()).toBeCloseTo(released.heading, 6);
 
@@ -91,4 +112,52 @@ test("drives with a pedal and the steering slider held at once", async ({ page, 
   await expect.poll(speed, slow).toBeLessThan(-1);
   await touch(cdp, "touchEnd", []);
   await expect(brake).not.toHaveClass(/\bpressed\b/);
+});
+
+test("steers with the arrow buttons chosen in the lobby", async ({ page, game }) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto("/");
+  await openRaceSettings(page);
+  const buttonsMode = page.getByRole("radio", { name: "Buttons", exact: true });
+  await buttonsMode.click();
+  await expect(buttonsMode).toHaveAttribute("aria-checked", "true");
+  await createRoom(page, { playerName: "Arrow Driver", roomName: "Arrow Session" });
+  await page.waitForFunction(() => window.__game !== undefined);
+
+  const gas = page.getByRole("button", { name: "Accelerate", exact: true });
+  const left = page.getByRole("button", { name: "Steer left", exact: true });
+  await expect(page.getByRole("button", { name: "Steer right", exact: true })).toBeVisible();
+  await expect(page.locator(".touch-steer")).toHaveCount(0);
+  const cdp = await page.context().newCDPSession(page);
+  const speed = async () => (await game.state()).speed;
+  const heading = async () => (await game.state()).heading;
+
+  const gasFinger: Finger = { id: 1, ...(await centreOf(gas)) };
+  const start = await game.state();
+  await touch(cdp, "touchStart", [gasFinger]);
+  await expect.poll(speed, slow).toBeGreaterThan(start.speed + 8);
+
+  // Holding "Steer left" alongside GAS turns left: a growing heading.
+  const beforeTurn = await game.state();
+  await touch(cdp, "touchStart", [gasFinger, { id: 2, ...(await centreOf(left)) }]);
+  await expect(left).toHaveClass(/\bpressed\b/);
+  await expect(gas).toHaveClass(/\bpressed\b/);
+  await expect.poll(heading, slow).toBeGreaterThan(beforeTurn.heading + 0.4);
+
+  // Lift both fingers and put one straight back on GAS: the arrow releases, the steering
+  // eases back to centre, and the car drives on straight.
+  await touch(cdp, "touchEnd", []);
+  await touch(cdp, "touchStart", [{ ...gasFinger, id: 3 }]);
+  await expect(left).not.toHaveClass(/\bpressed\b/);
+  await expect(gas).toHaveClass(/\bpressed\b/);
+  const released = await straightened(game);
+  const distance = async () => {
+    const { x, z } = (await game.state()).position;
+    return Math.hypot(x - released.position.x, z - released.position.z);
+  };
+  await expect.poll(distance, slow).toBeGreaterThan(5);
+  expect(await heading()).toBeCloseTo(released.heading, 6);
+
+  await touch(cdp, "touchEnd", []);
+  await expect(gas).not.toHaveClass(/\bpressed\b/);
 });
