@@ -3,9 +3,9 @@ import type { CarInput } from "./input";
 const DEAD_ZONE = 0.15;
 
 /**
- * On-screen driving controls: GAS and BRAKE buttons on the left and a horizontal steering
- * slider on the right. Each control captures its own pointer, so one thumb can hold a pedal
- * while the other steers. Pedals are digital; the slider is analog, absolute (touching an end
+ * On-screen driving controls: a horizontal steering slider on the left and GAS and BRAKE
+ * buttons on the right. Each control captures its own pointer, so one thumb can steer while
+ * the other holds a pedal. Pedals are digital; the slider is analog, absolute (touching an end
  * steers fully that way) and springs back to centre on release. CSS hides them on desktop.
  */
 export class TouchControls {

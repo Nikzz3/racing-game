@@ -86,14 +86,40 @@ test.describe("touch controls", () => {
     await select.click();
     await selectTrack.click();
     await createAndRace.click();
-    await expectTouchHudFits(page);
-    await page.screenshot({ path: testInfo.outputPath("race-hud-phone.png") });
-
-    await page.setViewportSize({ width: 844, height: 390 });
-    await expectTouchHudFits(page);
-    await page.screenshot({ path: testInfo.outputPath("race-hud-phone-landscape.png") });
+    await fillStandings(page, 8);
+    // Pin both warnings on so the screenshots show their slot; opacity doesn't move any box.
+    await page
+      .locator(".offtrack-warn, .cp-miss-warn")
+      .evaluateAll((warnings) => warnings.forEach((w) => ((w as HTMLElement).style.opacity = "1")));
+    // One race, resized between checks: portrait then landscape, each on a roomy and a short phone.
+    for (const [width, height, name] of [
+      [390, 844, "race-hud-portrait-390x844.png"],
+      [375, 667, "race-hud-portrait-375x667.png"],
+      [844, 390, "race-hud-landscape-844x390.png"],
+      [667, 375, "race-hud-landscape-667x375.png"],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expectTouchHudFits(page);
+      await page.screenshot({ path: testInfo.outputPath(name) });
+    }
   });
 });
+
+/** Pad BEST LAPS out to a busy room's worth of rows by cloning the driver's own row. */
+async function fillStandings(page: Page, rows: number): Promise<void> {
+  const tbody = page.locator(".hud-standings tbody");
+  await expect(tbody.locator("tr")).toHaveCount(1);
+  await tbody.evaluate((element, count) => {
+    const row = element.querySelector("tr")!;
+    for (let index = 1; index < count; index++) {
+      const clone = row.cloneNode(true) as HTMLTableRowElement;
+      clone.classList.remove("me");
+      clone.cells[0].textContent = String(index + 1);
+      element.append(clone);
+    }
+  }, rows);
+  await expect(tbody.locator("tr")).toHaveCount(rows);
+}
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -104,45 +130,49 @@ async function boxOf(locator: Locator): Promise<Box> {
   return box!;
 }
 
-function expectApart(a: Box, b: Box, what: string): void {
+/** Fails when the boxes come within `gap` pixels of each other. */
+function expectApart(a: Box, b: Box, what: string, gap = 0): void {
   const overlap =
-    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    a.x - gap < b.x + b.width &&
+    b.x < a.x + a.width + gap &&
+    a.y - gap < b.y + b.height &&
+    b.y < a.y + a.height + gap;
   expect(overlap, `${what} overlap: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`).toBe(false);
 }
 
-/** The pedals sit on the left, the steering slider on the right, and neither covers the HUD. */
+/**
+ * The steering slider sits in the left half, the pedals in the right half with GAS above
+ * BRAKE, and no two of the controls and HUD panels overlap, a full BEST LAPS panel included.
+ */
 async function expectTouchHudFits(page: Page): Promise<void> {
   const { width } = page.viewportSize()!;
   const gas = await boxOf(page.getByRole("button", { name: "Accelerate", exact: true }));
   const brake = await boxOf(page.getByRole("button", { name: "Brake", exact: true }));
   const pedals = await boxOf(page.locator(".touch-pedals"));
   const steer = await boxOf(page.locator(".touch-steer"));
-  const map = await boxOf(page.locator(".hud-map"));
   const actions = await boxOf(page.locator(".hud-actions"));
-  const speed = await boxOf(page.locator(".hud-speed"));
   expect(gas.y + gas.height).toBeLessThanOrEqual(brake.y);
-  expect(pedals.x + pedals.width).toBeLessThanOrEqual(width / 2);
-  expect(steer.x).toBeGreaterThanOrEqual(width / 2);
-  expectApart(pedals, map, "pedals and minimap");
-  expectApart(pedals, actions, "pedals and race actions");
-  expectApart(map, actions, "minimap and race actions");
-  expectApart(steer, speed, "steering slider and speed dial");
-  // Warnings are laid out while hidden, so their boxes are checked before they ever show.
-  const offTrack = await boxOf(page.locator(".offtrack-warn"));
-  const checkpointMissed = await boxOf(page.locator(".cp-miss-warn"));
-  expectApart(offTrack, checkpointMissed, "the two warnings");
-  for (const [warning, name] of [
-    [offTrack, "off-track warning"],
-    [checkpointMissed, "checkpoint warning"],
-  ] as const) {
-    for (const [control, controlName] of [
-      [pedals, "pedals"],
-      [steer, "steering slider"],
-      [map, "minimap"],
-      [actions, "race actions"],
-      [speed, "speed dial"],
-    ] as const) {
-      expectApart(warning, control, `${name} and ${controlName}`);
+  expect(steer.x + steer.width).toBeLessThanOrEqual(width / 2);
+  expect(pedals.x).toBeGreaterThanOrEqual(width / 2);
+  // A thumb slipping off a driving control must not land on "Leave race".
+  expectApart(actions, steer, "race actions and steering slider", 20);
+  expectApart(actions, pedals, "race actions and pedals", 20);
+  // Warnings keep their boxes while hidden, so they are checked even when not showing.
+  const boxes: [string, Box][] = [
+    ["pedals", pedals],
+    ["steering slider", steer],
+    ["race actions", actions],
+    ["minimap", await boxOf(page.locator(".hud-map"))],
+    ["speed dial", await boxOf(page.locator(".hud-speed"))],
+    ["standings", await boxOf(page.locator(".hud-standings"))],
+    ["off-track warning", await boxOf(page.locator(".offtrack-warn"))],
+    ["checkpoint warning", await boxOf(page.locator(".cp-miss-warn"))],
+    ["lap progress", await boxOf(page.locator(".hud-top-left"))],
+    ["lap timer", await boxOf(page.locator(".hud-timer"))],
+  ];
+  for (const [index, [name, box]] of boxes.entries()) {
+    for (const [otherName, other] of boxes.slice(index + 1)) {
+      expectApart(box, other, `${name} and ${otherName}`);
     }
   }
 }

@@ -2070,7 +2070,7 @@ a {
   padding: 20px 40px;
   white-space: nowrap;
 }
-/* Touch driving controls: pedals bottom-left, steering slider bottom-right. Hidden unless
+/* Touch driving controls: steering slider bottom-left, pedals bottom-right. Hidden unless
    the primary pointer is coarse; the --touch-* sizes are set in those media blocks and the
    HUD is laid out around them. */
 .touch-pedals,
@@ -2085,7 +2085,7 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 .touch-pedals {
-  left: var(--touch-edge);
+  right: var(--touch-edge);
   bottom: var(--touch-edge);
   flex-direction: column;
   gap: var(--touch-pedal-gap);
@@ -2129,7 +2129,7 @@ a {
   box-shadow: 0 0 18px #e8795b90;
 }
 .touch-steer {
-  right: var(--touch-edge);
+  left: var(--touch-edge);
   bottom: var(--touch-edge);
   width: var(--touch-steer-width);
   height: var(--touch-steer-height);
@@ -2333,9 +2333,11 @@ a {
     --touch-steer-width: clamp(140px, calc(50vw - var(--touch-edge) - 6px), 210px);
     --touch-steer-height: 68px;
     --touch-knob-size: 56px;
+    --touch-dial-size: 120px;
     --touch-pedals-top: calc(
       var(--touch-edge) + 2 * var(--touch-pedal-height) + var(--touch-pedal-gap)
     );
+    --touch-steer-top: calc(var(--touch-edge) + var(--touch-steer-height));
   }
   .touch-pedals {
     display: flex;
@@ -2343,19 +2345,21 @@ a {
   .touch-steer {
     display: block;
   }
+  /* Left column: minimap over the race actions over the slider, the actions kept 20px clear
+     of it so a stray steering thumb can't reach "Leave race". Right column: dial over pedals. */
   .hud-actions {
     left: var(--touch-edge);
-    bottom: calc(var(--touch-pedals-top) + 20px);
+    bottom: calc(var(--touch-steer-top) + 20px);
   }
   .hud-map {
     left: var(--touch-edge);
-    bottom: calc(var(--touch-pedals-top) + 66px);
+    bottom: calc(var(--touch-steer-top) + 66px);
   }
   .hud-speed {
-    bottom: calc(var(--touch-edge) + var(--touch-steer-height) + 12px);
-    width: 120px;
-    height: 120px;
-    right: 32px;
+    bottom: calc(var(--touch-pedals-top) + 10px);
+    width: var(--touch-dial-size);
+    height: var(--touch-dial-size);
+    right: calc(var(--touch-edge) + (var(--touch-pedal-width) - var(--touch-dial-size)) / 2);
   }
   .speed-value {
     font-size: 52px;
@@ -2365,6 +2369,40 @@ a {
   }
   .cp-miss-warn {
     bottom: calc(var(--touch-pedals-top) + 240px);
+  }
+}
+/* Portrait phones: the standings move under the lap timer and share the height above the
+   controls with a warning slot, so neither can reach the other however full the room is. */
+@media (pointer: coarse) and (max-width: 600px) and (min-height: 501px) {
+  :root {
+    --touch-standings-top: 110px;
+    --touch-warn-bottom: calc(var(--touch-pedals-top) + 10px + var(--touch-dial-size) + 14px);
+  }
+  .hud-standings {
+    top: var(--touch-standings-top);
+    left: auto;
+    right: var(--touch-edge);
+    /* 100px holds both warnings plus a gap above them. */
+    max-height: min(
+      24vh,
+      calc(100% - var(--touch-standings-top) - var(--touch-warn-bottom) - 100px)
+    );
+  }
+  .hud-map {
+    width: 100px;
+  }
+  .hud-map svg {
+    height: 80px;
+  }
+  .offtrack-warn,
+  .cp-miss-warn {
+    padding: 9px 16px;
+  }
+  .offtrack-warn {
+    bottom: var(--touch-warn-bottom);
+  }
+  .cp-miss-warn {
+    bottom: calc(var(--touch-warn-bottom) + 40px);
   }
 }
 @media (max-height: 500px) {
@@ -2413,17 +2451,19 @@ a {
     --touch-steer-width: 200px;
     --touch-steer-height: 60px;
     --touch-knob-size: 50px;
-    --touch-speed-top: calc(var(--touch-edge) + var(--touch-steer-height) + 10px + 120px);
+    --touch-warn-bottom: calc(var(--touch-pedals-top) + 12px);
   }
   .touch-pedal {
     font-size: 23px;
   }
-  /* The column above the pedals holds only the actions; the map sits beside the pedals. */
+  /* One bottom row: slider and minimap on the left, dial and pedals on the right, the race
+     actions above the slider. The warnings sit centred above the row, the standings to the
+     right of them. */
   .hud-actions {
-    bottom: calc(var(--touch-pedals-top) + 20px);
+    bottom: calc(var(--touch-steer-top) + 20px);
   }
   .hud-map {
-    left: calc(var(--touch-edge) + var(--touch-pedal-width) + 16px);
+    left: calc(var(--touch-edge) + var(--touch-steer-width) + 16px);
     bottom: var(--touch-edge);
     width: 90px;
   }
@@ -2431,16 +2471,27 @@ a {
     height: 72px;
   }
   .hud-speed {
-    bottom: calc(var(--touch-edge) + var(--touch-steer-height) + 10px);
+    right: calc(var(--touch-edge) + var(--touch-pedal-width) + 12px);
+    bottom: var(--touch-edge);
+  }
+  .offtrack-warn,
+  .cp-miss-warn {
+    padding: 10px 18px;
+    font-size: 12px;
   }
   .offtrack-warn {
-    bottom: 65px;
+    bottom: var(--touch-warn-bottom);
   }
   .cp-miss-warn {
-    bottom: 120px;
+    bottom: calc(var(--touch-warn-bottom) + 44px);
+  }
+  /* Narrowed from 230px so it clears the centred lap timer on a 667px-wide phone. */
+  .hud-top-left {
+    left: 20px;
+    width: 200px;
   }
   .hud-standings {
-    max-height: calc(100% - var(--touch-speed-top) - 25px);
+    max-height: calc(100% - 15px - var(--touch-pedals-top) - 20px);
     overflow: auto;
     pointer-events: auto;
   }
