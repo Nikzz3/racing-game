@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import {
   asDifficulty,
+  ClockOffset,
   MAX_SPEED_MS,
   minPlausibleLapMs,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
-  type PoseStamp,
+  type RelayedPoseStamp,
   type ReplayFrame,
   type RoomInfo,
   type ServerMessage,
@@ -32,8 +33,12 @@ export interface Player {
   z: number;
   rot: number;
   speed: number;
+  /** Server time the stored position was current; null before the first state. */
+  stateT: number | null;
+  /** Relates the driver's state timestamps to the server clock. */
+  clock: ClockOffset;
   /** Stamp of the last state, relayed so receivers can merge it with Direct Link copies. */
-  stamp?: PoseStamp;
+  stamp?: RelayedPoseStamp;
   /** The client accepts Direct Link signals. */
   direct: boolean;
   /** Signals relayed in the current rate-limit window, and when that window opened. */
@@ -54,6 +59,8 @@ export function createPlayer(id: string, ws: WebSocket): Player {
     z: 0,
     rot: 0,
     speed: 0,
+    stateT: null,
+    clock: new ClockOffset(),
     direct: false,
     signals: { count: 0, windowStart: 0 },
     timing: createTiming(),
@@ -119,6 +126,7 @@ export class Room {
       lapStartT: player.timing.lapStartT,
       nextCheckpoint: player.timing.next,
       spawns: player.timing.spawns,
+      t: player.stateT ?? undefined,
       stamp: player.stamp,
       ...(player.direct && { direct: true as const }),
     }));

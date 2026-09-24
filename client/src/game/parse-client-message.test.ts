@@ -61,6 +61,16 @@ describe("parseClientMessage", () => {
     });
   });
 
+  it("carries a state's sender timestamp, and drops an unusable one without rejecting the state", () => {
+    const state = { type: "state", x: 1, y: 2, z: 3, rot: 0.5, speed: 40 };
+    expect(parseClientMessage({ ...state, t: 1234.5 })).toEqual({ ...state, t: 1234.5 });
+    for (const t of [NaN, Infinity, "1234", null]) {
+      const message = parseClientMessage({ ...state, t });
+      expect(message).toEqual(state);
+      expect(message).not.toHaveProperty("t");
+    }
+  });
+
   it("rejects NaN / Infinity / non-number state coordinates", () => {
     expect(parseClientMessage({ type: "state", x: NaN, y: 0, z: 0, rot: 0, speed: 0 })).toBeNull();
     expect(
@@ -112,7 +122,7 @@ describe("parseClientMessage", () => {
 
   it("carries a finite pose stamp and drops a malformed one without rejecting the state", () => {
     const state = { type: "state", x: 1, y: 0, z: 3, rot: 0.5, speed: 40 };
-    const stamp = { seq: 7, sentAt: 1234.5, epoch: 1 };
+    const stamp = { seq: 7, epoch: 1 };
     expect(parseClientMessage({ ...state, stamp })).toEqual({ ...state, stamp });
     const bad = parseClientMessage({ ...state, stamp: { ...stamp, seq: "NaN" } });
     expect(bad).toEqual(state);

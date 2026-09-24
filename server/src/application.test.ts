@@ -244,15 +244,17 @@ describe("Direct Link signaling", () => {
     expect(signalsTo(ben.client)).toHaveLength(200);
   });
 
-  it("relays each driver's pose stamp and Direct Link capability in snapshots", async () => {
-    const { application, ava } = await room();
-    const stamp = { seq: 3, sentAt: 150, epoch: 0 };
-    ava.client.message({ type: "state", x: 1, y: 0, z: 2, rot: 0, speed: 5, stamp });
+  it("relays each driver's pose stamp, with the time it reported, and Direct Link capability", async () => {
+    const { application, ava, ben } = await room();
+    const stamp = { seq: 3, epoch: 0 };
+    ava.client.message({ type: "state", x: 1, y: 0, z: 2, rot: 0, speed: 5, t: 150, stamp });
+    // A stamp without the time that places it is useless to receivers.
+    ben.client.message({ type: "state", x: 4, y: 0, z: 2, rot: 0, speed: 5, stamp });
     application.tick();
     const snapshot = ava.client.messages.filter(({ type }) => type === "snapshot").at(-1);
-    expect(snapshot?.players).toEqual([
-      expect.objectContaining({ name: "Ava", x: 1, stamp, direct: true }),
-      expect.objectContaining({ name: "Ben", direct: true }),
-    ]);
+    const [avaSeen, benSeen] = snapshot!.players as Array<Record<string, unknown>>;
+    expect(avaSeen).toMatchObject({ name: "Ava", stamp: { ...stamp, sentAt: 150 }, direct: true });
+    expect(benSeen).toMatchObject({ name: "Ben", x: 4, direct: true });
+    expect(benSeen).not.toHaveProperty("stamp");
   });
 });

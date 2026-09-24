@@ -159,6 +159,16 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
     runSteps(uncapped, Math.round(10 / PHYSICS_STEP), FULL_THROTTLE);
     expect(Math.abs(uncapped.x - huge.x)).toBeGreaterThan(1);
   });
+
+  it("reports how far its physical state trails the frames fed to it", () => {
+    const car = spawned();
+    expect(car.backlog).toBe(0);
+    car.advance(PHYSICS_STEP * 2.5, FULL_THROTTLE);
+    expect(car.backlog).toBeCloseTo(PHYSICS_STEP * 0.5, 12);
+    // A long frame leaves whatever the per-frame step cap could not simulate.
+    car.advance(PHYSICS_STEP * (MAX_STEPS_PER_FRAME + 2), FULL_THROTTLE);
+    expect(car.backlog).toBeCloseTo(PHYSICS_STEP * 2.5, 12);
+  });
 });
 
 /** A car parked `ahead` metres along the spawned car's heading and `right` metres to its side. */

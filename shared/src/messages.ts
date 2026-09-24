@@ -28,8 +28,15 @@ export interface PlayerSnapshot {
   spawns: number;
   /** Cosmetic car choice; absent → clients fall back to hashing the player id. */
   variant?: Variant;
+  /**
+   * Server time the position was current: the sender's own timestamp mapped
+   * onto the server clock, or the state's arrival for a sender without one.
+   * Repeats until a newer state arrives. Absent before the player's first
+   * state, and from servers predating it; clients then use the snapshot's `t`.
+   */
+  t?: number;
   /** Stamp of the state this pose came from; absent for clients that predate Direct Links. */
-  stamp?: PoseStamp;
+  stamp?: RelayedPoseStamp;
   /** The player's client accepts Direct Link signals; absent → relay only. */
   direct?: true;
 }
@@ -42,10 +49,17 @@ export interface PlayerSnapshot {
 export interface PoseStamp {
   /** Increases by one per sent pose. */
   seq: number;
-  /** Sender's own clock (ms) when the pose was taken; comparable only between its own poses. */
-  sentAt: number;
   /** Sender's respawns so far; a change is a teleport, not movement. */
   epoch: number;
+}
+
+/**
+ * A relayed pose's stamp, with the `t` its sender reported for it. Next to the
+ * snapshot's `t` for the same pose, it maps the sender's clock onto the server's,
+ * which places that sender's Direct Link poses on the same timeline.
+ */
+export interface RelayedPoseStamp extends PoseStamp {
+  sentAt: number;
 }
 
 /** ICE server a client may use to reach its Room's other drivers; mirrors RTCIceServer. */
@@ -89,6 +103,9 @@ export type ClientMessage =
       z: number;
       rot: number;
       speed: number;
+      /** When the pose was current, on the sender's monotonic clock (any epoch); absent from older clients. */
+      t?: number;
+      /** Only relayed on with `t`, which times the pose. */
       stamp?: PoseStamp;
     }
   | { type: "signal"; to: string; signal: PeerSignal };
@@ -109,10 +126,8 @@ const isShortString = (value: unknown, max: number): value is string =>
 /** A malformed stamp is dropped rather than failing the state it rides on. */
 function asPoseStamp(value: unknown): PoseStamp | undefined {
   if (!isRaw(value)) return undefined;
-  const { seq, sentAt, epoch } = value;
-  return isFiniteNumber(seq) && isFiniteNumber(sentAt) && isFiniteNumber(epoch)
-    ? { seq, sentAt, epoch }
-    : undefined;
+  const { seq, epoch } = value;
+  return isFiniteNumber(seq) && isFiniteNumber(epoch) ? { seq, epoch } : undefined;
 }
 
 function asPeerSignal(value: unknown): PeerSignal | null {
@@ -181,6 +196,7 @@ const PARSERS: {
           z: v.z,
           rot: v.rot,
           speed: v.speed,
+          ...(isFiniteNumber(v.t) && { t: v.t }),
           stamp: asPoseStamp(v.stamp),
         }
       : null,
@@ -195,7 +211,8 @@ const PARSERS: {
  * union. A real client can send any shape, so the server must run every
  * inbound frame through this. Difficulty and track are coerced to valid values,
  * an unknown hello variant becomes absent (never a specific car), and state
- * numbers must be finite so NaN/Infinity cannot poison timing.
+ * numbers must be finite so NaN/Infinity cannot poison timing. An unusable
+ * state timestamp is dropped, leaving the state as an older client's.
  */
 export function parseClientMessage(value: unknown): ClientMessage | null {
   if (typeof value !== "object" || value === null) return null;

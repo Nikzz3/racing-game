@@ -26,7 +26,8 @@ function member(id: string, direct = true): PlayerSnapshot {
 }
 
 const pose = (seq: number): DirectPose => ({
-  stamp: { seq, sentAt: 1000 + seq * 50, epoch: 0 },
+  stamp: { seq, epoch: 0 },
+  t: 1000 + seq * 50,
   x: 12.5,
   z: -3.25,
   rot: 1.5,

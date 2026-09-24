@@ -97,6 +97,11 @@ export class CarPhysics {
     this.previousPose.speed = this.speed;
   }
 
+  /** Seconds of frame time not yet simulated: the physical state trails the latest frame by this. */
+  get backlog(): number {
+    return this.stepAccumulator;
+  }
+
   /**
    * Render one fixed step behind simulation, smoothly between completed steps.
    * The returned object is reused; network and lap logic must use physical state.

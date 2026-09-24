@@ -3,6 +3,8 @@ import type { IceServer, PeerSignal, PlayerSnapshot, PoseStamp } from "@racing/s
 /** A car pose as sent over a Direct Link: the same values the sender relays through the server. */
 export interface DirectPose {
   stamp: PoseStamp;
+  /** When the pose was current, on the sender's clock: the `t` of its `state`. */
+  t: number;
   x: number;
   z: number;
   rot: number;
@@ -51,8 +53,8 @@ const MAX_BUFFERED_BYTES = 16 * 1024;
 const POSE_FIELDS = 7;
 const POSE_BYTES = POSE_FIELDS * Float64Array.BYTES_PER_ELEMENT;
 
-export function encodePose({ stamp, x, z, rot, speed }: DirectPose): ArrayBuffer {
-  return new Float64Array([stamp.seq, stamp.sentAt, stamp.epoch, x, z, rot, speed]).buffer;
+export function encodePose({ stamp, t, x, z, rot, speed }: DirectPose): ArrayBuffer {
+  return new Float64Array([stamp.seq, t, stamp.epoch, x, z, rot, speed]).buffer;
 }
 
 /** Peers are untrusted: anything but a pose-sized frame of finite numbers is dropped. */
@@ -60,8 +62,8 @@ export function decodePose(data: unknown): DirectPose | null {
   if (!(data instanceof ArrayBuffer) || data.byteLength !== POSE_BYTES) return null;
   const values = new Float64Array(data);
   if (!values.every(Number.isFinite)) return null;
-  const [seq, sentAt, epoch, x, z, rot, speed] = values;
-  return { stamp: { seq, sentAt, epoch }, x, z, rot, speed };
+  const [seq, t, epoch, x, z, rot, speed] = values;
+  return { stamp: { seq, epoch }, t, x, z, rot, speed };
 }
 
 /** One unusable candidate (say, an unresolvable mDNS host) must not sink the link. */

@@ -23,6 +23,7 @@ import { Input, type CarInput } from "./input";
 import { TouchControls, type SteeringMode } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
+import { ServerClock } from "./server-clock";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
 import {
   createScene,
@@ -82,8 +83,16 @@ export class Game {
   private nextCheckpoint = 0;
   private localLapStart: number | null = null;
   private progress: PlayerSnapshot | null = null;
-  private clock: { elapsed: number; received: number } | null = null;
+  private readonly serverClock = new ServerClock();
+  /** Server time the lap in progress started; null before the line is crossed. */
+  private lapStartT: number | null = null;
   private previous = performance.now();
+  /**
+   * When the car's physical state was current, on the local clock. Sent with
+   * it, so other clients space its poses by when they happened, not by when
+   * the send timer or the network delivered them.
+   */
+  private stateTime = this.previous;
   private animation = 0;
   private disposed = false;
   private autopilot = false;
@@ -206,6 +215,7 @@ export class Game {
   /** Discard wall time that no longer belongs to the car being rendered. */
   private restartFrameClock(): void {
     this.previous = performance.now();
+    this.stateTime = this.previous;
   }
   private spawn(): void {
     this.car.spawnAtSample(
@@ -221,7 +231,7 @@ export class Game {
     this.net.send({ type: "respawn" });
     this.epoch++;
     this.spawn();
-    this.clock = null;
+    this.lapStartT = null;
     this.hud.setCurrentLap(null);
     this.nextCheckpoint = 0;
     this.localLapStart = null;
@@ -248,19 +258,14 @@ export class Game {
   }
   onMessage(message: ServerMessage): void {
     if (message.type === "snapshot") {
-      this.remote.onSnapshot(message.players);
+      this.serverClock.observe(message.t, performance.now());
+      this.remote.onSnapshot(message.players, message.t);
       this.hud.setStandings(message.players, this.myId);
       const me = message.players.find((p) => p.id === this.myId);
       if (me) {
         this.progress = me;
         this.hud.setMyProgress(me);
-        this.clock =
-          me.lapStartT === null
-            ? null
-            : {
-                elapsed: message.t - me.lapStartT,
-                received: performance.now(),
-              };
+        this.lapStartT = me.lapStartT;
       }
     } else if (message.type === "lap") {
       if (message.playerId === this.myId) {
@@ -280,13 +285,14 @@ export class Game {
   }
   /**
    * Report the car's pose to the server, which times laps from it, and to every
-   * Direct Link. `sentAt` is on the clock the pose was simulated against.
+   * Direct Link, both stamped with when it was current (`stateTime`).
    */
-  private sendState(sentAt = performance.now()): void {
-    const stamp = { seq: ++this.poseSeq, sentAt, epoch: this.epoch };
+  private sendState(): void {
+    const stamp = { seq: ++this.poseSeq, epoch: this.epoch };
     const { x, z, heading: rot, speed } = this.car;
-    this.net.send({ type: "state", x, y: 0, z, rot, speed, stamp });
-    this.links?.broadcast({ stamp, x, z, rot, speed });
+    const t = this.stateTime;
+    this.net.send({ type: "state", x, y: 0, z, rot, speed, t, stamp });
+    this.links?.broadcast({ stamp, t, x, z, rot, speed });
   }
   private checkCrossing(now: number): void {
     if (!this.pacer) return;
@@ -312,15 +318,19 @@ export class Game {
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
     const injecting = Boolean(this.seam?.driving);
+    const serverNow = this.serverClock.now(now);
     // Remote cars move first so the local car collides with them where they are drawn.
-    this.remote.update(dt);
+    this.remote.update(dt, serverNow);
     if (this.seam?.driving) {
+      // The seam sends mid-advance; its steps all belong to this frame.
+      this.stateTime = now;
       dt = this.seam.advance(elapsed, 3);
     } else {
       input = this.autopilot
         ? autopilotInput(this.car, this.track.samples, 12)
         : this.input.read(dt);
       this.car.advance(elapsed, input, this.remote.obstacles());
+      this.stateTime = now - this.car.backlog * 1000;
     }
     const pose = injecting ? this.car : this.car.getRenderPose();
     this.carMesh.position.set(pose.x, 0, pose.z);
@@ -336,7 +346,7 @@ export class Game {
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
     this.hud.setCheckpointMissed(
       Boolean(
-        this.clock &&
+        this.lapStartT !== null &&
         this.progress &&
         checkpointMissed(
           this.car.centerIndex,
@@ -347,7 +357,7 @@ export class Game {
       ),
     );
     this.hud.setCurrentLap(
-      this.clock ? this.clock.elapsed + performance.now() - this.clock.received : null,
+      this.lapStartT === null ? null : Math.max(serverNow - this.lapStartT, 0),
     );
     // While the e2e seam replays inputs, skip the draw: under software WebGL a
     // frame costs 100ms+, and the seam's per-frame step cap (which keeps state
@@ -380,7 +390,7 @@ export class Game {
           },
         }),
         remotePositions: () => this.remote.positions(),
-        sendState: (sentAt) => this.sendState(sentAt),
+        sendState: () => this.sendState(),
         linkStates: () => this.links?.states() ?? {},
         poseSources: () => this.remote.sources(),
         directPoses: () => this.remote.directPoses(),

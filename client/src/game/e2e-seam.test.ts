@@ -94,22 +94,6 @@ describe("E2eSeam", () => {
     expect(game.sendState).toHaveBeenCalledTimes(2);
   });
 
-  it("stamps each send with the page clock the simulation had reached", () => {
-    let now = 1000;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-    const game = createBindings();
-    const seam = new E2eSeam(game, SEND_INTERVAL_MS);
-    seam.inject(Array.from({ length: 12 }, () => INPUTS[0]));
-    // One slow frame delivers 12 steps (200 ms) in a single burst: the stamps
-    // still space its four sends by simulated time, not by when they left.
-    now = 1200;
-    seam.advance(E2E_DT * 12);
-    const stamps = vi.mocked(game.sendState).mock.calls.map(([sentAt]) => sentAt);
-    expect(stamps).toHaveLength(4);
-    stamps.forEach((sentAt, index) => expect(sentAt).toBeCloseTo(1050 + index * 50));
-    vi.restoreAllMocks();
-  });
-
   it("sends intermediate positions during a slow render frame", () => {
     const game = createBindings();
     let position = 0;
