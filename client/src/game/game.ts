@@ -19,7 +19,7 @@ import { Hud } from "../ui/hud";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import { Input, type CarInput } from "./input";
-import { TouchControls } from "./touch";
+import { TouchControls, type SteeringMode } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
@@ -97,6 +97,7 @@ export class Game {
     trackSlug = DEFAULT_TRACK_SLUG,
     armedPacer?: ArmedPacer | null,
     private readonly variant?: Variant,
+    steering?: SteeringMode,
   ) {
     this.track = resolveTrack(trackSlug);
     this.checkpoints = this.track.checkpoints.map(
@@ -118,7 +119,7 @@ export class Game {
       () => this.respawn(),
       this.track,
     );
-    this.touch = new TouchControls(parent);
+    this.touch = new TouchControls(parent, steering);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
     this.input.attach();
