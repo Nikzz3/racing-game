@@ -50,6 +50,8 @@ describe("tierForRenderer", () => {
     ],
     ["ANGLE (NVIDIA, NVIDIA Quadro T1000 Direct3D11 vs_5_0 ps_5_0, D3D11)"],
     ["ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)"],
+    ["ANGLE (AMD, AMD Radeon(TM) RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)"],
+    ["ANGLE (AMD, Radeon RX Vega Direct3D11 vs_5_0 ps_5_0, D3D11)"],
     ["AMD Radeon Pro 5500M OpenGL Engine"],
     ["ANGLE (Intel, Intel(R) Arc(TM) A770 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"],
   ])("puts Apple and discrete GPUs on high: %s", (renderer) => {
@@ -63,6 +65,8 @@ describe("tierForRenderer", () => {
     ["ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)"],
     ["ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"],
     ["ANGLE (NVIDIA, NVIDIA GeForce MX450 Direct3D11 vs_5_0 ps_5_0, D3D11)"],
+    ["ANGLE (NVIDIA, NVIDIA GeForce 940MX Direct3D11 vs_5_0 ps_5_0, D3D11)"],
+    ["ANGLE (AMD, AMD Radeon(TM) RX Vega 10 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"],
     ["Mali-G78"],
     [""],
   ])("puts integrated, entry-level and unknown GPUs on medium: %s", (renderer) => {
@@ -75,7 +79,7 @@ describe("renderQuality", () => {
     vi.resetModules();
     vi.stubGlobal("WebGL2RenderingContext", class {});
     vi.spyOn(console, "info").mockImplementation(() => {});
-    localStorage.clear();
+    sessionStorage.clear();
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -90,7 +94,7 @@ describe("renderQuality", () => {
     expect(getContext).toHaveBeenCalledOnce();
   });
 
-  it("starts later renderers, and later visits on the same GPU, one tier lower", async () => {
+  it("starts later renderers, and later races this session on the same GPU, one tier lower", async () => {
     gpu("ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)");
     const first = await load();
     expect(first.renderQuality().tier).toBe("medium");
@@ -117,8 +121,15 @@ describe("AdaptiveResolution", () => {
     expect(run(new AdaptiveResolution(1.5, 1), [16.7], 60)).toEqual([]);
   });
 
-  it("ignores a steady 30 fps cadence, which is a frame-rate cap rather than GPU load", () => {
-    expect(run(new AdaptiveResolution(1.5, 1), [33.3], 60)).toEqual([]);
+  it("probes a steady 30 fps cadence once, then leaves a frame-rate cap alone", () => {
+    expect(run(new AdaptiveResolution(1.5, 1), [33.3], 60)).toEqual([1.27]);
+  });
+
+  it("recognises a jittery 30 fps cap and never gives up a tier for it", () => {
+    // Energy Saver's cap with scheduling hiccups: p90 lands well above 33 ms.
+    const jittery = [33.3, 33.3, 30, 36.7, 33.3, 50, 33.3, 31, 35.6, 50];
+    expect(run(new AdaptiveResolution(1.5, 1), jittery, 60)).toEqual([1.27]);
+    expect(run(new AdaptiveResolution(1, 1), jittery, 60)).toEqual([]);
   });
 
   it("steps the pixel ratio down to the floor, then asks for a lower tier once", () => {

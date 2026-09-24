@@ -50,8 +50,9 @@ const STORAGE_KEY = "racer-quality";
 /** The starting tier for a WebGL renderer string (UNMASKED_RENDERER_WEBGL where exposed). */
 export function tierForRenderer(renderer: string): QualityTier {
   if (/swiftshader|llvmpipe|softpipe|basic render|software/i.test(renderer)) return "low";
-  if (/geforce mx/i.test(renderer)) return "medium";
-  if (/apple (m\d|gpu)|nvidia|geforce|quadro|radeon (rx|pro)\b|\barc\S* [ab]\d/i.test(renderer))
+  // Entry-level laptop GeForces and the integrated "Radeon RX Vega N Graphics".
+  if (/geforce (mx|\d+mx)|radeon\S* rx vega \d+ graphics/i.test(renderer)) return "medium";
+  if (/apple (m\d|gpu)|nvidia|geforce|quadro|radeon\S* (rx|pro)\b|\barc\S* [ab]\d/i.test(renderer))
     return "high";
   return "medium";
 }
@@ -71,14 +72,17 @@ export function renderQuality(): RenderQuality {
   return (current = TIERS[tier]);
 }
 
-/** Start later renderers one tier lower, and remember that for this GPU. */
+/**
+ * Start later renderers one tier lower, and remember that for this GPU until the
+ * browser session ends: a slow session (thermals, a busy CPU) is not a verdict for good.
+ */
 export function downgradeQuality(): void {
   const lower = ORDER[ORDER.indexOf(renderQuality().tier) - 1];
   if (!lower) return;
   current = TIERS[lower];
   console.info(`Render quality lowered to ${lower} for the next race`);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ gpu, tier: lower }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ gpu, tier: lower }));
   } catch {
     // Without storage the downgrade lasts until the page reloads.
   }
@@ -87,7 +91,7 @@ export function downgradeQuality(): void {
 /** A downgrade only applies to the GPU it was measured on. */
 function savedTier(): QualityTier | null {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as {
+    const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null") as {
       gpu?: string;
       tier?: QualityTier;
     } | null;
@@ -121,9 +125,10 @@ const COOLDOWN_MS = 1000;
 const PAUSE_MS = 250;
 /** Below 50 fps for most of a window. */
 const SLOW_MS = 20;
-/** A 30 fps cap (Chrome's Energy Saver) delivers frames this regularly. */
-const CAPPED_MS = 34.5;
-const STEADY_SPREAD = 0.1;
+/** Under a 30 fps cap (Chrome's Energy Saver) the typical frame takes two refreshes... */
+const CAPPED_MEDIAN_MS = 36;
+/** ...and hardly any frame is faster, however much the timing jitters. */
+const CAPPED_FAST_MS = 28;
 const STEP = 0.85;
 /** Giving up a tier lasts across races, so it takes this many slow windows in a row at the floor. */
 const FLOOR_WINDOWS = 3;
@@ -139,6 +144,7 @@ export class AdaptiveResolution {
   private windowStart = 0;
   private intervals: number[] = [];
   private slowAtFloor = 0;
+  private probed = false;
   private finished = false;
 
   constructor(
@@ -166,18 +172,23 @@ export class AdaptiveResolution {
     const sorted = this.intervals.sort((a, b) => a - b);
     this.intervals = [];
     const p10 = sorted[Math.floor(sorted.length * 0.1)];
+    const median = sorted[Math.floor(sorted.length / 2)];
     const p90 = sorted[Math.ceil(sorted.length * 0.9) - 1];
-    // A steady 30 fps is a frame-rate cap, not GPU load: fewer pixels would not lift it.
-    const capped = p90 <= CAPPED_MS && p90 - p10 <= p90 * STEADY_SPREAD;
-    if (p90 <= SLOW_MS || capped) {
+    // A 30 fps cap and a GPU just over a 60 Hz budget look alike: nearly every frame
+    // takes two refreshes. One step tells them apart, since under a cap it changes
+    // nothing; after that a cap is left alone, and it never costs a tier.
+    const capped = p10 >= CAPPED_FAST_MS && median <= CAPPED_MEDIAN_MS;
+    if (p90 <= SLOW_MS || (capped && this.probed)) {
       this.slowAtFloor = 0;
       return null;
     }
+    if (capped) this.probed = true;
     if (this.pixelRatio > this.floor) {
       this.resumeAt = now + COOLDOWN_MS;
       this.pixelRatio = Math.max(this.floor, Math.round(this.pixelRatio * STEP * 100) / 100);
       return this.pixelRatio;
     }
+    if (capped) return null;
     if (++this.slowAtFloor < FLOOR_WINDOWS) return null;
     this.finished = true;
     return "downgrade";

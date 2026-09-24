@@ -48,6 +48,19 @@ declare global {
   }
 }
 
+/** A hidden remote car with a name tag, whose materials the first opponent will need. */
+function compileTemplate(variant?: Variant): THREE.Group | null {
+  try {
+    const template = createCarMesh("compile", "compile", variant);
+    template.visible = false;
+    return template;
+  } catch (error) {
+    // The first opponent's shaders then link when it arrives.
+    console.warn("Remote car shaders could not precompile", error);
+    return null;
+  }
+}
+
 export class Game {
   private readonly track: Track;
   private readonly car: CarPhysics;
@@ -138,18 +151,12 @@ export class Game {
    */
   private async start(): Promise<void> {
     const { renderer, scene, camera } = this.bundle;
-    let template: THREE.Group | undefined;
+    const template = compileTemplate(this.variant);
+    if (template) scene.add(template);
     try {
-      template = createCarMesh("compile", "compile", this.variant);
-      template.visible = false;
-      scene.add(template);
-      // Without parallel compilation compileAsync() links just as synchronously, and warns.
-      if (renderer.extensions.has("KHR_parallel_shader_compile"))
-        await Promise.race([
-          renderer.compileAsync(scene, camera),
-          new Promise((resolve) => setTimeout(resolve, PRECOMPILE_LIMIT_MS)),
-        ]);
-      else renderer.compile(scene, camera);
+      renderer.compile(scene, camera);
+      // Without parallel compilation the draw below links them just as synchronously.
+      if (renderer.extensions.has("KHR_parallel_shader_compile")) await this.shadersLinked();
       if (!this.disposed) {
         updateSun(this.bundle.sun, this.car.x, this.car.z);
         renderer.render(scene, camera);
@@ -162,6 +169,21 @@ export class Game {
     if (this.disposed) return;
     this.restartFrameClock();
     this.animation = requestAnimationFrame(this.frame);
+  }
+  /**
+   * Poll the driver's parallel link, not compileAsync(), whose poller outlives a race
+   * left early and then reads the disposed renderer.
+   */
+  private async shadersLinked(): Promise<void> {
+    // three types info.programs without the readiness check its programs carry.
+    const programs = (this.bundle.renderer.info.programs ?? []) as unknown as {
+      isReady(): boolean;
+    }[];
+    const deadline = performance.now() + PRECOMPILE_LIMIT_MS;
+    while (!this.disposed && performance.now() < deadline) {
+      if (programs.every((program) => program.isReady())) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
   private resize = (): void => {
     const width = this.container.clientWidth,

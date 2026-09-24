@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { Game } from "./game";
 import { Net } from "../net";
 
+const linking = vi.hoisted(() => ({ programs: [] as { isReady(): boolean }[] }));
 vi.mock("three", async (importOriginal) => {
   const actual = await importOriginal<typeof THREE>();
   return {
@@ -17,7 +18,12 @@ vi.mock("three", async (importOriginal) => {
       }
       setSize() {}
       extensions = { has: () => true };
-      compileAsync = () => Promise.resolve();
+      compile() {}
+      info = {
+        get programs() {
+          return linking.programs;
+        },
+      };
       render = vi.fn();
       forceContextLoss() {}
       dispose() {}
@@ -52,6 +58,7 @@ beforeEach(async () => {
   await vi.waitFor(() => expect(frame).toBeDefined());
 });
 afterEach(() => {
+  linking.programs = [];
   game?.dispose();
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -116,5 +123,19 @@ describe("local car render cadence", () => {
     respawn();
     tick(1000 / 60);
     expect(carMesh.position.distanceTo(spawn)).toBeCloseTo(expectedDistance, 10);
+  });
+
+  it("stops waiting for the shader link once the race is left", async () => {
+    frame = undefined;
+    const isReady = vi.fn(() => false);
+    linking.programs = [{ isReady }];
+    const early = new Game(document.body, new Net(), "early", "Test room", () => {});
+    await vi.waitFor(() => expect(isReady).toHaveBeenCalled());
+    early.dispose();
+    const polls = isReady.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // A poll after dispose() would read the disposed renderer's programs.
+    expect(isReady).toHaveBeenCalledTimes(polls);
+    expect(frame).toBeUndefined();
   });
 });
