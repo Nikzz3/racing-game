@@ -28,6 +28,13 @@ export interface PlayerSnapshot {
   spawns: number;
   /** Cosmetic car choice; absent → clients fall back to hashing the player id. */
   variant?: Variant;
+  /**
+   * Server time the position was current: the sender's own timestamp mapped
+   * onto the server clock, or the state's arrival for a sender without one.
+   * Repeats until a newer state arrives. Absent before the player's first
+   * state, and from servers predating it; clients then use the snapshot's `t`.
+   */
+  t?: number;
 }
 
 export interface LeaderboardEntry {
@@ -49,7 +56,16 @@ export type ClientMessage =
   | { type: "leaveRoom" }
   | { type: "respawn" }
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
-  | { type: "state"; x: number; y: number; z: number; rot: number; speed: number };
+  | {
+      type: "state";
+      x: number;
+      y: number;
+      z: number;
+      rot: number;
+      speed: number;
+      /** When the pose was current, on the sender's monotonic clock (any epoch); absent from older clients. */
+      t?: number;
+    };
 
 const isString = (value: unknown): value is string => typeof value === "string";
 const isFiniteNumber = (value: unknown): value is number =>
@@ -91,7 +107,15 @@ const PARSERS: {
     isFiniteNumber(v.z) &&
     isFiniteNumber(v.rot) &&
     isFiniteNumber(v.speed)
-      ? { type: "state", x: v.x, y: v.y, z: v.z, rot: v.rot, speed: v.speed }
+      ? {
+          type: "state",
+          x: v.x,
+          y: v.y,
+          z: v.z,
+          rot: v.rot,
+          speed: v.speed,
+          ...(isFiniteNumber(v.t) && { t: v.t }),
+        }
       : null,
 };
 
@@ -100,7 +124,8 @@ const PARSERS: {
  * union. A real client can send any shape, so the server must run every
  * inbound frame through this. Difficulty and track are coerced to valid values,
  * an unknown hello variant becomes absent (never a specific car), and state
- * numbers must be finite so NaN/Infinity cannot poison timing.
+ * numbers must be finite so NaN/Infinity cannot poison timing. An unusable
+ * state timestamp is dropped, leaving the state as an older client's.
  */
 export function parseClientMessage(value: unknown): ClientMessage | null {
   if (typeof value !== "object" || value === null) return null;
