@@ -29,10 +29,11 @@ own. Pacers stay non-colliding: they never enter the set of cars a client collid
   fast hits overlap briefly, since each car is stopped against a delayed copy of the other.
 - Other clients' poses are relayed unchecked, so they are not trusted to move the local car
   arbitrarily. A remote car is solid only while its drawn motion is one a car could make in
-  the Room (at most 2.5 × top speed between two of its states, timed as its own client
-  sampled them; the headroom covers older clients, whose states are timed on arrival). A
-  teleport, a respawn, or a player just joining from the origin passes through instead of
-  shoving anyone. Its reported speed is capped at the Room's top speed before it
+  the Room: at most 2.5 × top speed between two of its states, allowing for two states
+  landing in one tick. The time between them is the shorter of what its own client claims
+  and what the server saw elapse between the snapshots first carrying them, so a client
+  cannot stretch its timestamps to pass a teleport off as motion. A teleport, a respawn, or
+  a player just joining from the origin passes through instead of shoving anyone. Its reported speed is capped at the Room's top speed before it
   enters the impulse. What a hostile client can still do is ram, like any player.
 - A shove never lifts the local car above the Difficulty's top speed or below its reverse
   limit, so being rammed cannot make an honest lap implausible (ADR-0005). Cars pushed into

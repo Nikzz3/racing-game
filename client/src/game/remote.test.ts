@@ -481,4 +481,19 @@ describe("RemotePlayers obstacles", () => {
     drawAt(rp, 50);
     expect(rp.obstacles()).toHaveLength(1);
   });
+
+  it("passes through a hop whose sender stretched its state times beyond what the server saw elapse", () => {
+    const mesh = new THREE.Group();
+    vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
+    const rp = new RemotePlayers(makeMockScene(), "m", 90);
+    // States broadcast one tick apart, but claiming a second between them:
+    // 60 m in 1.05 s would pass for a car, 60 m in one 50 ms tick does not.
+    rp.onSnapshot([{ ...makeSnapshot("a"), t: -950 }], 50);
+    rp.onSnapshot([{ ...makeSnapshot("a"), x: 60, t: 100 }], 100);
+    drawAt(rp, -425);
+    expect(mesh.position.x).toBeCloseTo(30);
+    expect(rp.obstacles()).toEqual([]);
+    drawAt(rp, 100);
+    expect(rp.obstacles()).toEqual([]);
+  });
 });

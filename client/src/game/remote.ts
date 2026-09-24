@@ -7,6 +7,8 @@ import { interpolateHeading } from "./pose-interpolation";
 /** A remote car's reported state, at the server time it was current. */
 interface Sample {
   t: number;
+  /** Broadcast time of the snapshot that first carried it: unlike `t`, never the sender's say. */
+  seen: number;
   x: number;
   z: number;
   rot: number;
@@ -38,16 +40,22 @@ export interface RemotePosition {
  */
 export const INTERPOLATION_DELAY_MS = 150;
 const SAMPLE_LIMIT = 30;
-/** Floor on the span a remote car's motion is judged over: a sender stamped on arrival can land two states a few ms apart. */
+/** Floor on the span a remote car's motion is judged over: states can land a few ms, or one tick, apart. */
 const MIN_SOLID_SPAN_MS = 50;
-/** Headroom over the Room's top speed before a remote car's motion reads as a teleport. */
+/** Headroom over the Room's top speed before a remote car's motion reads as a teleport; two sends can share a tick. */
 const SOLID_SPEED_TOLERANCE = 2.5;
 /** How far past its newest state a car is extrapolated, as a fraction of the last span. */
 const MAX_EXTRAPOLATION = 1.25;
 
-/** Keep samples in time order: a repeat replaces the newest, and newer times supersede what they precede. */
+/**
+ * Keep samples in time order: a repeat replaces the newest (keeping when it
+ * was first seen), and newer times supersede what they precede.
+ */
 function record(samples: Sample[], sample: Sample): void {
-  while (samples.length > 0 && samples[samples.length - 1].t >= sample.t) samples.pop();
+  while (samples.length > 0 && samples[samples.length - 1].t >= sample.t) {
+    const superseded = samples.pop()!;
+    if (superseded.t === sample.t) sample.seen = Math.min(sample.seen, superseded.seen);
+  }
   samples.push(sample);
   if (samples.length > SAMPLE_LIMIT) samples.shift();
 }
@@ -73,7 +81,7 @@ export class RemotePlayers {
       if (player.id === this.myId) continue;
       present.add(player.id);
       const { x, z, rot, speed, spawns } = player;
-      record(this.car(player).samples, { t: player.t ?? t, x, z, rot, speed, spawns });
+      record(this.car(player).samples, { t: player.t ?? t, seen: t, x, z, rot, speed, spawns });
     }
     for (const id of this.cars.keys()) {
       if (!present.has(id)) this.removeCar(id);
@@ -92,8 +100,10 @@ export class RemotePlayers {
       const before = samples[Math.max(index - 1, 0)];
       const after = samples[index];
       const span = after.t - before.t;
-      const maxHop =
-        (this.topSpeed * SOLID_SPEED_TOLERANCE * Math.max(span, MIN_SOLID_SPAN_MS)) / 1000;
+      // Judged over no longer than the server saw pass between the two states,
+      // so a sender cannot stretch its timestamps to pass off a teleport as motion.
+      const judged = Math.max(Math.min(span, after.seen - before.seen), MIN_SOLID_SPAN_MS);
+      const maxHop = (this.topSpeed * SOLID_SPEED_TOLERANCE * judged) / 1000;
       car.solid =
         before !== after &&
         before.spawns === after.spawns &&
