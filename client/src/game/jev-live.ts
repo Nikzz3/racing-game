@@ -226,7 +226,7 @@ export class JevLiveViewer {
     const { recording, phase, decisions } = this.run;
     this.cardShown = true;
     const [title, note] = recording
-      ? ["Lap complete", `${recording.decisions.length} decisions`]
+      ? ["Lap complete", `${recording.decisions.length} decisions this lap`]
       : phase === "unavailable"
         ? ["Jev is unavailable", "This server cannot reach Jev right now."]
         : decisions === 0

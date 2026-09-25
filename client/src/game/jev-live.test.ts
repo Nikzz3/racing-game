@@ -160,7 +160,7 @@ describe("JevLiveViewer", () => {
     const time = text(".live-run-card-time")!;
     expect(time).toMatch(/^0:\d\d\.\d{3}$/);
     expect(text(".replay-time")).toBe(time);
-    expect(text(".live-run-card-note")).toMatch(/^\d+ decisions$/);
+    expect(text(".live-run-card-note")).toMatch(/^\d+ decisions this lap$/);
     expect(document.activeElement?.textContent).toBe("Watch replay");
 
     document.querySelector<HTMLButtonElement>("[data-live-again]")!.click();

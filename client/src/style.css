@@ -2261,6 +2261,8 @@ a {
 }
 .live-run-card {
   position: absolute;
+  /* Above Jev's panel where a narrow screen overlaps them. */
+  z-index: 1;
   top: 30%;
   left: 50%;
   transform: translateX(-50%);
