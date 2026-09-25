@@ -65,6 +65,16 @@ export type ClientMessage =
       speed: number;
       /** When the pose was current, on the sender's monotonic clock (any epoch); absent from older clients. */
       t?: number;
+    }
+  /** Ask Jev for one driving decision about this pose (ADR-0009); `seq` echoes back. */
+  | {
+      type: "jevDrive";
+      seq: number;
+      track: TrackSlug;
+      x: number;
+      z: number;
+      heading: number;
+      speed: number;
     };
 
 const isString = (value: unknown): value is string => typeof value === "string";
@@ -117,6 +127,22 @@ const PARSERS: {
           ...(isFiniteNumber(v.t) && { t: v.t }),
         }
       : null,
+  jevDrive: (v) =>
+    isFiniteNumber(v.seq) &&
+    isFiniteNumber(v.x) &&
+    isFiniteNumber(v.z) &&
+    isFiniteNumber(v.heading) &&
+    isFiniteNumber(v.speed)
+      ? {
+          type: "jevDrive",
+          seq: v.seq,
+          track: asTrackSlug(v.track),
+          x: v.x,
+          z: v.z,
+          heading: v.heading,
+          speed: v.speed,
+        }
+      : null,
 };
 
 /**
@@ -140,6 +166,8 @@ export type ServerMessage =
       playerId: string;
       rooms: RoomInfo[];
       leaderboard: LeaderboardEntry[];
+      /** Whether this server can ask Jev to drive; absent from older servers. */
+      jev?: boolean;
     }
   | { type: "rooms"; rooms: RoomInfo[] }
   | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty; track: TrackSlug }
@@ -165,4 +193,15 @@ export type ServerMessage =
       /** Variant snapshotted when the lap persisted; absent → name-hash fallback. */
       variant?: Variant;
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** Jev's answer to the `jevDrive` with the same `seq`: probabilities, not a pedal. */
+  | { type: "jevDecision"; seq: number; accelerate: number; left: number; latencyMs: number }
+  /** The `jevDrive` with this `seq` got no decision; the client keeps its last input. */
+  | { type: "jevUnavailable"; seq: number; reason: JevUnavailableReason };
+
+/**
+ * `disabled`: no API key (or stub) on this server. `busy`: a decision for this
+ * connection is still in flight. `rateLimited`: this connection or the server is
+ * over its Jev budget. `failed`: TypeSafe errored or timed out.
+ */
+export type JevUnavailableReason = "disabled" | "busy" | "rateLimited" | "failed";

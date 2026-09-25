@@ -63,6 +63,8 @@ function mount(): Lobby {
     onJoin: vi.fn(),
     onReplay: vi.fn(),
     onReferenceLap: vi.fn(),
+    onJevLap: vi.fn(),
+    onJevLive: vi.fn(),
     onVariantChange: vi.fn(),
   };
   lobby = new Lobby(parent, cbs);
@@ -500,6 +502,27 @@ describe("Lobby AI Record control", () => {
   it("onReferenceLap is not triggered by clicks on other leaderboard elements", () => {
     q(".lb-list").click();
     expect(cbs.onReferenceLap).not.toHaveBeenCalled();
+  });
+});
+
+describe("Lobby Jev controls", () => {
+  beforeEach(mount);
+
+  it("shows Watch Jev Lap alongside the AI Record and routes its click", () => {
+    expect(q(".lb-jev-lap-btn").closest<HTMLElement>(".lb-ai-record")!.hidden).toBe(false);
+    click("button[data-jev-lap]");
+    expect(cbs.onJevLap).toHaveBeenCalledOnce();
+    expect(cbs.onReferenceLap).not.toHaveBeenCalled();
+  });
+
+  it("offers the live run only once the server reports Jev is available", () => {
+    expect(q(".lb-jev-live-btn").hidden).toBe(true);
+    lobby.setJevAvailable(true);
+    expect(q(".lb-jev-live-btn").hidden).toBe(false);
+    click("button[data-jev-live]");
+    expect(cbs.onJevLive).toHaveBeenCalledOnce();
+    lobby.setJevAvailable(false);
+    expect(q(".lb-jev-live-btn").hidden).toBe(true);
   });
 });
 

@@ -2103,6 +2103,129 @@ a {
 .replay-exit {
   margin-top: 20px;
 }
+/* Jev's decisions, shared by the Jev Lap replay and the live run (ui/jev-panel.ts). */
+.jev-panel {
+  position: absolute;
+  top: 36px;
+  right: 40px;
+  width: 300px;
+  padding: 16px 18px;
+  /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
+  background: #151720e0;
+  border-right: 3px solid #8dc9b1;
+  font: 11px var(--mono);
+  color: #eee0cf;
+  pointer-events: none;
+  text-shadow: none;
+}
+.jev-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.jev-panel-name {
+  font:
+    italic 30px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  color: #a6d4c0;
+  letter-spacing: 0.04em;
+}
+.jev-panel-sub {
+  color: #a4a5aa;
+  letter-spacing: 0.08em;
+}
+.jev-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  margin-bottom: 12px;
+}
+.jev-row-label {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #a4a5aa;
+}
+.jev-pick {
+  grid-row: 1;
+  grid-column: 2;
+  color: #fff9ef;
+}
+.jev-bar {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  background: #ffffff14;
+}
+.jev-pedal {
+  background: #e0745a66;
+}
+.jev-pedal-fill {
+  position: absolute;
+  inset: 0;
+  background: #8dc9b1;
+  transform-origin: left;
+  transform: scaleX(0.5);
+}
+.jev-steer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: #ffffff40;
+}
+.jev-steer-needle {
+  position: absolute;
+  inset: 0;
+  transform: translateX(50%);
+}
+.jev-steer-needle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  width: 4px;
+  background: #ffcf94;
+}
+.jev-bar-ends {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  color: #7d7f86;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.jev-seen {
+  margin: 4px 0 10px;
+  min-height: 3em;
+  line-height: 1.5;
+  color: #d8cdbd;
+}
+.jev-seen::before {
+  content: "Jev sees: ";
+  color: #a6d4c0;
+}
+.jev-stats {
+  color: #a4a5aa;
+}
+@media (max-width: 700px) {
+  .jev-panel {
+    top: auto;
+    bottom: 16px;
+    right: 16px;
+    width: min(300px, calc(100vw - 32px));
+    padding: 12px 14px;
+  }
+  .jev-panel-name {
+    font-size: 22px;
+  }
+}
 .replay-finished {
   position: absolute;
   top: 30%;

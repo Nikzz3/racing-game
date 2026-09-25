@@ -37,6 +37,8 @@ export class RacingApp {
         const lap = this.lobby.getReferenceLap();
         if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
       },
+      onJevLap: () => void this.openJevLap(),
+      onJevLive: () => void this.openJevLive(),
     });
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
@@ -118,6 +120,7 @@ export class RacingApp {
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
+        this.lobby.setJevAvailable(message.jev === true);
         return;
       case "rooms":
         this.lobby.setRooms(message.rooms);
@@ -214,6 +217,10 @@ export class RacingApp {
       this.showError("The replay could not start. Please try again.");
     }
   }
+  /** Replays the recorded Jev Lap with Jev's decisions alongside (issue: Jev Lap). */
+  private async openJevLap(): Promise<void> {}
+  /** Starts a live Jev run driven over this connection (issue: Jev Live). */
+  private async openJevLive(): Promise<void> {}
   private showError(message: string, reconnect = false): void {
     this.notice?.remove();
     const notice = document.createElement("div");
