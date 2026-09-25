@@ -195,7 +195,16 @@ export type ServerMessage =
     }
   | { type: "error"; message: string }
   /** Jev's answer to the `jevDrive` with the same `seq`: probabilities, not a pedal. */
-  | { type: "jevDecision"; seq: number; accelerate: number; left: number; latencyMs: number }
+  | {
+      type: "jevDecision";
+      seq: number;
+      accelerate: number;
+      left: number;
+      pedalConfidence: number;
+      steerConfidence: number;
+      latencyMs: number;
+      model: string;
+    }
   /** The `jevDrive` with this `seq` got no decision; the client keeps its last input. */
   | { type: "jevUnavailable"; seq: number; reason: JevUnavailableReason };
 
