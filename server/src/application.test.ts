@@ -11,6 +11,7 @@ import {
   JEV_RATE_PER_SECOND,
   JEV_SERVER_RATE_PER_SECOND,
   JEV_TIMEOUT_MS,
+  JEV_USAGE_RETRY_MS,
   jevDailyDecisions,
 } from "./jev-proxy";
 import { topEntries } from "./leaderboard";
@@ -445,7 +446,7 @@ describe("Jev live runs", () => {
     expect(usage.decisionsOn).toHaveBeenCalledTimes(1);
 
     // The next request after the retry interval reads again; the one after that is counted.
-    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(JEV_USAGE_RETRY_MS);
     client.message(drive(2));
     await settle();
     expect(usage.decisionsOn).toHaveBeenCalledTimes(2);
@@ -476,9 +477,9 @@ describe("Jev live runs", () => {
     await application.load();
     const client = await connect(application);
     // A retry starts a read that hangs; later requests must not start another.
-    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(JEV_USAGE_RETRY_MS);
     client.message(drive(1));
-    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(JEV_USAGE_RETRY_MS);
     client.message(drive(2));
     expect(usage.decisionsOn).toHaveBeenCalledTimes(2);
 

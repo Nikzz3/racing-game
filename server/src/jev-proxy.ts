@@ -27,8 +27,12 @@ export const JEV_MAX_IN_FLIGHT = 24;
  * sockets a client opens: at ~900 input tokens a decision it is at most ~$0.003/min.
  */
 export const JEV_SERVER_RATE_PER_SECOND = 20;
-/** How long to wait before reading an unknown day's usage again. */
-const USAGE_RETRY_MS = 30_000;
+/**
+ * How long to wait before reading an unknown day's usage again: well inside the
+ * 20 s a live run waits for progress, so a run opened meanwhile rides out a
+ * recovery. One indexed single-row read.
+ */
+export const JEV_USAGE_RETRY_MS = 5_000;
 /** Decisions per UTC day before Jev switches off until the next one (~300 live laps). */
 export const JEV_DEFAULT_DAILY_DECISIONS = 50_000;
 /** Deadline for one decision, with no retries: a late answer is about a pose long gone. */
@@ -88,7 +92,7 @@ export class JevProxy {
   /**
    * Set when today's usage could not be read: the budget left is unknown, so no
    * decision is asked for (failing closed) until a read succeeds. Retried at most
-   * every USAGE_RETRY_MS, by the requests that find it unknown.
+   * every JEV_USAGE_RETRY_MS, by the requests that find it unknown.
    */
   private usageUnknownSince: number | null = null;
   /** A read of today's usage is on its way; another would count it twice. */
@@ -144,7 +148,7 @@ export class JevProxy {
     }
     if (connection.inFlight) return refuse("busy");
     if (this.usageUnknownSince !== null) {
-      if (now - this.usageUnknownSince >= USAGE_RETRY_MS) {
+      if (now - this.usageUnknownSince >= JEV_USAGE_RETRY_MS) {
         this.usageUnknownSince = now;
         void this.load(now);
       }
