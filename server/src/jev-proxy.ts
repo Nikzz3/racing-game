@@ -27,6 +27,8 @@ export const JEV_MAX_IN_FLIGHT = 24;
  * sockets a client opens: at ~900 input tokens a decision it is at most ~$0.003/min.
  */
 export const JEV_SERVER_RATE_PER_SECOND = 20;
+/** How long to wait before reading an unknown day's usage again. */
+const USAGE_RETRY_MS = 30_000;
 /** Decisions per UTC day before Jev switches off until the next one (~300 live laps). */
 export const JEV_DEFAULT_DAILY_DECISIONS = 50_000;
 /** Deadline for one decision, with no retries: a late answer is about a pose long gone. */
@@ -83,6 +85,12 @@ export class JevProxy {
   /** Decisions counted on `day` but not yet added to the store; a write coalesces them. */
   private unsaved = 0;
   private saving = false;
+  /**
+   * Set when today's usage could not be read: the budget left is unknown, so Jev
+   * stays off (failing closed) until a read succeeds. Retried at most every
+   * USAGE_RETRY_MS, by the requests that find it off.
+   */
+  private usageUnknownSince: number | null = null;
   private lastWarningAt = -Infinity;
   private unreportedFailures = 0;
 
@@ -103,8 +111,10 @@ export class JevProxy {
         this.decidedToday = 0;
       }
       this.decidedToday += counted;
+      this.usageUnknownSince = null;
     } catch (error) {
-      console.error("Failed to load Jev's daily usage:", error);
+      this.usageUnknownSince = now;
+      console.error("Failed to load Jev's daily usage; Jev stays off until it loads:", error);
     }
   }
 
@@ -127,6 +137,13 @@ export class JevProxy {
       this.connections.set(socket, connection);
     }
     if (connection.inFlight) return refuse("busy");
+    if (this.usageUnknownSince !== null) {
+      if (now - this.usageUnknownSince >= USAGE_RETRY_MS) {
+        this.usageUnknownSince = now;
+        void this.load(now);
+      }
+      return refuse("disabled");
+    }
     if (!this.withinDailyBudget(now)) return refuse("disabled");
     // Both buckets must hold a token before either is spent: a connection over its own
     // limit must not drain the server's, nor a full server the connection's.
@@ -179,7 +196,8 @@ export class JevProxy {
         try {
           await this.usage.add(day, decisions);
         } catch (error) {
-          // The in-memory count still enforces the budget until the next restart.
+          // Keep them for the next write; the in-memory count enforces the budget meanwhile.
+          if (day === this.day) this.unsaved += decisions;
           console.error("Failed to save Jev's daily usage:", error);
           return;
         }

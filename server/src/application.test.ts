@@ -422,6 +422,63 @@ describe("Jev live runs", () => {
     expect(usage.add).toHaveBeenCalledExactlyOnceWith("2026-09-25", 1);
   });
 
+  it("stays off while today's usage cannot be read, and retries the read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const usage = {
+      decisionsOn: vi
+        .fn(async (_day: string) => 9)
+        .mockRejectedValueOnce(new Error("connection refused")),
+      add: vi.fn(async (_day: string, _decisions: number) => {}),
+    };
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver, 10, usage);
+    await application.load();
+
+    const client = await connect(application);
+    client.message(drive(1));
+    await settle();
+    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "disabled" }]);
+    expect(usage.decisionsOn).toHaveBeenCalledTimes(1);
+
+    // The next request after the retry interval reads again; the one after that is counted.
+    vi.advanceTimersByTime(30_000);
+    client.message(drive(2));
+    await settle();
+    expect(usage.decisionsOn).toHaveBeenCalledTimes(2);
+    client.message(drive(3));
+    await settle();
+    expect(client.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 3 });
+    vi.advanceTimersByTime(1000);
+    client.message(drive(4));
+    await settle();
+    expect(client.messages.at(-1)).toEqual({ type: "jevUnavailable", seq: 4, reason: "disabled" });
+    expect(driver.decide).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps decisions a failed usage write could not save for the next write", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const usage = {
+      decisionsOn: vi.fn(async (_day: string) => 0),
+      add: vi
+        .fn(async (_day: string, _decisions: number) => {})
+        .mockRejectedValueOnce(new Error("connection refused")),
+    };
+    const application = new RacingApplication(fakeDriver(), 100, usage);
+    (await connect(application)).message(drive(1));
+    await settle();
+    (await connect(application)).message(drive(1));
+    await settle();
+    expect(usage.add.mock.calls).toEqual([
+      ["2026-09-25", 1],
+      ["2026-09-25", 2],
+    ]);
+  });
+
   it("coalesces the usage writes made while one is still saving", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
