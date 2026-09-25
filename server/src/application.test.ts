@@ -4,7 +4,15 @@ import { WebSocket } from "ws";
 import { SUNSET_RIDGE } from "@racing/shared";
 import { RacingApplication } from "./application";
 import type { JevAnswer, JevDriver, JevRequestOptions } from "./jev";
-import { JEV_BURST, JEV_MAX_IN_FLIGHT, JEV_RATE_PER_SECOND, JEV_TIMEOUT_MS } from "./jev-proxy";
+import {
+  JEV_BURST,
+  JEV_DEFAULT_DAILY_DECISIONS,
+  JEV_MAX_IN_FLIGHT,
+  JEV_RATE_PER_SECOND,
+  JEV_SERVER_RATE_PER_SECOND,
+  JEV_TIMEOUT_MS,
+  jevDailyDecisions,
+} from "./jev-proxy";
 import { topEntries } from "./leaderboard";
 import { pool } from "./db";
 import { LEGACY_RECORD } from "../../tests/fixtures/legacy-replay";
@@ -296,6 +304,7 @@ describe("Jev live runs", () => {
   });
 
   it("caps the decisions in flight across every connection", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const decisions: ReturnType<typeof pendingDecision>[] = [];
     const driver = fakeDriver(() => {
       const decision = pendingDecision();
@@ -303,7 +312,11 @@ describe("Jev live runs", () => {
       return decision.promise;
     });
     const application = new RacingApplication(driver);
-    for (let i = 0; i < JEV_MAX_IN_FLIGHT; i++) (await connect(application)).message(drive(1));
+    for (let i = 0; i < JEV_MAX_IN_FLIGHT; i++) {
+      // Paced under the server-wide rate, so only the in-flight cap can refuse.
+      vi.advanceTimersByTime(1000 / JEV_SERVER_RATE_PER_SECOND);
+      (await connect(application)).message(drive(1));
+    }
     const late = await connect(application);
     late.message(drive(1));
     expect(late.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "rateLimited" }]);
@@ -313,6 +326,70 @@ describe("Jev live runs", () => {
     late.message(drive(2));
     await settle();
     expect(driver.decide).toHaveBeenCalledTimes(JEV_MAX_IN_FLIGHT + 1);
+  });
+
+  it("caps the server-wide rate however many connections ask", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver);
+    const clients = [];
+    for (let i = 0; i <= JEV_SERVER_RATE_PER_SECOND; i++) clients.push(await connect(application));
+    for (const client of clients) {
+      client.message(drive(1));
+      await settle();
+    }
+    expect(clients.at(-2)!.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 1 });
+    expect(clients.at(-1)!.messages).toEqual([
+      { type: "jevUnavailable", seq: 1, reason: "rateLimited" },
+    ]);
+
+    vi.advanceTimersByTime(1000 / JEV_SERVER_RATE_PER_SECOND);
+    clients.at(-1)!.message(drive(2));
+    await settle();
+    expect(clients.at(-1)!.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 2 });
+    expect(driver.decide).toHaveBeenCalledTimes(JEV_SERVER_RATE_PER_SECOND + 1);
+  });
+
+  it("switches Jev off for the rest of the UTC day once the daily budget is spent", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T23:59:00Z"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver, 2);
+    const client = await connect(application);
+    for (const seq of [1, 2, 3, 4]) {
+      vi.advanceTimersByTime(1000);
+      client.message(drive(seq));
+      await settle();
+    }
+    expect(client.messages.slice(2)).toEqual([
+      { type: "jevUnavailable", seq: 3, reason: "disabled" },
+      { type: "jevUnavailable", seq: 4, reason: "disabled" },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(new Date("2026-09-26T00:00:01Z"));
+    client.message(drive(5));
+    await settle();
+    expect(client.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 5 });
+    expect(driver.decide).toHaveBeenCalledTimes(3);
+  });
+
+  it("reads the daily budget from JEV_DAILY_DECISIONS", () => {
+    expect(jevDailyDecisions({})).toBe(JEV_DEFAULT_DAILY_DECISIONS);
+    expect(jevDailyDecisions({ JEV_DAILY_DECISIONS: "1200" })).toBe(1200);
+    expect(jevDailyDecisions({ JEV_DAILY_DECISIONS: "0" })).toBe(0);
+    for (const invalid of ["", " ", "-5", "1.5", "lots"])
+      expect(jevDailyDecisions({ JEV_DAILY_DECISIONS: invalid })).toBe(JEV_DEFAULT_DAILY_DECISIONS);
+  });
+
+  it("answers failed rather than relay an implausible answer", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const driver = fakeDriver(() => Promise.resolve({ ...ANSWER, left: Number.NaN }));
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(1));
+    await settle();
+    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "failed" }]);
   });
 
   it("reports a failed decision and warns once a minute, not per failure", async () => {
@@ -362,5 +439,30 @@ describe("Jev live runs", () => {
     expect(signal?.aborted).toBe(true);
     expect(client.messages).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("frees the aborted decision's server-wide slot", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const driver = fakeDriver(
+      ({ signal }) =>
+        new Promise((_resolve, reject) =>
+          signal?.addEventListener("abort", () => reject(new Error("aborted"))),
+        ),
+    );
+    const application = new RacingApplication(driver);
+    const clients = [];
+    for (let i = 0; i < JEV_MAX_IN_FLIGHT; i++) {
+      vi.advanceTimersByTime(1000 / JEV_SERVER_RATE_PER_SECOND);
+      const client = await connect(application);
+      client.message(drive(1));
+      clients.push(client);
+    }
+    clients[0].close();
+    await settle();
+    vi.advanceTimersByTime(1000 / JEV_SERVER_RATE_PER_SECOND);
+    const late = await connect(application);
+    late.message(drive(1));
+    expect(late.messages).toEqual([]);
+    expect(driver.decide).toHaveBeenCalledTimes(JEV_MAX_IN_FLIGHT + 1);
   });
 });

@@ -104,8 +104,9 @@ export function jevDrivingState(pose: JevPose, track: Track): JevDrivingState {
     return Math.atan2(s.dirX, s.dirZ);
   };
 
-  // > 0 when the car is left of the direction of travel.
-  const lateral = here.dirX * (pose.z - here.z) - here.dirZ * (pose.x - here.x);
+  // > 0 when the car is left of the direction of travel. Steering left turns the
+  // heading up, which carries the car along (dirZ, -dirX): that is its left.
+  const lateral = here.dirZ * (pose.x - here.x) - here.dirX * (pose.z - here.z);
   const noseError = normalizeAngle(pose.heading - roadHeading(0));
 
   const roadAhead = AIM_DISTANCES.map((metres) => {

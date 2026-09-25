@@ -42,9 +42,12 @@ Jev drives in two ways, both on Sunset Ridge at Medium only:
 1. **The key never leaves the server.** Without `TYPESAFE_API_KEY` (and without the
    `JEV_STUB=1` stand-in used by e2e) the server reports `jev: false` in `welcome` and the
    client hides the live run.
-2. **Bounded spend.** One decision in flight per connection, a per-connection rate cap (the
-   Jev Lap's 10 decisions/s, burst 3) and a global cap of 24 decisions in flight; a refused
-   request answers `jevUnavailable`, never queues. A decision gets 2 s and no retries
+2. **Bounded spend.** Per connection: one decision in flight and the Jev Lap's 10
+   decisions/s (burst 3). Server-wide, so opening more sockets buys nothing: 24 decisions in
+   flight, 20 decisions/s, and a daily budget (`JEV_DAILY_DECISIONS`, default 50,000 — about
+   300 live laps) after which Jev answers `disabled` until UTC midnight. A refused request
+   answers `jevUnavailable` and never queues. A decision gets 2 s and no retries, and an
+   answer whose probabilities are not in 0–1 is reported as `failed`
    (`server/src/jev-proxy.ts`).
 3. **Never a leaderboard row.** Neither the Jev Lap nor a Jev Live Run is sent through lap
    timing, persisted, ranked, or used as a Track Record (ADR-0001 stands).

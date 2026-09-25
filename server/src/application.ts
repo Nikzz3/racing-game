@@ -28,9 +28,12 @@ export class RacingApplication {
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
   private readonly jev: JevProxy;
 
-  /** `jevDriver` answers Jev Live Runs; null leaves them off (see createJevDriver). */
-  constructor(jevDriver: JevDriver | null = null) {
-    this.jev = new JevProxy(jevDriver);
+  /**
+   * `jevDriver` answers Jev Live Runs; null leaves them off (see createJevDriver).
+   * `jevDailyDecisions` caps how many decisions a UTC day may ask Jev for.
+   */
+  constructor(jevDriver: JevDriver | null = null, jevDailyDecisions?: number) {
+    this.jev = new JevProxy(jevDriver, jevDailyDecisions);
   }
 
   async load(): Promise<void> {

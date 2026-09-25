@@ -7,6 +7,7 @@ import { RacingApplication } from "./application";
 import { initDb } from "./db";
 import { createHttpHandler } from "./http";
 import { createJevDriver } from "./jev";
+import { jevDailyDecisions } from "./jev-proxy";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/dist");
@@ -16,7 +17,7 @@ const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 async function main(): Promise<void> {
   await initDb();
   const jev = createJevDriver();
-  const application = new RacingApplication(jev);
+  const application = new RacingApplication(jev, jevDailyDecisions());
   await application.load();
   const server = createServer(createHttpHandler(CLIENT_DIST));
   const sockets = new WebSocketServer({

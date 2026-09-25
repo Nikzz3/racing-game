@@ -12,10 +12,10 @@ import { createJevDriver, createStubJevDriver, createTypeSafeJevDriver } from ".
 /** A pose on the centre line at `index`, pointing down the road, turned by `turn` rad. */
 function poseAt(index: number, { turn = 0, lateral = 0, speed = 40 } = {}): JevPose {
   const s = SUNSET_RIDGE.samples[index];
-  // (-dirZ, dirX) points left of the direction of travel.
+  // (dirZ, -dirX) points left of the direction of travel (steer +1 carries the car there).
   return {
-    x: s.x - s.dirZ * lateral,
-    z: s.z + s.dirX * lateral,
+    x: s.x + s.dirZ * lateral,
+    z: s.z - s.dirX * lateral,
     heading: Math.atan2(s.dirX, s.dirZ) + turn,
     speed,
   };
@@ -44,6 +44,15 @@ describe("jevDrivingState", () => {
     const turnedLeft = jevDrivingState(poseAt(STRAIGHT, { turn: 0.3 }), SUNSET_RIDGE);
     expect(turnedLeft.nose_direction).toMatch(/to the left of the road direction$/);
     expect(turnedLeft.road_ahead[1]).toMatch(/to the right of where the car is pointing$/);
+  });
+
+  it("puts the road centre on the opposite side to the car's offset", () => {
+    const left = jevDrivingState(poseAt(STRAIGHT, { lateral: 3 }), SUNSET_RIDGE);
+    expect(left.car_position).toMatch(/^3\.0 m left of/);
+    expect(left.road_ahead[0]).toMatch(/to the right of where the car is pointing$/);
+    const right = jevDrivingState(poseAt(STRAIGHT, { lateral: -3 }), SUNSET_RIDGE);
+    expect(right.car_position).toMatch(/^3\.0 m right of/);
+    expect(right.road_ahead[0]).toMatch(/to the left of where the car is pointing$/);
   });
 
   it("reports the lateral offset and leaving the tarmac", () => {
