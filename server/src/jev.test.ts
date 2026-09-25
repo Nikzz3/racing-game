@@ -8,7 +8,6 @@ import {
   type JevPose,
 } from "@racing/shared";
 import { createJevDriver, createStubJevDriver, createTypeSafeJevDriver } from "./jev";
-import type { SystemOneClient } from "./jev";
 
 /** A pose on the centre line at `index`, pointing down the road, turned by `turn` rad. */
 function poseAt(index: number, { turn = 0, lateral = 0, speed = 40 } = {}): JevPose {
@@ -102,7 +101,7 @@ describe("createTypeSafeJevDriver", () => {
       },
       usage: { input_tokens: 900, output_tokens: 40 },
     });
-    const driver = createTypeSafeJevDriver({ systemOne } as unknown as SystemOneClient);
+    const driver = createTypeSafeJevDriver({ systemOne });
     const pose = poseAt(STRAIGHT);
     const answer = await driver.decide(pose, SUNSET_RIDGE, { timeoutMs: 1500, maxRetries: 0 });
 
