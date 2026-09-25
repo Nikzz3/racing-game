@@ -3,7 +3,6 @@ import { openSetupTab } from "../fixtures/lobby";
 
 test.describe("Jev Lap", () => {
   test("replays the bundled Jev Lap with Jev's decisions alongside", async ({ page }) => {
-    test.fail(true, "Red: the Jev Lap replay is not wired up yet");
     await page.goto("/");
     await openSetupTab(page, "records");
     const watch = page.locator("button[data-jev-lap]");

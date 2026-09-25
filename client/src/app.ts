@@ -1,6 +1,15 @@
-import type { ReplayFrame, ServerMessage, TrackSlug, Variant } from "@racing/shared";
+import {
+  JEV_TRACK,
+  JEV_VARIANT,
+  type ReplayFrame,
+  type ServerMessage,
+  type TrackSlug,
+  type Variant,
+} from "@racing/shared";
 import { Net } from "./net";
 import { Game } from "./game/game";
+import { JEV_LAP } from "./game/jev-lap";
+import type { JevRecording } from "./game/jev-recording";
 import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
@@ -199,6 +208,7 @@ export class RacingApp {
     time: number,
     frames: ReplayFrame[],
     variant?: Variant,
+    jev?: JevRecording,
   ): Promise<void> {
     if (this.view instanceof Game || this.joining || frames.length < 2) return;
     const revision = ++this.revision;
@@ -208,8 +218,15 @@ export class RacingApp {
     if (revision !== this.revision) return;
     try {
       this.lobby.hide();
-      this.view = new ReplayViewer(this.root, name, track, time, frames, variant, () =>
-        this.returnToLobby(),
+      this.view = new ReplayViewer(
+        this.root,
+        name,
+        track,
+        time,
+        frames,
+        variant,
+        () => this.returnToLobby(),
+        jev,
       );
     } catch (error) {
       console.error("Replay view could not start", error);
@@ -217,8 +234,11 @@ export class RacingApp {
       this.showError("The replay could not start. Please try again.");
     }
   }
-  /** Replays the recorded Jev Lap with Jev's decisions alongside (issue: Jev Lap). */
-  private async openJevLap(): Promise<void> {}
+  /** Replays the bundled Jev Lap in Jev's car, with Jev's decisions alongside. */
+  private async openJevLap(): Promise<void> {
+    const lap = JEV_LAP;
+    if (lap) await this.openReplay("Jev", JEV_TRACK, lap.timeMs, lap.frames, JEV_VARIANT, lap);
+  }
   /** Starts a live Jev run driven over this connection (issue: Jev Live). */
   private async openJevLive(): Promise<void> {}
   private showError(message: string, reconnect = false): void {
