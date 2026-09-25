@@ -53,7 +53,9 @@ cp ../racing-game/.env .env 2>/dev/null || true
 npm ci --prefer-offline
 ```
 
-`npm ci` installs from the local npm cache in a few seconds. Everything else is shared:
+`npm ci` installs from the local npm cache in a few seconds. T3 Code and Claude Code
+(`claude --worktree`, via `.worktreeinclude`) copy `.env` for you; edit it in the
+worktree only for that checkout, e.g. to move its ports. Everything else is shared:
 
 - **Postgres** — `docker-compose.yml` pins the compose project name to `racing-game`, so
   `podman compose up -d --no-recreate` from any worktree reuses the one `racing-game_db_1`
@@ -80,10 +82,10 @@ npm ci --prefer-offline
 
 - `defaultThreadEnvMode: "worktree"` — new threads start in a fresh worktree under
   `~/.t3/worktrees/racing-game/`, on a `t3code/<slug>` branch.
-- A **Setup worktree** action flagged `runOnWorktreeCreate` that runs `npm ci` and
+- A **Setup worktree** action flagged `runOnWorktreeCreate` that copies `.env` from the
+  main checkout (unless the worktree already has one), runs `npm ci` and
   `podman compose up -d --no-recreate`. It is marked non-async, so the agent only starts
-  once dependencies are installed and the database is up. Copy `.env` by hand if you use
-  one; every variable has a working default, so it is optional.
+  once dependencies are installed and the database is up.
 - A **Dev** action that opens the client in the in-app preview. When another thread or
   your main checkout already runs `npm run dev`, start it by hand with
   `PORT=8090 CLIENT_PORT=5183 npm run dev` instead.
@@ -91,7 +93,9 @@ npm ci --prefer-offline
 T3 Code does not apply `t3.json` automatically to an existing project: open
 _Settings → Projects → racing-game → Actions_ and use **Import scripts → Import from
 t3.json**. The imported actions are stored per machine; the file in the repo is the source
-of truth for everyone else. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
+of truth for everyone else. Imported actions do not follow later edits to `t3.json`, and
+the import only offers actions you do not already have: when one changes, delete it and
+import it again. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
 `T3CODE_WORKTREE_PATH` in their environment.
 
 ## Project layout

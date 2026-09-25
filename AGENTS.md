@@ -31,9 +31,10 @@ See `docs/agents/e2e-testing.md` for suite conventions, commands, and growth rul
 ### Worktrees
 
 T3 Code threads run in git worktrees; the setup action declared in `t3.json` (imported once
-per machine via _Settings → Projects → Actions_) installs dependencies and starts the shared
-Postgres on creation. Ports 8080/5173 are shared with the main checkout — use
-`PORT=8090 CLIENT_PORT=5183 npm run dev` when another checkout is already serving. See
+per machine via _Settings → Projects → Actions_) copies `.env` from the main checkout,
+installs dependencies and starts the shared Postgres on creation. Ports 8080/5173 are
+shared with the main checkout — use `PORT=8090 CLIENT_PORT=5183 npm run dev` when another
+checkout is already serving. See
 "Working in git worktrees" in `CONTRIBUTING.md`.
 
 ### Desktop releases
