@@ -76,7 +76,7 @@ let nextSeq = 1;
  * late to drive by. An answer takes effect on arrival and holds until the next;
  * a refused or lost request keeps the last input and retries after a backoff.
  *
- * Time is run time, the sum of the ticks, so a paused (hidden) tab never counts.
+ * Time is run time, the sum of the ticks while not paused, so a hidden tab never counts.
  */
 export class JevLiveRun {
   readonly car: CarPhysics;
@@ -90,7 +90,7 @@ export class JevLiveRun {
   latest: JevLiveDecision | null = null;
   /** The timed lap, once finished. */
   recording: JevRecording | null = null;
-  /** While paused (a hidden tab) no request is sent; answers still apply. */
+  /** While paused (a hidden tab) the run stands still and asks nothing; answers still apply. */
   paused = false;
   /** Run time in ms. */
   timeMs = 0;
@@ -161,7 +161,7 @@ export class JevLiveRun {
 
   /** Advance by one frame's wall time. */
   tick(elapsedSeconds: number): void {
-    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return;
+    if (this.paused || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return;
     this.timeMs += elapsedSeconds * 1000;
     if (this.ended) {
       // Bring the car to rest behind the result instead of driving on.

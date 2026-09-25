@@ -221,14 +221,16 @@ describe("JevLiveRun requests", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("sends nothing while paused but still applies the answer in flight", () => {
+  it("stands still and asks nothing while paused, but applies the answer in flight", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    tickMs(run, 200);
     run.paused = true;
     run.receive(decision(sent[0].seq));
     tickMs(run, 1000);
     expect(run.decisions).toBe(1);
     expect(sent).toHaveLength(1);
+    expect(run.timeMs).toBe(200);
+    expect(run.car.speed).toBe(0);
     run.paused = false;
     run.tick(0.01);
     expect(sent).toHaveLength(2);
