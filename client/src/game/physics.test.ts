@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MAX_SPEED_MS, SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
+import { MAX_SPEED_MS, ROAD_HALF_WIDTH, SUNSET_RIDGE, TRACK_DIVISIONS } from "@racing/shared";
 import { CAR_HALF_LENGTH, CAR_HALF_WIDTH, type CarObstacle } from "./car-collision";
 import { CarPhysics, PHYSICS_STEP, MAX_STEPS_PER_FRAME, MAX_ACCUMULATED_TIME } from "./physics";
 import type { CarInput } from "./input";
@@ -235,5 +235,65 @@ describe("CarPhysics.advance — other players' cars", () => {
     oncoming.heading += Math.PI;
     runSteps(car, 1, COAST, [oncoming]);
     expect(car.speed).toBe(-14);
+  });
+});
+
+describe("CarPhysics.predict", () => {
+  /** Two cars driven identically: one predicts, the other really steps. */
+  function twins(input: CarInput, seconds: number): [CarPhysics, CarPhysics] {
+    const pair: [CarPhysics, CarPhysics] = [spawned(), spawned()];
+    for (const car of pair)
+      for (let i = 0; i < Math.round(seconds * 60); i++) car.advance(1 / 60, input);
+    return pair;
+  }
+
+  it("returns the current pose for zero seconds", () => {
+    const [car] = twins(FULL_THROTTLE, 1);
+    expect(car.predict(0, STEER_GRASS)).toEqual({
+      x: car.x,
+      z: car.z,
+      heading: car.heading,
+      speed: car.speed,
+    });
+  });
+
+  it("matches really stepping the car the same number of fixed steps", () => {
+    const [car, twin] = twins(FULL_THROTTLE, 1.5);
+    const predicted = car.predict(30 * PHYSICS_STEP, STEER_GRASS);
+    for (let i = 0; i < 30; i++) twin.update(PHYSICS_STEP, STEER_GRASS);
+    expect(predicted).toEqual({ x: twin.x, z: twin.z, heading: twin.heading, speed: twin.speed });
+  });
+
+  it("carries barrier contact into the prediction", () => {
+    // Pinned to the barrier: a copy that forgot the contact would lose speed to a fresh hit.
+    const [car, twin] = [spawned(), spawned()];
+    for (const c of [car, twin]) {
+      c.spawnAtSample(TRACK_DIVISIONS - 14, ROAD_HALF_WIDTH + 1);
+      c.heading += Math.PI / 2;
+      runSteps(c, 240, FULL_THROTTLE);
+    }
+    const predicted = car.predict(10 * PHYSICS_STEP, FULL_THROTTLE);
+    for (let i = 0; i < 10; i++) twin.update(PHYSICS_STEP, FULL_THROTTLE);
+    expect(predicted.speed).toBeGreaterThan(5);
+    expect(predicted.speed).toBe(twin.speed);
+  });
+
+  it("leaves the real car, its backlog and its render pose untouched", () => {
+    const [car, twin] = twins(FULL_THROTTLE, 1);
+    car.advance(PHYSICS_STEP / 2, FULL_THROTTLE);
+    twin.advance(PHYSICS_STEP / 2, FULL_THROTTLE);
+    const before = { ...car.getRenderPose() };
+    car.predict(0.5, STEER_GRASS);
+    expect(car.getRenderPose()).toEqual(before);
+    expect(car.backlog).toBe(twin.backlog);
+    for (const c of [car, twin]) c.advance(0.2, STEER_GRASS);
+    expect([car.x, car.z, car.heading, car.speed, car.onTrack, car.centerIndex]).toEqual([
+      twin.x,
+      twin.z,
+      twin.heading,
+      twin.speed,
+      twin.onTrack,
+      twin.centerIndex,
+    ]);
   });
 });

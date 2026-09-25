@@ -69,9 +69,11 @@ export class CarPhysics {
   private readonly previousPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly renderPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly tuning: SurfaceTuning;
+  /** A second car that `predict` steps forward, allocated on first use. */
+  private scratch: CarPhysics | null = null;
 
   constructor(
-    difficulty: Difficulty = DEFAULT_DIFFICULTY,
+    private readonly difficulty: Difficulty = DEFAULT_DIFFICULTY,
     private readonly samples: TrackSample[],
   ) {
     this.tuning = TUNING[difficulty];
@@ -127,6 +129,26 @@ export class CarPhysics {
       this.collide(obstacles);
       this.stepAccumulator -= PHYSICS_STEP;
     }
+  }
+
+  /**
+   * Where this car will be after holding `input` for `seconds`, stepped on the
+   * same fixed-step path as `advance` (without other cars) by a scratch copy, so
+   * this car is left untouched. A Jev Live Run asks Jev about this pose, since
+   * Jev's answer only lands after the round trip (ADR-0009).
+   */
+  predict(seconds: number, input: CarInput): Pose {
+    const copy = (this.scratch ??= new CarPhysics(this.difficulty, this.samples));
+    copy.x = this.x;
+    copy.z = this.z;
+    copy.heading = this.heading;
+    copy.speed = this.speed;
+    copy.onTrack = this.onTrack;
+    copy.centerIndex = this.centerIndex;
+    copy.touchingWall = this.touchingWall;
+    const steps = Math.max(0, Math.round(seconds / PHYSICS_STEP));
+    for (let step = 0; step < steps; step++) copy.update(PHYSICS_STEP, input);
+    return { x: copy.x, z: copy.z, heading: copy.heading, speed: copy.speed };
   }
 
   /** Direct integration is reserved for fixed-dt simulation and training callers. */
