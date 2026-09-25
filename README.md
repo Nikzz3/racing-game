@@ -59,6 +59,14 @@ cutting the track does not pay off. Your best lap is saved per circuit and diffi
 shows up on the leaderboard, where you can watch it as a replay or race against it as a
 pacer. Rooms close automatically one hour after they are created.
 
+## Watch Jev drive
+
+On Sunset Ridge at Medium, the Records tab also lets you watch **Jev**, an AI that drives
+by answering two questions many times a second: brake or accelerate, and steer left or
+right. Replay the lap Jev recorded, or watch it drive a fresh lap live. A box on screen
+shows each question and how sure Jev was of every answer. Every live lap turns out a
+little different.
+
 ## Contributing
 
 Setup, tests, project layout, and the desktop release flow are in

@@ -21,6 +21,7 @@ import { GarageStage } from "./garage-stage";
 import { CHEAP_RENDER } from "../game/quality";
 import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
+import { JEV_LAP } from "../game/jev-lap";
 import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } from "../game/touch";
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
@@ -31,6 +32,10 @@ export interface LobbyCallbacks {
   onJoin(roomId: string): void;
   onReplay(name: string, track: TrackSlug, difficulty: Difficulty): void;
   onReferenceLap(): void;
+  /** Replay the recorded Jev Lap (ADR-0009). */
+  onJevLap(): void;
+  /** Watch Jev drive a lap live; offered only when the server can reach Jev. */
+  onJevLive(): void;
   onVariantChange(): void;
 }
 export type ArmedPacer =
@@ -237,7 +242,7 @@ export class Lobby {
             <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist">${SETUP_TABS.map((tab, i) => radio("setup-menu-item", `aria-controls="setup-${tab}-panel" id="setup-${tab}-tab" data-setup-tab="${tab}"`, `<span>0${i + 1}</span>${tab === "race" ? "Race" : "Records"}<span class="setup-menu-arrow">→</span>`, "aria-selected")).join("")}</nav>
             <div class="setup-workspace">
               <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
-              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button></div></section>
+              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button><button class="lb-ai-record-btn lb-jev-lap-btn" data-jev-lap="1">▶ Watch Jev Lap</button><button class="lb-ai-record-btn lb-jev-live-btn" data-jev-live="1" hidden>● Watch Jev drive live</button></div></section>
             </div></div></div>
           </section>
         </div>
@@ -299,8 +304,15 @@ export class Lobby {
     this.paintHero();
     this.paintTrack();
     this.setRooms([]);
+    this.paintJevLap();
     this.renderBoard();
     this.bindUpdates();
+  }
+  /** The Jev Lap is bundled, so its button carries the lap time from the start. */
+  private paintJevLap(): void {
+    const button = this.find(".lb-jev-lap-btn");
+    if (JEV_LAP) button.textContent = `▶ Watch Jev Lap · ${formatMs(JEV_LAP.timeMs)}`;
+    else button.hidden = true;
   }
   /** Hook the desktop update bridge (no-op in the browser build). */
   private bindUpdates(): void {
@@ -382,6 +394,8 @@ export class Lobby {
       this.find(".board-track-select").focus();
     } else if (data.boardUseSettings) this.useBoardSettings();
     else if (data.aiRecord) this.callbacks.onReferenceLap();
+    else if (data.jevLap) this.callbacks.onJevLap();
+    else if (data.jevLive) this.callbacks.onJevLive();
     else if (data.track) this.chooseTrack(data.track);
     else if (data.diff) this.chooseDifficulty(data.diff as Difficulty);
     else if (data.steering) this.chooseSteering(data.steering as SteeringMode);
@@ -581,6 +595,10 @@ export class Lobby {
     for (const panel of this.root.querySelectorAll<HTMLElement>("[data-setup-panel]"))
       panel.hidden = panel.dataset.setupPanel !== tab;
     this.find(`[data-setup-tab="${tab}"]`).focus({ preventScroll: true });
+  }
+  /** Offer the live Jev run only when the server says it can reach Jev. */
+  setJevAvailable(available: boolean): void {
+    this.find(".lb-jev-live-btn").hidden = !available;
   }
   setConnection(state: ConnectionState): void {
     const badge = this.find(".connection-status");

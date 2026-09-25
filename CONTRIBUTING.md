@@ -115,6 +115,11 @@ live multiplayer, recorded replays, and human or trained AI pacers. The AI refer
 lap is available on Sunset Ridge at Medium difficulty. Leaderboards and recordings
 remain separated by circuit and difficulty.
 
+Jev, TypeSafe's System One model, is a second AI driver (ADR-0009): the recorded Jev Lap
+replays anywhere, and a live run needs `TYPESAFE_API_KEY` on the server (`JEV_STUB=1` swaps
+in a network-free stand-in). Re-record the Jev Lap with `npm run jev:record` after changing
+the physics or Jev's questions in `shared/src/jev.ts`.
+
 The full-screen garage and circuit carousels lead into race setup, online rooms,
 and records. Circuit previews use the exact Blender track layouts. The race HUD
 shows lap timing, checkpoint progress, a live circuit map, and speed over the sunset

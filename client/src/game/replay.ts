@@ -1,7 +1,16 @@
 import * as THREE from "three";
-import { resolveTrack, type ReplayFrame, type TrackSlug, type Variant } from "@racing/shared";
+import {
+  jevDrivingState,
+  resolveTrack,
+  type ReplayFrame,
+  type Track,
+  type TrackSlug,
+  type Variant,
+} from "@racing/shared";
+import { JevPanel } from "../ui/jev-panel";
 import { formatMs } from "../util";
 import { animateCar, createCarMesh, disposeCarMesh } from "./car";
+import { decisionAt, type JevRecording } from "./jev-recording";
 import {
   createScene,
   disposeWorld,
@@ -15,6 +24,52 @@ import { interpolatePose } from "./pose-interpolation";
 
 const FINISH_HOLD_MS = 1500;
 
+/**
+ * Jev's decisions beside the replay of a lap Jev drove: the decision in force
+ * and what Jev was told about the road ahead when it made it.
+ */
+class JevReplayPanel {
+  private panel: JevPanel | null = null;
+  private shown = 0;
+  /** What Jev saw, per decision index: described once from the pose it judged. */
+  private readonly seen: string[] = [];
+
+  constructor(
+    private readonly parent: HTMLElement,
+    private readonly recording: JevRecording,
+    private readonly track: Track,
+  ) {}
+
+  /** A fresh panel for a new loop, empty until Jev's first decision. */
+  restart(): void {
+    this.panel?.dispose();
+    this.panel = new JevPanel(this.parent, this.recording.model);
+    this.shown = 0;
+  }
+
+  show(time: number): void {
+    const current = decisionAt(this.recording.decisions, time);
+    if (!current || current.count === this.shown || !this.panel) return;
+    const index = current.count - 1;
+    // A live run recorded what Jev was told; the Jev Lap's is rebuilt from its frames.
+    this.seen[index] ??=
+      this.recording.seen?.[index] ??
+      jevDrivingState(interpolatePose(this.recording.frames, current.madeAt), this.track)
+        .bend_ahead;
+    this.panel.update({
+      decision: current.decision,
+      seen: this.seen[index],
+      decisions: current.count,
+    });
+    this.shown = current.count;
+  }
+
+  dispose(): void {
+    this.panel?.dispose();
+    this.panel = null;
+  }
+}
+
 /** Owns a replay scene, its playback clock and all associated browser resources. */
 export class ReplayViewer {
   private readonly bundle: SceneBundle;
@@ -23,6 +78,7 @@ export class ReplayViewer {
   private readonly overlay = document.createElement("div");
   private readonly timeEl: HTMLElement;
   private readonly finishedEl: HTMLElement;
+  private readonly jev: JevReplayPanel | null;
   private animationFrame = 0;
   private running = true;
   private lastFrame: number;
@@ -37,6 +93,8 @@ export class ReplayViewer {
     private readonly frames: ReplayFrame[],
     variant: Variant | undefined,
     private readonly onClose: () => void,
+    /** A lap Jev drove: shows Jev's decisions alongside, in step with playback. */
+    jev?: JevRecording,
   ) {
     // Validate before allocating a renderer or attaching any DOM nodes.
     if (frames.length === 0) throw new Error("ReplayViewer: frames must not be empty");
@@ -68,6 +126,7 @@ export class ReplayViewer {
       this.onClose();
     });
     parent.append(this.overlay);
+    this.jev = jev ? new JevReplayPanel(this.overlay, jev, track) : null;
     window.addEventListener("resize", this.onResize);
     this.restart(this.playStart);
     this.animationFrame = requestAnimationFrame(this.frame);
@@ -110,6 +169,7 @@ export class ReplayViewer {
     this.playStart = now;
     this.finishedAt = null;
     this.finishedEl.hidden = true;
+    this.jev?.restart();
     this.applyFrameAt(0, 0);
     const { x, z } = this.carMesh.position;
     snapBehindCar(this.bundle.camera, x, z, this.carMesh.rotation.y);
@@ -120,6 +180,7 @@ export class ReplayViewer {
     this.carMesh.position.set(pose.x, 0, pose.z);
     this.carMesh.rotation.y = pose.heading;
     animateCar(this.carMesh, pose.speed, 0, dt);
+    this.jev?.show(time);
   }
 
   dispose(): void {
@@ -127,6 +188,7 @@ export class ReplayViewer {
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.onResize);
+    this.jev?.dispose();
     disposeCarMesh(this.carMesh);
     disposeWorld(this.bundle);
     this.container.remove();

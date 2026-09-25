@@ -2,8 +2,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as THREE from "three";
-import type { ReplayFrame, Variant } from "@racing/shared";
+import { jevDrivingState, SUNSET_RIDGE, type ReplayFrame, type Variant } from "@racing/shared";
 import { LEGACY_RECORD } from "../../../tests/fixtures/legacy-replay";
+import type { JevRecording } from "./jev-recording";
 
 vi.mock("./scene", () => ({
   createScene: vi.fn(() => ({
@@ -19,6 +20,11 @@ vi.mock("./scene", () => ({
   snapBehindCar: vi.fn(),
 }));
 vi.mock("./trackMesh", () => ({ buildTrack: vi.fn() }));
+// Spied, not stubbed: the Jev panel must describe each decision's pose only once.
+vi.mock("@racing/shared", async (importOriginal) => {
+  const shared = await importOriginal<typeof import("@racing/shared")>();
+  return { ...shared, jevDrivingState: vi.fn(shared.jevDrivingState) };
+});
 vi.mock("./car", () => ({
   createCarMesh: vi.fn(() => new THREE.Group()),
   animateCar: vi.fn(),
@@ -29,6 +35,8 @@ import { animateCar, createCarMesh, disposeCarMesh } from "./car";
 import { disposeWorld } from "./scene";
 import { ReplayViewer } from "./replay";
 import { pacerPoseAt } from "./pacer";
+import { JevPanel } from "../ui/jev-panel";
+import { interpolatePose } from "./pose-interpolation";
 
 const FRAMES: ReplayFrame[] = [
   [0, 0, 0, 0, 0],
@@ -112,6 +120,117 @@ describe("ReplayViewer lifecycle", () => {
     ).toThrow("frames must not be empty");
     expect(parent.childElementCount).toBe(0);
     expect(createCarMesh).not.toHaveBeenCalled();
+  });
+});
+
+/** The decision count the Jev panel shows. */
+function decisions(): string | null | undefined {
+  return document.querySelector("[data-jev-decisions]")?.textContent;
+}
+
+describe("ReplayViewer with Jev's decisions", () => {
+  const frame = captureFrames(3);
+  // Two decisions on a stretch of Sunset Ridge: the first judged the car 100 ms in.
+  const [a, b] = [SUNSET_RIDGE.samples[0], SUNSET_RIDGE.samples[20]];
+  const JEV: JevRecording = {
+    model: "jev-test",
+    timeMs: 1000,
+    frames: [
+      [0, a.x, a.z, Math.atan2(a.dirX, a.dirZ), 40],
+      [1000, b.x, b.z, Math.atan2(b.dirX, b.dirZ), 60],
+    ],
+    decisions: [
+      [100, 0.9, 0.2, 0.8, 0.6],
+      [500, 0.1, 0.7, 0.8, 0.4],
+    ],
+  };
+  const seenAt = (t: number) =>
+    jevDrivingState(interpolatePose(JEV.frames, t), SUNSET_RIDGE).bend_ahead;
+
+  function makeJevViewer(): ReplayViewer {
+    const { timeMs, frames } = JEV;
+    return new ReplayViewer(
+      document.body,
+      "Jev",
+      "sunset-ridge",
+      timeMs,
+      frames,
+      "race-future",
+      () => {},
+      JEV,
+    );
+  }
+
+  it("shows the decision in force with what Jev saw from the pose it judged", () => {
+    const update = vi.spyOn(JevPanel.prototype, "update");
+    const viewer = makeJevViewer();
+    const panel = document.querySelector(".replay-hud .jev-panel")!;
+    expect(panel.textContent).toContain("jev-test");
+    expect(decisions()).toBe("0");
+    frame(250);
+    expect(update).toHaveBeenLastCalledWith({
+      decision: { accelerate: 0.9, left: 0.2, pedalConfidence: 0.8, steerConfidence: 0.6 },
+      seen: seenAt(100),
+      decisions: 1,
+    });
+    frame(700);
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ seen: seenAt(500), decisions: 2 }),
+    );
+    expect(decisions()).toBe("2");
+    viewer.dispose();
+  });
+
+  it("shows what a live run recorded Jev was told, not a description of the pose it reached", () => {
+    const update = vi.spyOn(JevPanel.prototype, "update");
+    const told = ["the road is straight for the next 190 m", "a predicted bend"];
+    const viewer = new ReplayViewer(
+      document.body,
+      "Jev",
+      "sunset-ridge",
+      JEV.timeMs,
+      JEV.frames,
+      "race-future",
+      () => {},
+      { ...JEV, seen: told },
+    );
+    vi.mocked(jevDrivingState).mockClear();
+    frame(250);
+    frame(700);
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ seen: told[1] }));
+    expect(jevDrivingState).not.toHaveBeenCalled();
+    viewer.dispose();
+  });
+
+  it("describes each decision once, however many frames and loops show it", () => {
+    const viewer = makeJevViewer();
+    vi.mocked(jevDrivingState).mockClear();
+    for (const now of [150, 200, 300, 600, 900]) frame(now);
+    expect(jevDrivingState).toHaveBeenCalledTimes(2);
+    frame(1000);
+    frame(2500);
+    for (const now of [2650, 3100]) frame(now);
+    expect(jevDrivingState).toHaveBeenCalledTimes(2);
+    viewer.dispose();
+  });
+
+  it("starts over with the replay loop and leaves with the viewer", () => {
+    const viewer = makeJevViewer();
+    frame(1000);
+    expect(decisions()).toBe("2");
+    frame(2500);
+    expect(document.querySelectorAll(".jev-panel")).toHaveLength(1);
+    expect(decisions()).toBe("0");
+    frame(2600);
+    expect(decisions()).toBe("1");
+    viewer.dispose();
+    expect(document.querySelector(".jev-panel")).toBeNull();
+  });
+
+  it("shows no Jev panel for a human replay", () => {
+    const viewer = makeViewer("taxi");
+    expect(document.querySelector(".jev-panel")).toBeNull();
+    viewer.dispose();
   });
 });
 

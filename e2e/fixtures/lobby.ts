@@ -8,15 +8,20 @@ export async function selectCar(page: Page, variant: Variant | "random"): Promis
   await expect(card).toHaveAttribute("aria-checked", "true");
 }
 
-/** Confirm the displayed car and track (whichever screens are still ahead), then open the race tab. */
-export async function openRaceSettings(page: Page): Promise<void> {
+/** Confirm the displayed car and track (whichever screens are still ahead), then open a Race Setup tab. */
+export async function openSetupTab(page: Page, tab: "race" | "records"): Promise<void> {
   const deck = page.locator(".lobby-deck");
   await deck.waitFor();
   if ((await deck.getAttribute("data-screen")) === "garage")
     await page.getByRole("button", { name: "Select car", exact: true }).click();
   if ((await deck.getAttribute("data-screen")) === "track")
     await page.getByRole("button", { name: "Select track", exact: true }).click();
-  await page.locator('[data-setup-tab="race"]').click();
+  await page.locator(`[data-setup-tab="${tab}"]`).click();
+}
+
+/** Confirm the displayed car and track, then open the race tab. */
+export function openRaceSettings(page: Page): Promise<void> {
+  return openSetupTab(page, "race");
 }
 
 export interface CreateRoomOptions {

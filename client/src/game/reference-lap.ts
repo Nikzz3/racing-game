@@ -1,7 +1,5 @@
 import { SUNSET_RIDGE, type ReplayFrame, type TrackSlug } from "@racing/shared";
-import { runPolicyLap, type PolicyWeights } from "./harness";
-
-const DT_MS = 1000 / 60;
+import { lapFrames, runPolicyLap, type PolicyWeights } from "./harness";
 
 export interface ReferenceLap {
   name: "AI Record";
@@ -20,28 +18,11 @@ export interface ReferenceLap {
 export function buildReferenceLap(policy: PolicyWeights): ReferenceLap | null {
   const result = runPolicyLap(policy, { track: SUNSET_RIDGE });
   if (!result) return null;
-  // Timing starts at the first CP0 crossing and stops at the second, which is
-  // the completion step (steps - 1).
-  const lapSteps = Math.round(result.lapTimeMs / DT_MS);
-  const frames = result.trajectory
-    .slice(result.steps - 1 - lapSteps)
-    .map<ReplayFrame>((s, i) => [
-      i * DT_MS,
-      round(s.x, 2),
-      round(s.z, 2),
-      round(s.heading, 3),
-      round(s.speed, 2),
-    ]);
   return {
     name: "AI Record",
     variant: "police",
     track: SUNSET_RIDGE.id,
     timeMs: result.lapTimeMs,
-    frames,
+    frames: lapFrames(result),
   };
-}
-
-function round(n: number, decimals: number): number {
-  const f = 10 ** decimals;
-  return Math.round(n * f) / f;
 }

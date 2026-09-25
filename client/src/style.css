@@ -1969,7 +1969,8 @@ a {
 }
 .hud-leave,
 .hud-respawn,
-.replay-exit {
+.replay-exit,
+.live-run-card-actions button {
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
   background: #151720d9;
   border: 1px solid #ffffff2a;
@@ -1982,7 +1983,8 @@ a {
 }
 .hud-leave:hover,
 .hud-respawn:hover,
-.replay-exit:hover {
+.replay-exit:hover,
+.live-run-card-actions button:hover {
   background: #ac713f99;
   border-color: #ffcc89;
 }
@@ -2103,6 +2105,178 @@ a {
 .replay-exit {
   margin-top: 20px;
 }
+/* Jev's decisions, shared by the Jev Lap replay and the live run (ui/jev-panel.ts): a
+   terminal box with one card per question, each option's probability as a bar and the
+   option Jev picked lit up. */
+.jev-panel {
+  --jev-text: #a3d4ad;
+  --jev-dim: #4f8a5e;
+  --jev-bright: #4cf578;
+  position: absolute;
+  top: 30px;
+  right: 32px;
+  /* Keeps clear of the car, which the chase camera holds in the middle of the screen. */
+  width: clamp(288px, calc(50vw - 72px), 360px);
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
+  background: #040906eb;
+  border: 1px solid #1c3324;
+  border-radius: 4px;
+  font: 11px/1.45 var(--mono);
+  color: var(--jev-text);
+  pointer-events: none;
+  text-shadow: none;
+  /* Changes with every decision: keep it off the full-screen overlay layer (see .hud-cur-lap). */
+  will-change: transform;
+}
+.jev-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 2px 0;
+  color: var(--jev-dim);
+}
+.jev-panel-name {
+  flex: none;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--jev-bright);
+}
+.jev-panel-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jev-stats {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.jev-card {
+  padding: 7px 9px 6px;
+  background: #08110b;
+  border: 1px solid #172a1e;
+  border-radius: 3px;
+}
+.jev-q {
+  margin: 0;
+}
+/* Room for the longest description, so the cards below don't jump as the road changes. */
+.jev-card-state .jev-q {
+  min-height: calc(3 * 1.45em);
+}
+.jev-tag {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 0 4px;
+  border: 1px solid #2c6e42;
+  border-radius: 2px;
+  font-size: 9px;
+  /* Fits inside the text's line box, so the tag never makes its line taller. */
+  line-height: 11px;
+  letter-spacing: 0.1em;
+  color: #74d18f;
+}
+.jev-option {
+  display: grid;
+  grid-template-columns: 10.5ch 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+  color: var(--jev-dim);
+}
+.jev-q + .jev-option {
+  margin-top: 6px;
+}
+.jev-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jev-option[data-picked] .jev-label {
+  font-weight: 700;
+  color: #c3ffd2;
+}
+.jev-track {
+  height: 9px;
+  overflow: hidden;
+  background: #0d1d13;
+}
+.jev-fill {
+  display: block;
+  height: 100%;
+  background: #1c5b30;
+  transform-origin: left;
+  transform: scaleX(0);
+  /* Eases between decisions; the reduced-motion rule at the end of this file turns it off. */
+  transition: transform 0.1s linear;
+}
+.jev-option[data-picked] .jev-fill {
+  background: var(--jev-bright);
+}
+.jev-conf {
+  margin: 3px 0 0;
+  color: var(--jev-dim);
+}
+/* Small screens: one line per question with the confidence beside it. */
+@media (max-width: 700px), (max-height: 500px) {
+  .jev-panel {
+    gap: 4px;
+    padding: 7px;
+    font-size: 10px;
+  }
+  .jev-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 8px;
+    padding: 5px 7px;
+  }
+  .jev-q {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .jev-card-state .jev-q {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+  .jev-option {
+    grid-column: 1 / -1;
+    margin-top: 1px;
+  }
+  .jev-q + .jev-option {
+    margin-top: 4px;
+  }
+  .jev-conf {
+    grid-row: 1;
+    grid-column: 2;
+    margin: 0;
+  }
+  .jev-track {
+    height: 8px;
+  }
+}
+/* Portrait phones: along the bottom, below the car. */
+@media (max-width: 700px) and (orientation: portrait) {
+  .jev-panel {
+    top: auto;
+    bottom: 12px;
+    right: 12px;
+    width: min(380px, calc(100vw - 24px));
+  }
+}
+/* Landscape phones: too short for the bottom, so top-right, between the car and the edge. */
+@media (orientation: landscape) and (max-height: 500px),
+  (orientation: landscape) and (max-width: 700px) {
+  .jev-panel {
+    top: 12px;
+    right: 12px;
+    width: clamp(240px, calc(50vw - 60px), 340px);
+  }
+}
 .replay-finished {
   position: absolute;
   top: 30%;
@@ -2116,6 +2290,61 @@ a {
   border-left: 3px solid #ffc582;
   padding: 20px 40px;
   white-space: nowrap;
+}
+/* The Jev Live Run's own parts (game/jev-live.ts); the rest is the replay HUD. */
+.live-run-label::before {
+  content: "● ";
+  color: #ff7a66;
+}
+.live-run-speed {
+  margin-top: 6px;
+  font: 12px var(--mono);
+  color: #eee0cf;
+}
+.live-run-status {
+  max-width: 230px;
+  margin-top: 12px;
+  font: 10px var(--mono);
+  letter-spacing: 0.04em;
+  color: #ffcf94;
+}
+.live-run-card {
+  position: absolute;
+  /* Above Jev's panel where a narrow screen overlaps them. */
+  z-index: 1;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 20px 32px 24px;
+  background: #151720dd;
+  border-left: 3px solid #ffc582;
+  pointer-events: auto;
+}
+.live-run-card-title {
+  font:
+    italic 44px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+}
+.live-run-card-time {
+  margin-top: 10px;
+  font: 22px var(--mono);
+}
+.live-run-card-time:empty {
+  display: none;
+}
+.live-run-card-note {
+  margin-top: 8px;
+  font: 11px var(--mono);
+  color: #eee0cf;
+}
+.live-run-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
 }
 /* Touch driving controls: steering slider bottom-left, pedals bottom-right. Hidden unless
    the primary pointer is coarse; the --touch-* sizes are set in those media blocks and the
