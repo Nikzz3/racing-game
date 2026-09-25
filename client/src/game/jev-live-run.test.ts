@@ -9,7 +9,7 @@ import {
 } from "@racing/shared";
 import { SPAWN_SAMPLE } from "./harness";
 import { JevLiveRun, type JevLiveAnswer } from "./jev-live-run";
-import { CarPhysics } from "./physics";
+import { CarPhysics, PHYSICS_STEP } from "./physics";
 
 interface Sent {
   pose: JevPose;
@@ -42,9 +42,9 @@ function refusal(seq: number, reason: JevUnavailableReason): JevLiveAnswer {
   return { type: "jevUnavailable", seq, reason };
 }
 
-/** Ticks of 10 ms keep run time exact. */
+/** Frames of exactly one physics step keep run time exact. */
 function tickMs(run: JevLiveRun, ms: number): void {
-  for (let i = 0; i < ms / 10; i++) run.tick(0.01);
+  for (let i = 0; i < Math.round(ms / (PHYSICS_STEP * 1000)); i++) run.tick(PHYSICS_STEP);
 }
 
 /** A stand-in for Jev like the server's stub: aims at the road centre ahead and cruises. */
@@ -95,7 +95,7 @@ describe("JevLiveRun requests", () => {
 
   it("applies a decision on arrival and shows what Jev judged", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(decision(sent[0].seq, { accelerate: 0.2, left: 0.8 }));
     expect(run.phase).toBe("driving");
     expect(run.input).toMatchObject({ throttle: 0, brake: 1 });
@@ -114,12 +114,12 @@ describe("JevLiveRun requests", () => {
     const twin = new CarPhysics("medium", SUNSET_RIDGE.samples);
     twin.spawnAtSample(SPAWN_SAMPLE, 0);
     const idle = { throttle: 0, brake: 0, steer: 0 };
-    run.tick(0.01);
-    twin.advance(0.01, idle);
+    run.tick(PHYSICS_STEP);
+    twin.advance(PHYSICS_STEP, idle);
     run.receive(decision(sent[0].seq, { accelerate: 1, left: 0.7 }));
     while (sent.length < 2) {
-      run.tick(0.01);
-      twin.advance(0.01, run.input);
+      run.tick(PHYSICS_STEP);
+      twin.advance(PHYSICS_STEP, run.input);
     }
     // The first round trip opens TypeSafe's connection and stays out of the estimate.
     expect(run.predictionMs).toBe(250);
@@ -129,18 +129,33 @@ describe("JevLiveRun requests", () => {
 
   it("predicts by a moving average of measured round trips, not the server's latency", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     tickMs(run, 700);
     run.receive(decision(sent[0].seq, { accelerate: 0 }));
     expect(run.predictionMs).toBe(250);
     tickMs(run, 300);
     run.receive(decision(sent[1].seq, { accelerate: 0 }));
-    expect(run.predictionMs).toBe(250 + (300 - 250) * 0.25);
+    expect(run.predictionMs).toBeCloseTo(250 + (300 - 250) * 0.25, 9);
+  });
+
+  it("keeps the car's time when frames come too slowly for the physics to keep up", () => {
+    const { run, sent } = setup();
+    // At 5 fps a frame runs out of physics steps: 0.6 s of frames simulate 0.2 s.
+    const slowFrames = (n: number) => {
+      for (let i = 0; i < n; i++) run.tick(0.2);
+    };
+    slowFrames(3);
+    expect(run.timeMs).toBeCloseTo(200, 9);
+    run.receive(decision(sent[0].seq, { accelerate: 0 }));
+    slowFrames(3);
+    run.receive(decision(sent[1].seq, { accelerate: 0 }));
+    // So the prediction covers the 200 ms the car drove during the round trip, not 600.
+    expect(run.predictionMs).toBeCloseTo(250 + (200 - 250) * 0.25, 9);
   });
 
   it("paces requests to one per decision interval even when answers come back at once", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(decision(sent[0].seq));
     expect(sent).toHaveLength(1);
     tickMs(run, 90);
@@ -154,7 +169,7 @@ describe("JevLiveRun requests", () => {
 
   it("ignores answers to anything but the pending request", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(decision(sent[0].seq + 1));
     run.receive(decision(sent[0].seq - 1));
     expect(run.decisions).toBe(0);
@@ -163,7 +178,7 @@ describe("JevLiveRun requests", () => {
 
   it("gives up on a lost answer, retries, and ignores it if it turns up late", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(decision(sent[0].seq, { accelerate: 1 }));
     tickMs(run, 100);
     expect(sent).toHaveLength(2);
@@ -180,7 +195,7 @@ describe("JevLiveRun requests", () => {
 
   it("holds the last input through refusals, backing off, until the next decision", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(decision(sent[0].seq, { accelerate: 1, left: 0.9 }));
     const held = { ...run.input };
     tickMs(run, 100);
@@ -214,7 +229,7 @@ describe("JevLiveRun requests", () => {
 
   it("stops for good when the server has no Jev", () => {
     const { run, sent } = setup();
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     run.receive(refusal(sent[0].seq, "disabled"));
     expect(run.phase).toBe("unavailable");
     tickMs(run, 5000);
@@ -229,10 +244,10 @@ describe("JevLiveRun requests", () => {
     tickMs(run, 1000);
     expect(run.decisions).toBe(1);
     expect(sent).toHaveLength(1);
-    expect(run.timeMs).toBe(200);
+    expect(run.timeMs).toBeCloseTo(200, 9);
     expect(run.car.speed).toBe(0);
     run.paused = false;
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     expect(sent).toHaveLength(2);
   });
 });
@@ -250,8 +265,7 @@ describe("JevLiveRun lap", () => {
     const recording = run.recording!;
     expect(recording.model).toBe("jev-test");
     expect(run.lapTimeMs).toBe(recording.timeMs);
-    // The car's physical time trails the run clock by less than one physics step.
-    expect(Math.abs(run.timeMs - startedAt - recording.timeMs)).toBeLessThan(10);
+    expect(Math.abs(run.timeMs - startedAt - recording.timeMs)).toBeLessThanOrEqual(0.5);
     expect(recording.timeMs).toBeGreaterThan(40_000);
 
     const { frames, decisions } = recording;
@@ -308,7 +322,7 @@ describe("JevLiveRun lap", () => {
     run.restart();
     expect(run.phase).toBe("asking");
     expect([run.decisions, run.timeMs, run.lapTimeMs, run.recording]).toEqual([0, 0, null, null]);
-    run.tick(0.01);
+    run.tick(PHYSICS_STEP);
     expect(sent.at(-1)!.seq).toBeGreaterThan(last);
     expect(sent.at(-1)!.pose.speed).toBe(0);
   });

@@ -119,23 +119,24 @@ export class CarPhysics {
   /**
    * Pass the raw frame delta so ordinary stalls catch up to the lap clock.
    * `obstacles` are the other players' cars as drawn this frame; Pacers never collide.
+   * Returns how many fixed steps ran: the car falls behind the wall clock when a
+   * slow frame rate runs out of steps per frame, or a long stall is dropped.
    */
   advance(
     elapsed: number,
     input: CarInput,
     obstacles: readonly CarObstacle[] = NO_OBSTACLES,
-  ): void {
-    if (!Number.isFinite(elapsed) || elapsed < 0) return;
+  ): number {
+    if (!Number.isFinite(elapsed) || elapsed < 0) return 0;
     this.stepAccumulator = Math.min(this.stepAccumulator + elapsed, MAX_ACCUMULATED_TIME);
-    for (
-      let steps = 0;
-      steps < MAX_STEPS_PER_FRAME && this.stepAccumulator >= PHYSICS_STEP;
-      steps++
-    ) {
+    let steps = 0;
+    while (steps < MAX_STEPS_PER_FRAME && this.stepAccumulator >= PHYSICS_STEP) {
       this.update(PHYSICS_STEP, input);
       this.collide(obstacles);
       this.stepAccumulator -= PHYSICS_STEP;
+      steps++;
     }
+    return steps;
   }
 
   /**

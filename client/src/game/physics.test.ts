@@ -116,13 +116,13 @@ describe("CarPhysics.advance — fixed-step accumulator", () => {
   it("runs at most MAX_STEPS_PER_FRAME steps per call and carries the rest", () => {
     // 0.4 s demands 48 fixed steps; one call runs 8 and keeps the remainder.
     const car = spawned();
-    car.advance(0.4, FULL_THROTTLE);
+    expect(car.advance(0.4, FULL_THROTTLE)).toBe(MAX_STEPS_PER_FRAME);
     const after8 = spawned();
     runSteps(after8, MAX_STEPS_PER_FRAME, FULL_THROTTLE);
     expectSameState(car, after8, 9);
 
     // An idle frame drains 8 more rather than finding an empty accumulator.
-    car.advance(0, FULL_THROTTLE);
+    expect(car.advance(0, FULL_THROTTLE)).toBe(MAX_STEPS_PER_FRAME);
     const after16 = spawned();
     runSteps(after16, 2 * MAX_STEPS_PER_FRAME, FULL_THROTTLE);
     expectSameState(car, after16, 9);
