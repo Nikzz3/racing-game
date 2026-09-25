@@ -33,7 +33,7 @@ export const JEV_SERVER_RATE_PER_SECOND = 20;
  * recovery. One indexed single-row read.
  */
 export const JEV_USAGE_RETRY_MS = 5_000;
-/** Decisions per UTC day before Jev switches off until the next one (~300 live laps). */
+/** Decisions per UTC day before Jev switches off until the next one (~200 live laps). */
 export const JEV_DEFAULT_DAILY_DECISIONS = 50_000;
 /** Deadline for one decision, with no retries: a late answer is about a pose long gone. */
 export const JEV_TIMEOUT_MS = 2000;

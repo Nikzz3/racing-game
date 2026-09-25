@@ -45,7 +45,7 @@ Jev drives in two ways, both on Sunset Ridge at Medium only:
 2. **Bounded spend.** Per connection: one decision in flight and the Jev Lap's 10
    decisions/s (burst 3). Server-wide, so opening more sockets buys nothing: 24 decisions in
    flight, 20 decisions/s, and a daily budget (`JEV_DAILY_DECISIONS`, default 50,000 — about
-   300 live laps, counted in Postgres so a restart does not reset it) after which Jev answers
+   200 live laps, counted in Postgres so a restart does not reset it) after which Jev answers
    `disabled` until UTC midnight. A request needs a token from both its connection's and the
    server's bucket before either is spent, so refused requests drain nothing. A refused request
    answers `jevUnavailable` and never queues. A decision gets 2 s and no retries, and an
