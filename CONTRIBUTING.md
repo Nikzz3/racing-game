@@ -83,7 +83,7 @@ worktree only for that checkout, e.g. to move its ports. Everything else is shar
 - `defaultThreadEnvMode: "worktree"` — new threads start in a fresh worktree under
   `~/.t3/worktrees/racing-game/`, on a `t3code/<slug>` branch.
 - A **Setup worktree** action flagged `runOnWorktreeCreate` that copies `.env` from the
-  main checkout (when there is one), runs `npm ci` and
+  main checkout (unless the worktree already has one), runs `npm ci` and
   `podman compose up -d --no-recreate`. It is marked non-async, so the agent only starts
   once dependencies are installed and the database is up.
 - A **Dev** action that opens the client in the in-app preview. When another thread or
@@ -93,7 +93,9 @@ worktree only for that checkout, e.g. to move its ports. Everything else is shar
 T3 Code does not apply `t3.json` automatically to an existing project: open
 _Settings → Projects → racing-game → Actions_ and use **Import scripts → Import from
 t3.json**. The imported actions are stored per machine; the file in the repo is the source
-of truth for everyone else. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
+of truth for everyone else. Imported actions do not follow later edits to `t3.json`, and
+the import only offers actions you do not already have: when one changes, delete it and
+import it again. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
 `T3CODE_WORKTREE_PATH` in their environment.
 
 ## Project layout

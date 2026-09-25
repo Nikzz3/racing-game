@@ -5,7 +5,7 @@
   "scripts": [
     {
       "name": "Setup worktree",
-      "command": "cp \"$T3CODE_PROJECT_ROOT/.env\" .env 2>/dev/null || true; npm ci && podman compose up -d --no-recreate",
+      "command": "test -e .env || cp \"$T3CODE_PROJECT_ROOT/.env\" .env 2>/dev/null || true; npm ci && podman compose up -d --no-recreate",
       "icon": "configure",
       "runOnWorktreeCreate": true,
       "async": false
