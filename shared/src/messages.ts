@@ -194,8 +194,21 @@ export type ServerMessage =
       variant?: Variant;
     }
   | { type: "error"; message: string }
-  /** Jev's answer to the `jevDrive` with the same `seq`: probabilities, not a pedal. */
-  | { type: "jevDecision"; seq: number; accelerate: number; left: number; latencyMs: number }
+  /**
+   * Jev's answer to the `jevDrive` with the same `seq`: probabilities and
+   * TypeSafe's confidence in each pick (a `JevDecision`), not a pedal.
+   * `latencyMs` is the TypeSafe round trip; `model` names who answered.
+   */
+  | {
+      type: "jevDecision";
+      seq: number;
+      accelerate: number;
+      left: number;
+      pedalConfidence: number;
+      steerConfidence: number;
+      latencyMs: number;
+      model: string;
+    }
   /** The `jevDrive` with this `seq` got no decision; the client keeps its last input. */
   | { type: "jevUnavailable"; seq: number; reason: JevUnavailableReason };
 
