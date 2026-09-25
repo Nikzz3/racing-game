@@ -61,6 +61,15 @@ export async function initDb(): Promise<void> {
     ALTER TABLE replays ADD PRIMARY KEY (name, track, difficulty);
   `);
 
+  // Jev decisions asked for per UTC day, so the daily budget survives a restart
+  // (ADR-0009). Old days are never read again; a row is a few bytes a day.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS jev_usage (
+      day DATE PRIMARY KEY,
+      decisions INTEGER NOT NULL
+    )
+  `);
+
   // Serves each board's top N (topEntries) and its Track Record (bestTime) as
   // an index range read instead of a scan and sort of every lap ever set.
   await pool.query(

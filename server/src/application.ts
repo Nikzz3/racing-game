@@ -3,6 +3,7 @@ import { WebSocket, type RawData } from "ws";
 import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
 import type { JevDriver } from "./jev";
 import { JevProxy } from "./jev-proxy";
+import type { JevUsageStore } from "./jev-usage";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -30,14 +31,20 @@ export class RacingApplication {
 
   /**
    * `jevDriver` answers Jev Live Runs; null leaves them off (see createJevDriver).
-   * `jevDailyDecisions` caps how many decisions a UTC day may ask Jev for.
+   * `jevDailyDecisions` caps how many decisions a UTC day may ask Jev for, counted in
+   * `jevUsage` so a restart does not reset it.
    */
-  constructor(jevDriver: JevDriver | null = null, jevDailyDecisions?: number) {
-    this.jev = new JevProxy(jevDriver, jevDailyDecisions);
+  constructor(
+    jevDriver: JevDriver | null = null,
+    jevDailyDecisions?: number,
+    jevUsage?: JevUsageStore,
+  ) {
+    this.jev = new JevProxy(jevDriver, jevDailyDecisions, jevUsage);
   }
 
   async load(): Promise<void> {
     await this.rooms.load();
+    await this.jev.load();
   }
 
   connect(socket: WebSocket): void {

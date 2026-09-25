@@ -8,6 +8,7 @@ import {
   type Track,
 } from "@racing/shared";
 import type { JevDriver } from "./jev";
+import { postgresJevUsage, type JevUsageStore } from "./jev-usage";
 import { send } from "./transport";
 
 // Jev Live Run budget (ADR-0009 invariant 2). A refused request is answered at
@@ -46,15 +47,15 @@ interface Connection extends Bucket {
   inFlight: AbortController | null;
 }
 
-/** Refill the bucket for the time since it was last touched, then take a token if one is left. */
-function takeToken(bucket: Bucket, now: number, perSecond: number, burst: number): boolean {
+/** Refill the bucket for the time since it was last touched; true if it holds a token. */
+function refill(bucket: Bucket, now: number, perSecond: number, burst: number): boolean {
   const elapsed = Math.max(0, now - bucket.refilledAt);
   bucket.tokens = Math.min(burst, bucket.tokens + (elapsed * perSecond) / 1000);
   bucket.refilledAt = now;
-  if (bucket.tokens < 1) return false;
-  bucket.tokens -= 1;
-  return true;
+  return bucket.tokens >= 1;
 }
+
+const utcDay = (now: number): string => new Date(now).toISOString().slice(0, 10);
 
 /** `JEV_DAILY_DECISIONS` from the environment, or the default when unset or invalid. */
 export function jevDailyDecisions(env: NodeJS.ProcessEnv = process.env): number {
@@ -79,13 +80,33 @@ export class JevProxy {
   /** Decisions asked for on `day` (a UTC date), against the daily budget. */
   private day = "";
   private decidedToday = 0;
+  /** Decisions counted on `day` but not yet added to the store; a write coalesces them. */
+  private unsaved = 0;
+  private saving = false;
   private lastWarningAt = -Infinity;
   private unreportedFailures = 0;
 
   constructor(
     private readonly driver: JevDriver | null,
     private readonly dailyDecisions = JEV_DEFAULT_DAILY_DECISIONS,
+    private readonly usage: JevUsageStore = postgresJevUsage,
   ) {}
+
+  /** Pick up today's count from the store, so a restart does not refill the daily budget. */
+  async load(now = Date.now()): Promise<void> {
+    if (!this.driver) return;
+    const day = utcDay(now);
+    try {
+      const counted = await this.usage.decisionsOn(day);
+      if (this.day !== day) {
+        this.day = day;
+        this.decidedToday = 0;
+      }
+      this.decidedToday += counted;
+    } catch (error) {
+      console.error("Failed to load Jev's daily usage:", error);
+    }
+  }
 
   /** Whether this server can ask Jev at all; sent to clients in `welcome`. */
   get available(): boolean {
@@ -107,23 +128,34 @@ export class JevProxy {
     }
     if (connection.inFlight) return refuse("busy");
     if (!this.withinDailyBudget(now)) return refuse("disabled");
-    // Server-wide caps are checked first so a refusal there costs the connection no token.
-    if (
-      this.inFlight >= JEV_MAX_IN_FLIGHT ||
-      !takeToken(this.server, now, JEV_SERVER_RATE_PER_SECOND, JEV_SERVER_RATE_PER_SECOND) ||
-      !takeToken(connection, now, JEV_RATE_PER_SECOND, JEV_BURST)
-    )
+    // Both buckets must hold a token before either is spent: a connection over its own
+    // limit must not drain the server's, nor a full server the connection's.
+    const serverHas = refill(
+      this.server,
+      now,
+      JEV_SERVER_RATE_PER_SECOND,
+      JEV_SERVER_RATE_PER_SECOND,
+    );
+    const connectionHas = refill(connection, now, JEV_RATE_PER_SECOND, JEV_BURST);
+    if (this.inFlight >= JEV_MAX_IN_FLIGHT || !serverHas || !connectionHas)
       return refuse("rateLimited");
+    this.server.tokens -= 1;
+    connection.tokens -= 1;
     this.decidedToday++;
+    this.unsaved++;
+    void this.save();
     void this.decide(this.driver, socket, connection, message, track);
   }
 
   /** Whether today's budget has a decision left; the count resets at UTC midnight. */
   private withinDailyBudget(now: number): boolean {
-    const day = new Date(now).toISOString().slice(0, 10);
+    const day = utcDay(now);
     if (day !== this.day) {
+      // Yesterday's unsaved decisions still belong to yesterday.
+      if (this.unsaved > 0) void this.usage.add(this.day, this.unsaved).catch(() => {});
       this.day = day;
       this.decidedToday = 0;
+      this.unsaved = 0;
     }
     if (this.decidedToday < this.dailyDecisions) return true;
     if (this.decidedToday === this.dailyDecisions) {
@@ -134,6 +166,27 @@ export class JevProxy {
       );
     }
     return false;
+  }
+
+  /** Add the unsaved decisions to the store; decisions counted meanwhile go in the next write. */
+  private async save(): Promise<void> {
+    if (this.saving) return;
+    this.saving = true;
+    try {
+      while (this.unsaved > 0) {
+        const [day, decisions] = [this.day, this.unsaved];
+        this.unsaved = 0;
+        try {
+          await this.usage.add(day, decisions);
+        } catch (error) {
+          // The in-memory count still enforces the budget until the next restart.
+          console.error("Failed to save Jev's daily usage:", error);
+          return;
+        }
+      }
+    } finally {
+      this.saving = false;
+    }
   }
 
   /** Abort the connection's decision in flight; its answer is never sent. */

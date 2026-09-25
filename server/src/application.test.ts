@@ -375,6 +375,76 @@ describe("Jev live runs", () => {
     expect(driver.decide).toHaveBeenCalledTimes(3);
   });
 
+  it("does not let a connection over its own limit drain the server's shared rate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver);
+    const spammer = await connect(application);
+    for (let seq = 1; seq <= JEV_BURST + 30; seq++) {
+      spammer.message(drive(seq));
+      await settle();
+    }
+    const refused = spammer.messages.filter((m) => m.reason === "rateLimited");
+    expect(refused).toHaveLength(30);
+
+    // Every server token the spammer did not actually spend is still there for others.
+    for (let i = 0; i < JEV_SERVER_RATE_PER_SECOND - JEV_BURST; i++) {
+      const other = await connect(application);
+      other.message(drive(1));
+      await settle();
+      expect(other.messages).toEqual([expect.objectContaining({ type: "jevDecision" })]);
+    }
+  });
+
+  it("keeps counting the day's budget across a restart", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const usage = {
+      decisionsOn: vi.fn(async (_day: string) => 9),
+      add: vi.fn(async (_day: string, _decisions: number) => {}),
+    };
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver, 10, usage);
+    await application.load();
+    expect(usage.decisionsOn).toHaveBeenCalledWith("2026-09-25");
+
+    const client = await connect(application);
+    client.message(drive(1));
+    await settle();
+    vi.advanceTimersByTime(1000);
+    client.message(drive(2));
+    await settle();
+    expect(client.messages).toEqual([
+      expect.objectContaining({ type: "jevDecision", seq: 1 }),
+      { type: "jevUnavailable", seq: 2, reason: "disabled" },
+    ]);
+    expect(usage.add).toHaveBeenCalledExactlyOnceWith("2026-09-25", 1);
+  });
+
+  it("coalesces the usage writes made while one is still saving", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+    const firstWrite = pendingDecision();
+    const usage = {
+      decisionsOn: vi.fn(async (_day: string) => 0),
+      add: vi
+        .fn(async (_day: string, _decisions: number) => {})
+        .mockImplementationOnce(() => firstWrite.promise.then(() => {})),
+    };
+    const application = new RacingApplication(fakeDriver(), 100, usage);
+    for (let i = 0; i < 3; i++) (await connect(application)).message(drive(1));
+    await settle();
+    expect(usage.add.mock.calls).toEqual([["2026-09-25", 1]]);
+
+    firstWrite.resolve(ANSWER);
+    await settle();
+    expect(usage.add.mock.calls).toEqual([
+      ["2026-09-25", 1],
+      ["2026-09-25", 2],
+    ]);
+  });
+
   it("reads the daily budget from JEV_DAILY_DECISIONS", () => {
     expect(jevDailyDecisions({})).toBe(JEV_DEFAULT_DAILY_DECISIONS);
     expect(jevDailyDecisions({ JEV_DAILY_DECISIONS: "1200" })).toBe(1200);
