@@ -14,7 +14,8 @@ import { CarPhysics } from "./physics";
 
 const DT = 1 / 60;
 const DT_MS = 1000 / 60;
-const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
+/** The fixed spawn every AI lap starts from, about 45 m before the start line. */
+export const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
 /**
  * How many centerline samples ahead the autopilot aims for. Kept low enough that

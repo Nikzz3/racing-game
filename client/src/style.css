@@ -1969,7 +1969,8 @@ a {
 }
 .hud-leave,
 .hud-respawn,
-.replay-exit {
+.replay-exit,
+.live-run-card-actions button {
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
   background: #151720d9;
   border: 1px solid #ffffff2a;
@@ -1982,7 +1983,8 @@ a {
 }
 .hud-leave:hover,
 .hud-respawn:hover,
-.replay-exit:hover {
+.replay-exit:hover,
+.live-run-card-actions button:hover {
   background: #ac713f99;
   border-color: #ffcc89;
 }
@@ -2288,6 +2290,61 @@ a {
   border-left: 3px solid #ffc582;
   padding: 20px 40px;
   white-space: nowrap;
+}
+/* The Jev Live Run's own parts (game/jev-live.ts); the rest is the replay HUD. */
+.live-run-label::before {
+  content: "● ";
+  color: #ff7a66;
+}
+.live-run-speed {
+  margin-top: 6px;
+  font: 12px var(--mono);
+  color: #eee0cf;
+}
+.live-run-status {
+  max-width: 230px;
+  margin-top: 12px;
+  font: 10px var(--mono);
+  letter-spacing: 0.04em;
+  color: #ffcf94;
+}
+.live-run-card {
+  position: absolute;
+  /* Above Jev's panel where a narrow screen overlaps them. */
+  z-index: 1;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 20px 32px 24px;
+  background: #151720dd;
+  border-left: 3px solid #ffc582;
+  pointer-events: auto;
+}
+.live-run-card-title {
+  font:
+    italic 44px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+}
+.live-run-card-time {
+  margin-top: 10px;
+  font: 22px var(--mono);
+}
+.live-run-card-time:empty {
+  display: none;
+}
+.live-run-card-note {
+  margin-top: 8px;
+  font: 11px var(--mono);
+  color: #eee0cf;
+}
+.live-run-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
 }
 /* Touch driving controls: steering slider bottom-left, pedals bottom-right. Hidden unless
    the primary pointer is coarse; the --touch-* sizes are set in those media blocks and the

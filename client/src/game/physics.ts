@@ -50,6 +50,9 @@ const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
 /** Bounciness of car-to-car hits: 0 kills the closing speed, 1 is a perfect bounce. */
 const CAR_RESTITUTION = 0.3;
 
+/** Shared by every `advance` without other cars, so a solo car allocates nothing per frame. */
+const NO_OBSTACLES: readonly CarObstacle[] = [];
+
 /** Render frames accumulate time; the simulation always consumes fixed steps. */
 export const PHYSICS_STEP = 1 / 120;
 export const MAX_STEPS_PER_FRAME = 8;
@@ -69,9 +72,11 @@ export class CarPhysics {
   private readonly previousPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly renderPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly tuning: SurfaceTuning;
+  /** A second car that `predict` steps forward, allocated on first use. */
+  private scratch: CarPhysics | null = null;
 
   constructor(
-    difficulty: Difficulty = DEFAULT_DIFFICULTY,
+    private readonly difficulty: Difficulty = DEFAULT_DIFFICULTY,
     private readonly samples: TrackSample[],
   ) {
     this.tuning = TUNING[difficulty];
@@ -114,19 +119,44 @@ export class CarPhysics {
   /**
    * Pass the raw frame delta so ordinary stalls catch up to the lap clock.
    * `obstacles` are the other players' cars as drawn this frame; Pacers never collide.
+   * Returns how many fixed steps ran: the car falls behind the wall clock when a
+   * slow frame rate runs out of steps per frame, or a long stall is dropped.
    */
-  advance(elapsed: number, input: CarInput, obstacles: readonly CarObstacle[] = []): void {
-    if (!Number.isFinite(elapsed) || elapsed < 0) return;
+  advance(
+    elapsed: number,
+    input: CarInput,
+    obstacles: readonly CarObstacle[] = NO_OBSTACLES,
+  ): number {
+    if (!Number.isFinite(elapsed) || elapsed < 0) return 0;
     this.stepAccumulator = Math.min(this.stepAccumulator + elapsed, MAX_ACCUMULATED_TIME);
-    for (
-      let steps = 0;
-      steps < MAX_STEPS_PER_FRAME && this.stepAccumulator >= PHYSICS_STEP;
-      steps++
-    ) {
+    let steps = 0;
+    while (steps < MAX_STEPS_PER_FRAME && this.stepAccumulator >= PHYSICS_STEP) {
       this.update(PHYSICS_STEP, input);
       this.collide(obstacles);
       this.stepAccumulator -= PHYSICS_STEP;
+      steps++;
     }
+    return steps;
+  }
+
+  /**
+   * Where this car will be after holding `input` for `seconds`, stepped on the
+   * same fixed-step path as `advance` (without other cars) by a scratch copy, so
+   * this car is left untouched. A Jev Live Run asks Jev about this pose, since
+   * Jev's answer only lands after the round trip (ADR-0009).
+   */
+  predict(seconds: number, input: CarInput): Pose {
+    const copy = (this.scratch ??= new CarPhysics(this.difficulty, this.samples));
+    copy.x = this.x;
+    copy.z = this.z;
+    copy.heading = this.heading;
+    copy.speed = this.speed;
+    copy.onTrack = this.onTrack;
+    copy.centerIndex = this.centerIndex;
+    copy.touchingWall = this.touchingWall;
+    const steps = Math.max(0, Math.round(seconds / PHYSICS_STEP));
+    for (let step = 0; step < steps; step++) copy.update(PHYSICS_STEP, input);
+    return { x: copy.x, z: copy.z, heading: copy.heading, speed: copy.speed };
   }
 
   /** Direct integration is reserved for fixed-dt simulation and training callers. */
