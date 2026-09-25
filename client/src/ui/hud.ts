@@ -9,6 +9,11 @@ const DIAL_MAX_KMH = 200;
 // 48px digits, and nobody reads milliseconds at 60 Hz anyway.
 const LAP_TIMER_STEP_MS = 50;
 
+/** A speed (m/s) as the race HUD shows it, in its calibrated km/h. */
+export function displayKmh(speed: number): number {
+  return Math.round(Math.abs(speed) * 3.6 * DISPLAY_SPEED_SCALE);
+}
+
 /**
  * Places a circuit-map marker, in whole circuit units (a third of a pixel on the
  * full-size map). The marker is its own compositor layer and CSS turns the two
@@ -65,7 +70,7 @@ export class Hud {
     if (element.textContent !== value) element.textContent = value;
   }
   setSpeed(speed: number): void {
-    const kmh = Math.round(Math.abs(speed) * 3.6 * DISPLAY_SPEED_SCALE);
+    const kmh = displayKmh(speed);
     this.text(".speed-value", String(kmh));
     const dial = `${Math.min(100, (kmh / DIAL_MAX_KMH) * 100)} 100`;
     if (dial === this.dial) return;
