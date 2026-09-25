@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
-import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
+import {
+  parseClientMessage,
+  type ClientMessage,
+  type IceServer,
+  type ServerMessage,
+} from "@racing/shared";
+import { DEFAULT_ICE_SERVERS } from "./ice-servers";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -10,6 +16,9 @@ import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
 
 const MAX_NAME_LENGTH = 16;
+/** Negotiating one Direct Link takes an offer or answer plus a handful of ICE candidates. */
+const SIGNAL_WINDOW_MS = 10_000;
+const MAX_SIGNALS_PER_WINDOW = 200;
 
 /** ws hands text frames over as a Buffer, but its `RawData` type also admits an
  *  ArrayBuffer (whose `toString()` is "[object ArrayBuffer]") and Buffer chunks. */
@@ -24,6 +33,8 @@ export class RacingApplication {
   // Each (track, difficulty) board compares the record and writes the lap as
   // one job, so two laps finishing together cannot both claim the record.
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
+
+  constructor(private readonly iceServers: IceServer[] = DEFAULT_ICE_SERVERS) {}
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -94,6 +105,7 @@ export class RacingApplication {
       case "hello":
         player.name = message.name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
         player.variant = message.variant;
+        player.direct = message.direct === true;
         return;
       case "createRoom":
         this.join(
@@ -120,6 +132,9 @@ export class RacingApplication {
         if (lap) this.completeLap(lap);
         return;
       }
+      case "signal":
+        this.relaySignal(player, message);
+        return;
       case "getReplay":
         void this.replay(player, message).catch((error) => {
           console.error("Failed to load replay:", error);
@@ -141,8 +156,27 @@ export class RacingApplication {
       roomName: room.name,
       difficulty: room.difficulty,
       track: room.track.id,
+      iceServers: this.iceServers,
     });
     this.broadcastRooms();
+  }
+
+  /**
+   * Pass a Direct Link negotiation step to another driver in the sender's Room.
+   * The server stamps the sender, so a signal can neither claim another origin
+   * nor reach anyone outside the Room or a client that never offered to link.
+   */
+  private relaySignal(player: Player, message: Extract<ClientMessage, { type: "signal" }>): void {
+    const target = player.room?.players.get(message.to);
+    if (!player.direct || !target?.direct || target === player) return;
+    const now = Date.now();
+    const budget = player.signals;
+    if (now - budget.windowStart >= SIGNAL_WINDOW_MS) {
+      budget.windowStart = now;
+      budget.count = 0;
+    }
+    if (++budget.count > MAX_SIGNALS_PER_WINDOW) return;
+    send(target.ws, { type: "signal", from: player.id, signal: message.signal });
   }
 
   private async replay(

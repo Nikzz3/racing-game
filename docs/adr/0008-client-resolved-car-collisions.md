@@ -3,9 +3,10 @@
 Players' cars in a Room used to drive through each other. They now collide, and the
 collision is resolved **client-side, per car**: each client tests its own car against the
 other players' cars _where it draws them_ (interpolated, ~150 ms behind when their own
-clients sampled them), pushes its own car out of any overlap, and applies an equal-mass
-impulse along the contact normal to its own car only. No client ever moves a car it does not
-own. Pacers stay non-colliding: they never enter the set of cars a client collides with.
+clients sampled them, or ~100 ms over a Direct Link since ADR-0009), pushes its own car out of
+any overlap, and applies an equal-mass impulse along the contact normal to its own car only. No
+client ever moves a car it does not own. Pacers stay non-colliding: they never enter the set of
+cars a client collides with.
 
 ## Considered options
 

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import type { PlayerSnapshot } from "@racing/shared";
+import type { ClientMessage, PlayerSnapshot } from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
+import type { DirectLinks } from "../direct-links";
 import { Hud } from "../ui/hud";
 
 const linking = vi.hoisted(() => ({ programs: [] as { isReady(): boolean }[] }));
@@ -139,6 +140,54 @@ describe("local car render cadence", () => {
     // A poll after dispose() would read the disposed renderer's programs.
     expect(isReady).toHaveBeenCalledTimes(polls);
     expect(frame).toBeUndefined();
+  });
+});
+
+describe("pose stamps", () => {
+  it("stamps every sent pose, sends the same pose over Direct Links, and marks respawns", () => {
+    game.dispose();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const broadcast = vi.fn();
+    const links = { broadcast, onPose: () => () => {} } as unknown as DirectLinks;
+    const send = vi.mocked(Net.prototype.send);
+    send.mockClear();
+    game = new Game(
+      document.body,
+      new Net(),
+      "local",
+      "Linked",
+      () => {},
+      undefined,
+      undefined,
+      null,
+      undefined,
+      undefined,
+      links,
+    );
+    const sendAt = (time: number) => {
+      now = time;
+      vi.advanceTimersByTime(50);
+    };
+    sendAt(1000);
+    sendAt(1050);
+    respawn();
+    sendAt(1100);
+    vi.useRealTimers();
+
+    const states = send.mock.calls
+      .map(([message]) => message)
+      .filter(
+        (message): message is Extract<ClientMessage, { type: "state" }> => message.type === "state",
+      );
+    expect(states.map((state) => state.stamp)).toEqual([
+      { seq: 1, epoch: 0 },
+      { seq: 2, epoch: 0 },
+      { seq: 3, epoch: 1 },
+    ]);
+    // Both paths carry identical values, which is how receivers spot a forged copy.
+    expect(broadcast.mock.calls.map(([pose]) => pose)).toEqual(
+      states.map(({ x, z, rot, speed, t, stamp }) => ({ stamp, t, x, z, rot, speed })),
+    );
   });
 });
 
