@@ -42,8 +42,10 @@ Jev drives in two ways, both on Sunset Ridge at Medium only:
 1. **The key never leaves the server.** Without `TYPESAFE_API_KEY` (and without the
    `JEV_STUB=1` stand-in used by e2e) the server reports `jev: false` in `welcome` and the
    client hides the live run.
-2. **Bounded spend.** One decision in flight per connection, a per-connection rate cap and a
-   global concurrency cap; a refused request answers `jevUnavailable`, never queues.
+2. **Bounded spend.** One decision in flight per connection, a per-connection rate cap (the
+   Jev Lap's 10 decisions/s, burst 3) and a global cap of 24 decisions in flight; a refused
+   request answers `jevUnavailable`, never queues. A decision gets 2 s and no retries
+   (`server/src/jev-proxy.ts`).
 3. **Never a leaderboard row.** Neither the Jev Lap nor a Jev Live Run is sent through lap
    timing, persisted, ranked, or used as a Track Record (ADR-0001 stands).
 4. **Medium, Sunset Ridge.** The cornering guide in the pedal question is derived from the

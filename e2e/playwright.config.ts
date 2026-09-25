@@ -17,6 +17,9 @@ function workerServers(worker: number): WebServer[] {
       env: {
         DATABASE_URL: databaseUrl && workerDatabaseUrl(databaseUrl, worker),
         PORT: String(serverPort(worker)),
+        // Jev Live Runs drive against the network-free stub: no key and no
+        // TypeSafe spend, even when the developer's .env holds one (ADR-0009).
+        JEV_STUB: "1",
       },
       // Not "/": the server falls back to client/dist/index.html and 404s until the
       // client is built, which Playwright never accepts as ready. Nothing in this suite
