@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
 import { CAR_VARIANTS, type LeaderboardEntry, type ReplayFrame } from "@racing/shared";
 import type { ReferenceLap } from "../game/reference-lap";
+import { JEV_LAP } from "../game/jev-lap";
 import { formatMs } from "../util";
 
 // The lobby bakes the AI Reference Lap through buildReferenceLap; mock it so
@@ -513,6 +514,22 @@ describe("Lobby Jev controls", () => {
     click("button[data-jev-lap]");
     expect(cbs.onJevLap).toHaveBeenCalledOnce();
     expect(cbs.onReferenceLap).not.toHaveBeenCalled();
+  });
+
+  it("labels Watch Jev Lap with the bundled lap's time", () => {
+    expect(q(".lb-jev-lap-btn").textContent).toBe(`▶ Watch Jev Lap · ${formatMs(JEV_LAP!.timeMs)}`);
+    expect(q(".lb-jev-lap-btn").textContent).toMatch(/^▶ Watch Jev Lap · \d:\d\d\.\d{3}$/);
+  });
+
+  it.each([
+    ["Stormhaven", '[data-board-track="stormhaven"]'],
+    ["Hard", boardDiff("hard")],
+  ])("hides Watch Jev Lap with the AI Record while the Records board browses %s", (_, filter) => {
+    click(filter);
+    expect(q(".lb-jev-lap-btn").closest<HTMLElement>(".lb-ai-record")!.hidden).toBe(true);
+    click('[data-board-track="sunset-ridge"]');
+    click(boardDiff("medium"));
+    expect(q(".lb-jev-lap-btn").closest<HTMLElement>(".lb-ai-record")!.hidden).toBe(false);
   });
 
   it("offers the live run only once the server reports Jev is available", () => {
