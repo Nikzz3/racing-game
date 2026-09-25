@@ -14,6 +14,7 @@
     ".sandcastle/worktrees/**",
     ".sandcastle/logs/**",
     "e2e/lap-inputs.json",
+    "client/src/game/jev-lap.json",
     "package-lock.json"
   ]
 }

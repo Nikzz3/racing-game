@@ -21,6 +21,7 @@ import { GarageStage } from "./garage-stage";
 import { CHEAP_RENDER } from "../game/quality";
 import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
+import { JEV_LAP } from "../game/jev-lap";
 import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } from "../game/touch";
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
@@ -303,8 +304,15 @@ export class Lobby {
     this.paintHero();
     this.paintTrack();
     this.setRooms([]);
+    this.paintJevLap();
     this.renderBoard();
     this.bindUpdates();
+  }
+  /** The Jev Lap is bundled, so its button carries the lap time from the start. */
+  private paintJevLap(): void {
+    const button = this.find(".lb-jev-lap-btn");
+    if (JEV_LAP) button.textContent = `▶ Watch Jev Lap · ${formatMs(JEV_LAP.timeMs)}`;
+    else button.hidden = true;
   }
   /** Hook the desktop update bridge (no-op in the browser build). */
   private bindUpdates(): void {

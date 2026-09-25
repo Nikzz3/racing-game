@@ -5,6 +5,7 @@ import {
   SUNSET_RIDGE,
   TRACK_DIVISIONS,
   type Difficulty,
+  type ReplayFrame,
   type Track,
   type TrackSample,
 } from "@racing/shared";
@@ -12,6 +13,7 @@ import type { CarInput } from "./input";
 import { CarPhysics } from "./physics";
 
 const DT = 1 / 60;
+const DT_MS = 1000 / 60;
 const SPAWN_SAMPLE = TRACK_DIVISIONS - 14;
 const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
 /**
@@ -72,7 +74,7 @@ export class CheckpointTracker {
 
 /** Rule-based centerline follower. */
 export function autopilotInput(
-  car: CarPhysics,
+  car: Pick<CarPhysics, "x" | "z" | "heading" | "speed" | "centerIndex">,
   samples: TrackSample[],
   lookahead = AUTOPILOT_LOOKAHEAD,
 ): CarInput {
@@ -88,23 +90,103 @@ export function autopilotInput(
   };
 }
 
+/** A car at the fixed spawn, stepped at 1/60 s and timed by its checkpoints. */
+class LapDrive {
+  readonly car: CarPhysics;
+  private readonly tracker: CheckpointTracker;
+  private readonly trajectory: StepState[] = [];
+  private readonly inputs: CarInput[] = [];
+
+  constructor(difficulty: Difficulty, track: Track) {
+    this.car = new CarPhysics(difficulty, track.samples);
+    this.car.spawnAtSample(SPAWN_SAMPLE, 0);
+    this.tracker = new CheckpointTracker(track.checkpoints);
+  }
+
+  /** The checkpoint the car must pass next (0 until the lap has started). */
+  get nextCheckpoint(): number {
+    return this.tracker.next;
+  }
+
+  /** Applies one step's input; the finished run once this step completes a lap. */
+  step(input: CarInput): RunResult | null {
+    const step = this.inputs.length;
+    this.inputs.push(input);
+    this.car.update(DT, input);
+    this.trajectory.push(snapshot(this.car));
+    const lapMs = this.tracker.update(this.car.x, this.car.z, step);
+    if (lapMs === null) return null;
+    return { lapTimeMs: lapMs, steps: step + 1, trajectory: this.trajectory, inputs: this.inputs };
+  }
+}
+
 /** Drives from the fixed spawn until a valid lap completes, or null within maxSteps. */
 function runLap(
   { difficulty = "medium", maxSteps = 36000, track = SUNSET_RIDGE }: RunOptions,
   chooseInput: (car: CarPhysics, samples: TrackSample[]) => CarInput,
 ): RunResult | null {
-  const car = new CarPhysics(difficulty, track.samples);
-  car.spawnAtSample(SPAWN_SAMPLE, 0);
-  const tracker = new CheckpointTracker(track.checkpoints);
-  const trajectory: StepState[] = [];
-  const inputs: CarInput[] = [];
+  const drive = new LapDrive(difficulty, track);
   for (let step = 0; step < maxSteps; step++) {
-    const input = chooseInput(car, track.samples);
-    inputs.push(input);
-    car.update(DT, input);
-    trajectory.push(snapshot(car));
-    const lapMs = tracker.update(car.x, car.z, step);
-    if (lapMs !== null) return { lapTimeMs: lapMs, steps: step + 1, trajectory, inputs };
+    const result = drive.step(chooseInput(drive.car, track.samples));
+    if (result) return result;
+  }
+  return null;
+}
+
+/** Where a decider stands when asked: the step about to run and the checkpoint the car needs next. */
+export interface DecisionContext {
+  step: number;
+  nextCheckpoint: number;
+}
+
+export interface DecidedLapOptions extends RunOptions {
+  /** Steps between decisions: 6 asks every 100 ms of game time. */
+  decideEverySteps: number;
+}
+
+export interface DecidedLap<T> extends RunResult {
+  /**
+   * The decisions made during the timed lap, in order. `timeMs` is the time of
+   * the pose each one judged, on the same clock as `lapFrames`: the decision
+   * made from the frame at t holds from t until the next. Decisions made during
+   * the run-up to the start line are dropped.
+   */
+  decisions: { timeMs: number; decision: T }[];
+}
+
+/**
+ * Drives a lap like `runLap`, at the same fixed 1/60 s step, but asks an async
+ * decider for the input only every `decideEverySteps` steps and holds its answer
+ * in between. The simulation waits for each answer, so however slow the decider
+ * is, the lap is the one it would drive with instant answers at that cadence.
+ */
+export async function runDecidedLap<T extends CarInput>(
+  decide: (pose: StepState, context: DecisionContext) => Promise<T>,
+  {
+    decideEverySteps,
+    difficulty = "medium",
+    maxSteps = 36000,
+    track = SUNSET_RIDGE,
+  }: DecidedLapOptions,
+): Promise<DecidedLap<T> | null> {
+  const drive = new LapDrive(difficulty, track);
+  const made: { step: number; decision: T }[] = [];
+  let decision: T | undefined;
+  for (let step = 0; step < maxSteps; step++) {
+    if (step % decideEverySteps === 0) {
+      const context = { step, nextCheckpoint: drive.nextCheckpoint };
+      decision = await decide(snapshot(drive.car), context);
+      made.push({ step, decision });
+    }
+    const result = drive.step(decision!);
+    if (!result) continue;
+    // Decided at step s, a decision judged the pose after step s - 1: the
+    // trajectory entry that becomes frame s - 1 - start of the timed lap.
+    const start = lapStartIndex(result);
+    const decisions = made
+      .filter((d) => d.step - 1 >= start)
+      .map((d) => ({ timeMs: (d.step - 1 - start) * DT_MS, decision: d.decision }));
+    return { ...result, decisions };
   }
   return null;
 }
@@ -136,6 +218,35 @@ export function replayInputs(
 
 function snapshot(car: CarPhysics): StepState {
   return { x: car.x, z: car.z, heading: car.heading, speed: car.speed };
+}
+
+/**
+ * The trajectory index where the timed lap starts. Timing starts at the first
+ * CP0 crossing and stops at the second, which is the completion step (steps - 1).
+ */
+function lapStartIndex(result: RunResult): number {
+  return result.steps - 1 - Math.round(result.lapTimeMs / DT_MS);
+}
+
+/**
+ * The timed-lap portion of a run as replay frames at t = step * 1000/60 from 0,
+ * the Reference Lap's rounding: x, z and speed to 2 dp, heading to 3 dp.
+ */
+export function lapFrames(result: RunResult): ReplayFrame[] {
+  return result.trajectory
+    .slice(lapStartIndex(result))
+    .map<ReplayFrame>((s, i) => [
+      i * DT_MS,
+      round(s.x, 2),
+      round(s.z, 2),
+      round(s.heading, 3),
+      round(s.speed, 2),
+    ]);
+}
+
+function round(n: number, decimals: number): number {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
 }
 
 function normalizeAngle(a: number): number {
