@@ -1,0 +1,3 @@
+# Gitignored files Claude Code copies from the main checkout into worktrees it creates
+# (`claude --worktree`). T3 Code copies the same files in the t3.json setup action.
+.env
