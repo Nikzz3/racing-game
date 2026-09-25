@@ -51,10 +51,11 @@ class JevReplayPanel {
     const current = decisionAt(this.recording.decisions, time);
     if (!current || current.count === this.shown || !this.panel) return;
     const index = current.count - 1;
-    this.seen[index] ??= jevDrivingState(
-      interpolatePose(this.recording.frames, current.madeAt),
-      this.track,
-    ).bend_ahead;
+    // A live run recorded what Jev was told; the Jev Lap's is rebuilt from its frames.
+    this.seen[index] ??=
+      this.recording.seen?.[index] ??
+      jevDrivingState(interpolatePose(this.recording.frames, current.madeAt), this.track)
+        .bend_ahead;
     this.panel.update({
       decision: current.decision,
       seen: this.seen[index],

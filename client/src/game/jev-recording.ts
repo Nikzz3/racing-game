@@ -11,6 +11,11 @@ export interface JevRecording {
   frames: ReplayFrame[];
   /** In time order; a decision holds until the next one. */
   decisions: JevRecordedDecision[];
+  /**
+   * What Jev was told about the road ahead (`bend_ahead`) for each decision, where it
+   * cannot be rebuilt from the frames: a live run asks about a predicted pose.
+   */
+  seen?: string[];
 }
 
 /**

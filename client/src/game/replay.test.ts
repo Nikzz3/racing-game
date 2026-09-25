@@ -181,6 +181,27 @@ describe("ReplayViewer with Jev's decisions", () => {
     viewer.dispose();
   });
 
+  it("shows what a live run recorded Jev was told, not a description of the pose it reached", () => {
+    const update = vi.spyOn(JevPanel.prototype, "update");
+    const told = ["the road is straight for the next 190 m", "a predicted bend"];
+    const viewer = new ReplayViewer(
+      document.body,
+      "Jev",
+      "sunset-ridge",
+      JEV.timeMs,
+      JEV.frames,
+      "race-future",
+      () => {},
+      { ...JEV, seen: told },
+    );
+    vi.mocked(jevDrivingState).mockClear();
+    frame(250);
+    frame(700);
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ seen: told[1] }));
+    expect(jevDrivingState).not.toHaveBeenCalled();
+    viewer.dispose();
+  });
+
   it("describes each decision once, however many frames and loops show it", () => {
     const viewer = makeJevViewer();
     vi.mocked(jevDrivingState).mockClear();

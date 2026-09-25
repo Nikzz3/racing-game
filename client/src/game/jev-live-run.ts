@@ -107,6 +107,8 @@ export class JevLiveRun {
   private nextCheckpoint = 0;
   private frames: ReplayFrame[] = [];
   private recorded: JevRecordedDecision[] = [];
+  /** What Jev saw for each recorded decision, in step with `recorded`. */
+  private recordedSeen: string[] = [];
   /** Lap time of the latest recorded frame. */
   private lastFrameMs = 0;
   private backoffMs = 0;
@@ -141,6 +143,7 @@ export class JevLiveRun {
     this.nextCheckpoint = 0;
     this.frames = [];
     this.recorded = [];
+    this.recordedSeen = [];
     this.lastFrameMs = 0;
     this.backoffMs = 0;
     this.refusals = 0;
@@ -263,6 +266,7 @@ export class JevLiveRun {
       timeMs,
       frames: this.frames,
       decisions: this.recorded,
+      seen: this.recordedSeen,
     };
     this.end("finished");
   }
@@ -281,8 +285,10 @@ export class JevLiveRun {
   }
 
   private recordDecision(t: number): void {
-    const { accelerate, left, pedalConfidence, steerConfidence } = this.latest!.decision;
+    const { decision, seen } = this.latest!;
+    const { accelerate, left, pedalConfidence, steerConfidence } = decision;
     this.recorded.push([Math.round(t), accelerate, left, pedalConfidence, steerConfidence]);
+    this.recordedSeen.push(seen);
   }
 
   /** Time out a lost request, then ask again once nothing is in flight and the pace allows. */

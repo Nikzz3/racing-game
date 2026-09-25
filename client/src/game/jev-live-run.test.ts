@@ -286,6 +286,9 @@ describe("JevLiveRun lap", () => {
     for (let i = 1; i < decisions.length; i++)
       expect(decisions[i][0]).toBeGreaterThanOrEqual(decisions[i - 1][0]);
     expect(decisions.at(-1)![0]).toBeLessThanOrEqual(recording.timeMs);
+    // What Jev was told, per decision: it judged predicted poses, so a replay can't rebuild it.
+    expect(recording.seen).toHaveLength(decisions.length);
+    expect(recording.seen!.every((text) => text.startsWith("the "))).toBe(true);
   });
 
   it("stops asking once the lap is done and brings the car to rest", () => {
