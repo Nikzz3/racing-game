@@ -2103,127 +2103,176 @@ a {
 .replay-exit {
   margin-top: 20px;
 }
-/* Jev's decisions, shared by the Jev Lap replay and the live run (ui/jev-panel.ts). */
+/* Jev's decisions, shared by the Jev Lap replay and the live run (ui/jev-panel.ts): a
+   terminal box with one card per question, each option's probability as a bar and the
+   option Jev picked lit up. */
 .jev-panel {
+  --jev-text: #a3d4ad;
+  --jev-dim: #4f8a5e;
+  --jev-bright: #4cf578;
   position: absolute;
-  top: 36px;
-  right: 40px;
-  width: 300px;
-  padding: 16px 18px;
+  top: 30px;
+  right: 32px;
+  /* Keeps clear of the car, which the chase camera holds in the middle of the screen. */
+  width: clamp(288px, calc(50vw - 72px), 360px);
+  display: grid;
+  gap: 6px;
+  padding: 9px;
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
-  background: #151720e0;
-  border-right: 3px solid #8dc9b1;
-  font: 11px var(--mono);
-  color: #eee0cf;
+  background: #040906eb;
+  border: 1px solid #1c3324;
+  border-radius: 4px;
+  font: 11px/1.45 var(--mono);
+  color: var(--jev-text);
   pointer-events: none;
   text-shadow: none;
+  /* Changes with every decision: keep it off the full-screen overlay layer (see .hud-cur-lap). */
+  will-change: transform;
 }
 .jev-panel-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 8px;
+  padding: 1px 2px 0;
+  color: var(--jev-dim);
 }
 .jev-panel-name {
-  font:
-    italic 30px/1 "Barlow Condensed",
-    Impact,
-    sans-serif;
-  color: #a6d4c0;
-  letter-spacing: 0.04em;
+  flex: none;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--jev-bright);
 }
 .jev-panel-sub {
-  color: #a4a5aa;
-  letter-spacing: 0.08em;
-}
-.jev-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 10px;
-  margin-bottom: 12px;
-}
-.jev-row-label {
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: #a4a5aa;
-}
-.jev-pick {
-  grid-row: 1;
-  grid-column: 2;
-  color: #fff9ef;
-}
-.jev-bar {
-  grid-column: 1 / -1;
-  position: relative;
-  height: 8px;
+  min-width: 0;
   overflow: hidden;
-  background: #ffffff14;
-}
-.jev-pedal {
-  background: #e0745a66;
-}
-.jev-pedal-fill {
-  position: absolute;
-  inset: 0;
-  background: #8dc9b1;
-  transform-origin: left;
-  transform: scaleX(0.5);
-}
-.jev-steer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: #ffffff40;
-}
-.jev-steer-needle {
-  position: absolute;
-  inset: 0;
-  transform: translateX(50%);
-}
-.jev-steer-needle::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -2px;
-  width: 4px;
-  background: #ffcf94;
-}
-.jev-bar-ends {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  color: #7d7f86;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.jev-seen {
-  margin: 4px 0 10px;
-  min-height: 3em;
-  line-height: 1.5;
-  color: #d8cdbd;
-}
-.jev-seen::before {
-  content: "Jev sees: ";
-  color: #a6d4c0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .jev-stats {
-  color: #a4a5aa;
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
 }
-@media (max-width: 700px) {
+.jev-card {
+  padding: 7px 9px 6px;
+  background: #08110b;
+  border: 1px solid #172a1e;
+  border-radius: 3px;
+}
+.jev-q {
+  margin: 0;
+}
+/* Room for the longest description, so the cards below don't jump as the road changes. */
+.jev-card-state .jev-q {
+  min-height: calc(3 * 1.45em);
+}
+.jev-tag {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 0 4px;
+  border: 1px solid #2c6e42;
+  border-radius: 2px;
+  font-size: 9px;
+  /* Fits inside the text's line box, so the tag never makes its line taller. */
+  line-height: 11px;
+  letter-spacing: 0.1em;
+  color: #74d18f;
+}
+.jev-option {
+  display: grid;
+  grid-template-columns: 10.5ch 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+  color: var(--jev-dim);
+}
+.jev-q + .jev-option {
+  margin-top: 6px;
+}
+.jev-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jev-option[data-picked] .jev-label {
+  font-weight: 700;
+  color: #c3ffd2;
+}
+.jev-track {
+  height: 9px;
+  overflow: hidden;
+  background: #0d1d13;
+}
+.jev-fill {
+  display: block;
+  height: 100%;
+  background: #1c5b30;
+  transform-origin: left;
+  transform: scaleX(0);
+  /* Eases between decisions; the reduced-motion rule at the end of this file turns it off. */
+  transition: transform 0.1s linear;
+}
+.jev-option[data-picked] .jev-fill {
+  background: var(--jev-bright);
+}
+.jev-conf {
+  margin: 3px 0 0;
+  color: var(--jev-dim);
+}
+/* Small screens: one line per question with the confidence beside it. */
+@media (max-width: 700px), (max-height: 500px) {
+  .jev-panel {
+    gap: 4px;
+    padding: 7px;
+    font-size: 10px;
+  }
+  .jev-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 8px;
+    padding: 5px 7px;
+  }
+  .jev-q {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .jev-card-state .jev-q {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+  .jev-option {
+    grid-column: 1 / -1;
+    margin-top: 1px;
+  }
+  .jev-q + .jev-option {
+    margin-top: 4px;
+  }
+  .jev-conf {
+    grid-row: 1;
+    grid-column: 2;
+    margin: 0;
+  }
+  .jev-track {
+    height: 8px;
+  }
+}
+/* Portrait phones: along the bottom, below the car. */
+@media (max-width: 700px) and (orientation: portrait) {
   .jev-panel {
     top: auto;
-    bottom: 16px;
-    right: 16px;
-    width: min(300px, calc(100vw - 32px));
-    padding: 12px 14px;
+    bottom: 12px;
+    right: 12px;
+    width: min(380px, calc(100vw - 24px));
   }
-  .jev-panel-name {
-    font-size: 22px;
+}
+/* Landscape phones: too short for the bottom, so top-right, between the car and the edge. */
+@media (orientation: landscape) and (max-height: 500px),
+  (orientation: landscape) and (max-width: 700px) {
+  .jev-panel {
+    top: 12px;
+    right: 12px;
+    width: clamp(240px, calc(50vw - 60px), 340px);
   }
 }
 .replay-finished {

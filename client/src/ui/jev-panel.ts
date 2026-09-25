@@ -1,4 +1,4 @@
-import type { JevDecision } from "@racing/shared";
+import { JEV_QUESTIONS, type JevDecision } from "@racing/shared";
 
 export interface JevPanelView {
   decision: JevDecision;
@@ -11,80 +11,122 @@ export interface JevPanelView {
 }
 
 /**
- * Shows Jev's two judgments as it drives: the pedal as P(accelerate) against
- * brake, and the steering needle at P(left) − P(right). Shared by the Jev Lap
- * replay and the live run, so both read the same.
+ * One Choice question as a terminal card: a tag, the question exactly as Jev is
+ * asked it, a probability bar per option (the picked one bright) and the
+ * confidence TypeSafe reports for the pick.
+ */
+class ChoiceCard {
+  readonly element = document.createElement("div");
+  private readonly rows: HTMLElement[];
+  private readonly fills: HTMLElement[];
+  private readonly confEl: HTMLElement;
+  private first = NaN;
+  private pickFirst: boolean | null = null;
+  private confidence = NaN;
+
+  constructor(name: string, question: string, options: readonly [string, string]) {
+    this.element.className = "jev-card";
+    this.element.dataset.question = name;
+    this.element.innerHTML = `
+      <p class="jev-q"><span class="jev-tag"></span><span class="jev-q-text"></span></p>
+      ${options
+        .map(
+          (option) =>
+            `<div class="jev-option" data-option="${option}"><span class="jev-label">${option}</span><span class="jev-track"><span class="jev-fill"></span></span></div>`,
+        )
+        .join("")}
+      <p class="jev-conf">conf <span class="jev-conf-value"></span></p>
+    `;
+    this.element.querySelector(".jev-tag")!.textContent = name.toUpperCase();
+    this.element.querySelector(".jev-q-text")!.textContent = question;
+    this.rows = [...this.element.querySelectorAll<HTMLElement>(".jev-option")];
+    this.fills = [...this.element.querySelectorAll<HTMLElement>(".jev-fill")];
+    this.confEl = this.element.querySelector(".jev-conf-value")!;
+  }
+
+  /** `first` is the first option's probability; the second gets the rest. */
+  update(first: number, pickFirst: boolean, confidence: number): void {
+    if (first !== this.first) {
+      this.first = first;
+      this.fills[0].style.transform = `scaleX(${first.toFixed(3)})`;
+      this.fills[1].style.transform = `scaleX(${(1 - first).toFixed(3)})`;
+    }
+    if (pickFirst !== this.pickFirst) {
+      this.pickFirst = pickFirst;
+      this.rows[0].toggleAttribute("data-picked", pickFirst);
+      this.rows[1].toggleAttribute("data-picked", !pickFirst);
+    }
+    if (confidence !== this.confidence) {
+      this.confidence = confidence;
+      this.confEl.textContent = confidence.toFixed(2);
+    }
+  }
+}
+
+/**
+ * Shows how Jev decides as it drives, in the style of a terminal: what it was
+ * told about the road, then each of its two questions with a bar per option.
+ * The pick is the pedal Jev presses (see `jevInput`) and the side it steers
+ * towards. Shared by the Jev Lap replay and the live run, so both read the same.
  */
 export class JevPanel {
   readonly element = document.createElement("section");
-  private readonly pedalFill: HTMLElement;
-  private readonly pedalPick: HTMLElement;
-  private readonly steerNeedle: HTMLElement;
-  private readonly steerPick: HTMLElement;
+  private readonly pedal = new ChoiceCard("pedal", JEV_QUESTIONS.pedal.instructions.question, [
+    "brake",
+    "accelerate",
+  ]);
+  private readonly steer = new ChoiceCard("steer", JEV_QUESTIONS.steer.instructions, [
+    "left",
+    "right",
+  ]);
   private readonly seenEl: HTMLElement;
   private readonly decisionsEl: HTMLElement;
   private readonly latencyEl: HTMLElement;
-  private last: JevPanelView | null = null;
+  private seen: string | null = null;
+  private decisions = NaN;
+  private latencyMs: number | undefined | null = null;
 
   constructor(parent: HTMLElement, subtitle: string) {
     this.element.className = "jev-panel";
     this.element.setAttribute("aria-label", "Jev's decisions");
     this.element.innerHTML = `
-      <header class="jev-panel-head"><span class="jev-panel-name">JEV</span><span class="jev-panel-sub"></span></header>
-      <div class="jev-row">
-        <span class="jev-row-label">Pedal</span>
-        <div class="jev-bar jev-pedal"><div class="jev-pedal-fill"></div></div>
-        <div class="jev-bar-ends"><span>Brake</span><span>Accelerate</span></div>
-        <span class="jev-pick jev-pedal-pick"></span>
+      <header class="jev-panel-head">
+        <span class="jev-panel-name">JEV</span><span class="jev-panel-sub"></span>
+        <span class="jev-stats"><span data-jev-decisions>0</span> decisions<span class="jev-latency"></span></span>
+      </header>
+      <div class="jev-card jev-card-state">
+        <p class="jev-q"><span class="jev-tag">STATE</span><span class="jev-seen"></span></p>
       </div>
-      <div class="jev-row">
-        <span class="jev-row-label">Steering</span>
-        <div class="jev-bar jev-steer"><div class="jev-steer-needle"></div></div>
-        <div class="jev-bar-ends"><span>Left</span><span>Right</span></div>
-        <span class="jev-pick jev-steer-pick"></span>
-      </div>
-      <p class="jev-seen"></p>
-      <footer class="jev-stats"><span data-jev-decisions>0</span> decisions<span class="jev-latency"></span></footer>
     `;
     this.element.querySelector(".jev-panel-sub")!.textContent = subtitle;
-    this.pedalFill = this.element.querySelector(".jev-pedal-fill")!;
-    this.pedalPick = this.element.querySelector(".jev-pedal-pick")!;
-    this.steerNeedle = this.element.querySelector(".jev-steer-needle")!;
-    this.steerPick = this.element.querySelector(".jev-steer-pick")!;
     this.seenEl = this.element.querySelector(".jev-seen")!;
     this.decisionsEl = this.element.querySelector("[data-jev-decisions]")!;
     this.latencyEl = this.element.querySelector(".jev-latency")!;
+    this.element.append(this.pedal.element, this.steer.element);
     parent.append(this.element);
   }
 
   /** Cheap to call every frame: the DOM is only touched when a value changes. */
   update(view: JevPanelView): void {
-    const last = this.last;
-    const { accelerate, left } = view.decision;
-    if (last?.decision.accelerate !== accelerate) {
-      this.pedalFill.style.transform = `scaleX(${accelerate})`;
-      const brake = accelerate < 0.5;
-      this.pedalPick.textContent = `${brake ? "Brake" : "Accelerate"} ${percent(brake ? 1 - accelerate : accelerate)}`;
-      this.pedalPick.dataset.pick = brake ? "brake" : "accelerate";
+    const { accelerate, left, pedalConfidence, steerConfidence } = view.decision;
+    this.pedal.update(1 - accelerate, accelerate < 0.5, pedalConfidence);
+    this.steer.update(left, left >= 0.5, steerConfidence);
+    if (view.seen !== this.seen) {
+      this.seen = view.seen;
+      this.seenEl.textContent = view.seen;
     }
-    if (last?.decision.left !== left) {
-      // Needle at the steering amount: full left at 0%, straight at 50%, full right at 100%.
-      this.steerNeedle.style.transform = `translateX(${((1 - left) * 100).toFixed(1)}%)`;
-      const goLeft = left >= 0.5;
-      this.steerPick.textContent = `${goLeft ? "Left" : "Right"} ${percent(goLeft ? left : 1 - left)}`;
+    if (view.decisions !== this.decisions) {
+      this.decisions = view.decisions;
+      this.decisionsEl.textContent = String(view.decisions);
     }
-    if (last?.seen !== view.seen) this.seenEl.textContent = capitalize(view.seen);
-    if (last?.decisions !== view.decisions) this.decisionsEl.textContent = String(view.decisions);
-    if (last?.latencyMs !== view.latencyMs)
+    if (view.latencyMs !== this.latencyMs) {
+      this.latencyMs = view.latencyMs;
       this.latencyEl.textContent =
         view.latencyMs === undefined ? "" : ` · ${Math.round(view.latencyMs)} ms`;
-    this.last = { ...view, decision: { ...view.decision } };
+    }
   }
 
   dispose(): void {
     this.element.remove();
   }
 }
-
-const percent = (p: number): string => `${Math.round(p * 100)}%`;
-const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
