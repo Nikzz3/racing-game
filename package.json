@@ -23,7 +23,8 @@
     "desktop:build": "npm run build -w client -- --base=./ && npm run build -w desktop",
     "desktop:start": "npm run start -w desktop",
     "desktop:dist": "npm run dist -w desktop",
-    "sandcastle": "npx tsx .sandcastle/main.ts"
+    "sandcastle": "npx tsx .sandcastle/main.ts",
+    "jev:record": "tsx scripts/record-jev-lap.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"
