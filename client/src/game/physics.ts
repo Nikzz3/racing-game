@@ -50,6 +50,9 @@ const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
 /** Bounciness of car-to-car hits: 0 kills the closing speed, 1 is a perfect bounce. */
 const CAR_RESTITUTION = 0.3;
 
+/** Shared by every `advance` without other cars, so a solo car allocates nothing per frame. */
+const NO_OBSTACLES: readonly CarObstacle[] = [];
+
 /** Render frames accumulate time; the simulation always consumes fixed steps. */
 export const PHYSICS_STEP = 1 / 120;
 export const MAX_STEPS_PER_FRAME = 8;
@@ -117,7 +120,11 @@ export class CarPhysics {
    * Pass the raw frame delta so ordinary stalls catch up to the lap clock.
    * `obstacles` are the other players' cars as drawn this frame; Pacers never collide.
    */
-  advance(elapsed: number, input: CarInput, obstacles: readonly CarObstacle[] = []): void {
+  advance(
+    elapsed: number,
+    input: CarInput,
+    obstacles: readonly CarObstacle[] = NO_OBSTACLES,
+  ): void {
     if (!Number.isFinite(elapsed) || elapsed < 0) return;
     this.stepAccumulator = Math.min(this.stepAccumulator + elapsed, MAX_ACCUMULATED_TIME);
     for (
