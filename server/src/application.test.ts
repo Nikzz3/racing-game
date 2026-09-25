@@ -1,7 +1,10 @@
 import { EventEmitter } from "node:events";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { SUNSET_RIDGE } from "@racing/shared";
 import { RacingApplication } from "./application";
+import type { JevAnswer, JevDriver, JevRequestOptions } from "./jev";
+import { JEV_BURST, JEV_MAX_IN_FLIGHT, JEV_RATE_PER_SECOND, JEV_TIMEOUT_MS } from "./jev-proxy";
 import { topEntries } from "./leaderboard";
 import { pool } from "./db";
 import { LEGACY_RECORD } from "../../tests/fixtures/legacy-replay";
@@ -157,5 +160,207 @@ describe("connection initialization", () => {
     await Promise.resolve();
     expect(application.rooms.list()).toEqual([]);
     expect(client.messages).toEqual([]);
+  });
+});
+
+const ANSWER: JevAnswer = {
+  accelerate: 0.8,
+  left: 0.3,
+  pedalConfidence: 0.6,
+  steerConfidence: 0.4,
+  latencyMs: 240,
+  model: "jev-1.13.0",
+};
+const sample = SUNSET_RIDGE.samples[500];
+const POSE = {
+  x: sample.x,
+  z: sample.z,
+  heading: Math.atan2(sample.dirX, sample.dirZ),
+  speed: 40,
+};
+const drive = (seq: number, track = "sunset-ridge") => ({
+  type: "jevDrive",
+  seq,
+  track,
+  ...POSE,
+});
+
+/** Lets resolved promises run: every microtask queued so far drains before setImmediate. */
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+function fakeDriver(
+  decide: (options: JevRequestOptions) => Promise<JevAnswer> = () => Promise.resolve(ANSWER),
+) {
+  const driver = {
+    kind: "stub" as const,
+    decide: vi.fn((_pose: unknown, _track: unknown, options?: JevRequestOptions) =>
+      decide(options ?? {}),
+    ),
+  };
+  return driver satisfies JevDriver;
+}
+
+/** A decision that stays in flight until the test resolves it. */
+function pendingDecision() {
+  let resolve!: (answer: JevAnswer) => void;
+  const promise = new Promise<JevAnswer>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+async function connect(application: RacingApplication): Promise<ClientSocket> {
+  const client = new ClientSocket();
+  application.connect(client.socket);
+  await settle();
+  expect(client.messages[0]?.type).toBe("welcome");
+  client.messages.length = 0;
+  return client;
+}
+
+describe("Jev live runs", () => {
+  beforeEach(() => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("tells each driver in welcome whether Jev can drive", async () => {
+    for (const driver of [fakeDriver(), null]) {
+      const client = new ClientSocket();
+      new RacingApplication(driver).connect(client.socket);
+      await settle();
+      expect(client.messages[0]).toMatchObject({ type: "welcome", jev: driver !== null });
+    }
+  });
+
+  it("answers a pose outside any Room with Jev's decision, echoing its seq", async () => {
+    const driver = fakeDriver();
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(7));
+    await settle();
+
+    expect(client.messages).toEqual([{ type: "jevDecision", seq: 7, ...ANSWER }]);
+    expect(driver.decide).toHaveBeenCalledWith(POSE, SUNSET_RIDGE, {
+      signal: expect.any(AbortSignal),
+      timeoutMs: JEV_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+  });
+
+  it("refuses a second request while one is in flight instead of queueing it", async () => {
+    const first = pendingDecision();
+    const driver = fakeDriver(() => first.promise);
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(1));
+    client.message(drive(2));
+    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 2, reason: "busy" }]);
+
+    first.resolve(ANSWER);
+    await settle();
+    expect(client.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 1 });
+    expect(driver.decide).toHaveBeenCalledTimes(1);
+
+    client.message(drive(3));
+    await settle();
+    expect(client.messages.at(-1)).toMatchObject({ type: "jevDecision", seq: 3 });
+  });
+
+  it("caps each connection's request rate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const driver = fakeDriver();
+    const application = new RacingApplication(driver);
+    const client = await connect(application);
+    let seq = 0;
+    for (let i = 0; i < JEV_BURST; i++) {
+      client.message(drive(++seq));
+      await settle();
+    }
+    client.message(drive(++seq));
+    expect(client.messages.at(-1)).toEqual({ type: "jevUnavailable", seq, reason: "rateLimited" });
+
+    // Another connection has its own budget.
+    const other = await connect(application);
+    other.message(drive(1));
+    await settle();
+    expect(other.messages).toEqual([expect.objectContaining({ type: "jevDecision", seq: 1 })]);
+
+    vi.advanceTimersByTime(1000 / JEV_RATE_PER_SECOND);
+    client.message(drive(++seq));
+    await settle();
+    expect(client.messages.at(-1)).toMatchObject({ type: "jevDecision", seq });
+    expect(driver.decide).toHaveBeenCalledTimes(JEV_BURST + 2);
+  });
+
+  it("caps the decisions in flight across every connection", async () => {
+    const decisions: ReturnType<typeof pendingDecision>[] = [];
+    const driver = fakeDriver(() => {
+      const decision = pendingDecision();
+      decisions.push(decision);
+      return decision.promise;
+    });
+    const application = new RacingApplication(driver);
+    for (let i = 0; i < JEV_MAX_IN_FLIGHT; i++) (await connect(application)).message(drive(1));
+    const late = await connect(application);
+    late.message(drive(1));
+    expect(late.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "rateLimited" }]);
+
+    decisions[0].resolve(ANSWER);
+    await settle();
+    late.message(drive(2));
+    await settle();
+    expect(driver.decide).toHaveBeenCalledTimes(JEV_MAX_IN_FLIGHT + 1);
+  });
+
+  it("reports a failed decision and warns once a minute, not per failure", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const driver = fakeDriver(() => Promise.reject(new Error("503 overloaded")));
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(1));
+    await settle();
+    client.message(drive(2));
+    await settle();
+
+    expect(client.messages).toEqual([
+      { type: "jevUnavailable", seq: 1, reason: "failed" },
+      { type: "jevUnavailable", seq: 2, reason: "failed" },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("Jev decision failed: Error: 503 overloaded");
+  });
+
+  it("refuses without a driver, and off the one Track Jev was tuned for", async () => {
+    const offline = await connect(new RacingApplication(null));
+    offline.message(drive(1));
+    expect(offline.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "disabled" }]);
+
+    const driver = fakeDriver();
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(2, "stormhaven"));
+    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 2, reason: "disabled" }]);
+    expect(driver.decide).not.toHaveBeenCalled();
+  });
+
+  it("aborts the decision in flight when the socket closes and sends nothing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const driver = fakeDriver(
+      ({ signal }) =>
+        new Promise((_resolve, reject) =>
+          signal?.addEventListener("abort", () => reject(new Error("aborted"))),
+        ),
+    );
+    const client = await connect(new RacingApplication(driver));
+    client.message(drive(1));
+    const signal = driver.decide.mock.calls[0][2]?.signal;
+    expect(signal?.aborted).toBe(false);
+
+    client.close();
+    await settle();
+    expect(signal?.aborted).toBe(true);
+    expect(client.messages).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

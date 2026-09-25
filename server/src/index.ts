@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import { RacingApplication } from "./application";
 import { initDb } from "./db";
 import { createHttpHandler } from "./http";
+import { createJevDriver } from "./jev";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const CLIENT_DIST = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/dist");
@@ -14,7 +15,8 @@ const MAX_WS_PAYLOAD_BYTES = 64 * 1024;
 
 async function main(): Promise<void> {
   await initDb();
-  const application = new RacingApplication();
+  const jev = createJevDriver();
+  const application = new RacingApplication(jev);
   await application.load();
   const server = createServer(createHttpHandler(CLIENT_DIST));
   const sockets = new WebSocketServer({
@@ -41,6 +43,7 @@ async function main(): Promise<void> {
   }, SNAPSHOT_INTERVAL_MS);
   server.once("close", () => clearInterval(clock));
   console.log(`Racing server listening on http://localhost:${PORT}`);
+  console.log(`Jev Live Runs: ${jev ? jev.kind : "off (no TYPESAFE_API_KEY)"}`);
 }
 
 void main().catch((error) => {

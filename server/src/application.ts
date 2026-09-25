@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
 import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
+import type { JevDriver } from "./jev";
+import { JevProxy } from "./jev-proxy";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -24,6 +26,12 @@ export class RacingApplication {
   // Each (track, difficulty) board compares the record and writes the lap as
   // one job, so two laps finishing together cannot both claim the record.
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
+  private readonly jev: JevProxy;
+
+  /** `jevDriver` answers Jev Live Runs; null leaves them off (see createJevDriver). */
+  constructor(jevDriver: JevDriver | null = null) {
+    this.jev = new JevProxy(jevDriver);
+  }
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -51,6 +59,7 @@ export class RacingApplication {
     socket.on("error", (error) => console.error("WebSocket error:", error));
     socket.on("close", () => {
       pending.length = 0;
+      this.jev.disconnect(socket);
       const room = this.rooms.leave(player);
       this.players.delete(player);
       if (room) this.broadcastRooms();
@@ -68,6 +77,7 @@ export class RacingApplication {
           playerId: player.id,
           rooms: this.rooms.list(),
           leaderboard,
+          jev: this.jev.available,
         });
         ready = true;
         for (const message of pending.splice(0)) this.receive(player, message);
@@ -125,6 +135,9 @@ export class RacingApplication {
           console.error("Failed to load replay:", error);
           send(player.ws, { type: "error", message: "Replay is temporarily unavailable" });
         });
+        return;
+      case "jevDrive":
+        this.jev.drive(player.ws, message);
         return;
     }
   }
