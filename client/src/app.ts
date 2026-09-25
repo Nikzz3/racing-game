@@ -54,6 +54,8 @@ export class RacingApp {
     this.net.onStatus((state) => {
       this.lobby.setConnection(state);
       if (state === "offline") {
+        // Until the next welcome says otherwise, there is no server to ask Jev.
+        this.lobby.setJevAvailable(false);
         this.returnToLobby();
         this.scheduleReconnect("Connection lost.");
       }

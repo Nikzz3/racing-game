@@ -422,7 +422,7 @@ describe("Jev live runs", () => {
     expect(usage.add).toHaveBeenCalledExactlyOnceWith("2026-09-25", 1);
   });
 
-  it("stays off while today's usage cannot be read, and retries the read", async () => {
+  it("waits while today's usage cannot be read, and retries the read", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -440,7 +440,8 @@ describe("Jev live runs", () => {
     const client = await connect(application);
     client.message(drive(1));
     await settle();
-    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "disabled" }]);
+    // Temporary: a live run keeps asking instead of ending.
+    expect(client.messages).toEqual([{ type: "jevUnavailable", seq: 1, reason: "rateLimited" }]);
     expect(usage.decisionsOn).toHaveBeenCalledTimes(1);
 
     // The next request after the retry interval reads again; the one after that is counted.
@@ -456,6 +457,47 @@ describe("Jev live runs", () => {
     await settle();
     expect(client.messages.at(-1)).toEqual({ type: "jevUnavailable", seq: 4, reason: "disabled" });
     expect(driver.decide).toHaveBeenCalledTimes(1);
+  });
+
+  it("never counts the day's stored usage twice when reads overlap", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T12:00:00Z"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const slowRead = pendingDecision();
+    const usage = {
+      decisionsOn: vi
+        .fn(async (_day: string) => 9)
+        .mockRejectedValueOnce(new Error("connection refused"))
+        .mockImplementationOnce(() => slowRead.promise.then(() => 9)),
+      add: vi.fn(async (_day: string, _decisions: number) => {}),
+    };
+    const application = new RacingApplication(fakeDriver(), 11, usage);
+    await application.load();
+    const client = await connect(application);
+    // A retry starts a read that hangs; later requests must not start another.
+    vi.advanceTimersByTime(30_000);
+    client.message(drive(1));
+    vi.advanceTimersByTime(30_000);
+    client.message(drive(2));
+    expect(usage.decisionsOn).toHaveBeenCalledTimes(2);
+
+    slowRead.resolve(ANSWER);
+    await settle();
+    // 9 stored of 11 leaves two decisions; counted twice (18) it would leave none.
+    client.message(drive(3));
+    await settle();
+    vi.advanceTimersByTime(1000);
+    client.message(drive(4));
+    await settle();
+    expect(client.messages.slice(-2)).toEqual([
+      expect.objectContaining({ type: "jevDecision", seq: 3 }),
+      expect.objectContaining({ type: "jevDecision", seq: 4 }),
+    ]);
+    vi.advanceTimersByTime(1000);
+    client.message(drive(5));
+    await settle();
+    expect(client.messages.at(-1)).toEqual({ type: "jevUnavailable", seq: 5, reason: "disabled" });
   });
 
   it("keeps decisions a failed usage write could not save for the next write", async () => {

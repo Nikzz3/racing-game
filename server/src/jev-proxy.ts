@@ -86,11 +86,13 @@ export class JevProxy {
   private unsaved = 0;
   private saving = false;
   /**
-   * Set when today's usage could not be read: the budget left is unknown, so Jev
-   * stays off (failing closed) until a read succeeds. Retried at most every
-   * USAGE_RETRY_MS, by the requests that find it off.
+   * Set when today's usage could not be read: the budget left is unknown, so no
+   * decision is asked for (failing closed) until a read succeeds. Retried at most
+   * every USAGE_RETRY_MS, by the requests that find it unknown.
    */
   private usageUnknownSince: number | null = null;
+  /** A read of today's usage is on its way; another would count it twice. */
+  private loading = false;
   private lastWarningAt = -Infinity;
   private unreportedFailures = 0;
 
@@ -102,19 +104,23 @@ export class JevProxy {
 
   /** Pick up today's count from the store, so a restart does not refill the daily budget. */
   async load(now = Date.now()): Promise<void> {
-    if (!this.driver) return;
+    if (!this.driver || this.loading) return;
+    this.loading = true;
     const day = utcDay(now);
     try {
-      const counted = await this.usage.decisionsOn(day);
+      const stored = await this.usage.decisionsOn(day);
+      // The store holds every saved decision; only the unsaved ones are on top.
       if (this.day !== day) {
         this.day = day;
-        this.decidedToday = 0;
+        this.unsaved = 0;
       }
-      this.decidedToday += counted;
+      this.decidedToday = stored + this.unsaved;
       this.usageUnknownSince = null;
     } catch (error) {
       this.usageUnknownSince = now;
-      console.error("Failed to load Jev's daily usage; Jev stays off until it loads:", error);
+      console.error("Failed to load Jev's daily usage; Jev waits until it loads:", error);
+    } finally {
+      this.loading = false;
     }
   }
 
@@ -142,7 +148,8 @@ export class JevProxy {
         this.usageUnknownSince = now;
         void this.load(now);
       }
-      return refuse("disabled");
+      // Temporary, unlike a spent budget: a live run keeps asking and carries on once it loads.
+      return refuse("rateLimited");
     }
     if (!this.withinDailyBudget(now)) return refuse("disabled");
     // Both buckets must hold a token before either is spent: a connection over its own

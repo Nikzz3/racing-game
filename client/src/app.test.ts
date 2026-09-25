@@ -25,6 +25,7 @@ vi.mock("./ui/lobby", () => ({
   Lobby: class {
     paintGarageThumbnails = paintGarage;
     setConnection() {}
+    setJevAvailable() {}
     show() {}
   },
 }));

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   liveReceive: vi.fn<(answer: JevLiveAnswer) => void>(),
   liveDispose: vi.fn(),
   replayOpened: vi.fn<(...args: unknown[]) => void>(),
+  setJevAvailable: vi.fn<(available: boolean) => void>(),
   liveFails: { value: false },
 }));
 let receive: (message: ServerMessage) => void;
@@ -59,6 +60,7 @@ vi.mock("./ui/lobby", () => ({
     }
     paintGarageThumbnails = () => true;
     setConnection() {}
+    setJevAvailable = mocks.setJevAvailable;
     show = mocks.lobbyShow;
     hide = mocks.lobbyHide;
   },
@@ -129,6 +131,8 @@ describe("Jev Live Run in the app", () => {
   it("closes the run and shows the lobby when the connection drops", async () => {
     await openLive();
     reportStatus("offline");
+    // No server to ask until the next welcome, so the lobby stops offering the live run.
+    expect(mocks.setJevAvailable).toHaveBeenLastCalledWith(false);
     expect(mocks.liveDispose).toHaveBeenCalled();
     expect(mocks.lobbyShow).toHaveBeenCalled();
     receive(answer);
