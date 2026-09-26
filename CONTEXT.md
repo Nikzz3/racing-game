@@ -53,7 +53,7 @@ An in-Room opponent that plays back a recorded lap's poses live, alongside the d
 _Avoid_: ghost, shadow, phantom, rival/opponent (informal)
 
 **Jev**:
-TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where the road centre lies ahead, the sharpest bend coming up) and Jev answers two Choice questions — brake or accelerate, steer left or right. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (how sure Jev is of its side). The API key stays on the server (ADR-0009). Jev drives Sunset Ridge at Medium only, where its cornering guide was tuned, in its canonical car (`race-future`).
+TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where the road centre lies ahead, the sharpest bend coming up) and Jev answers two Choice questions — brake or accelerate, and steer left, right or nothing (leave the wheel centred). Code turns the answers into pedals (the pedal Jev picked, full on) and steering (how sure Jev is of its side, P(left) − P(right), so "nothing" adds no steering). The API key stays on the server (ADR-0009). Jev drives Sunset Ridge at Medium only, where its cornering guide was tuned, in its canonical car (`race-future`).
 _Avoid_: Jeff, bot, the AI (ambiguous with the RL policy's Reference Lap)
 
 **Jev Lap**:
