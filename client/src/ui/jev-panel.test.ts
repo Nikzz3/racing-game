@@ -65,7 +65,7 @@ describe("JevPanel", () => {
     expect(picked("steer")).toEqual(["left"]);
     expect(conf("steer")).toBe("conf 0.81");
 
-    // An even pedal accelerates and an even wheel steers nothing, as in jevInput.
+    // An even pedal accelerates, as in jevInput; an even wheel reads as the first option.
     panel.update(
       view({
         decision: {
@@ -78,7 +78,7 @@ describe("JevPanel", () => {
       }),
     );
     expect(picked("pedal")).toEqual(["accelerate"]);
-    expect(picked("steer")).toEqual(["nothing"]);
+    expect(picked("steer")).toEqual(["left"]);
     expect(conf("steer")).toBe("conf 0.05");
     panel.update(
       view({

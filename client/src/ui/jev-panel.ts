@@ -107,9 +107,8 @@ export class JevPanel {
     const { accelerate, left, right, pedalConfidence, steerConfidence } = view.decision;
     this.pedal.update([1 - accelerate, accelerate], accelerate < 0.5 ? 0 : 1, pedalConfidence);
     const steer = [left, Math.max(0, 1 - left - right), right];
-    // The likeliest option is lit. Even left and right steer nothing, so that tie
-    // lights "nothing"; any other tie goes to the earlier option.
-    const pick = left === right ? 1 : steer.indexOf(Math.max(...steer));
+    // The likeliest option is lit; a tie goes to the earlier one (left, then nothing).
+    const pick = steer.indexOf(Math.max(...steer));
     this.steer.update(steer, pick, steerConfidence);
     if (view.seen !== this.seen) {
       this.seen = view.seen;
