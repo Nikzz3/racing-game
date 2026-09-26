@@ -61,7 +61,7 @@ const STUB_AIM_METRES = 20;
 const STUB_CRUISE_MS = 30;
 
 /**
- * A deterministic, network-free stand-in for e2e and local runs without a key
+ * A deterministic, network-free stand-in for dry runs of `npm run jev:record`
  * (`JEV_STUB=1`): steers at the road centre a little ahead and cruises at a
  * modest speed. It answers in the same probability shape as Jev: the further
  * off the aim point, the more weight moves from "nothing" to that side.
@@ -95,7 +95,7 @@ export function createStubJevDriver(): JevDriver {
 
 /**
  * `JEV_STUB=1` selects the stub; otherwise `TYPESAFE_API_KEY` enables the real
- * driver. With neither, Jev is unavailable and the server says so in `welcome`.
+ * driver. With neither, there is no driver and the recorder cannot run.
  */
 export function createJevDriver(env: NodeJS.ProcessEnv = process.env): JevDriver | null {
   if (env.JEV_STUB === "1") return createStubJevDriver();

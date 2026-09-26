@@ -26,7 +26,6 @@ const view = (overrides: Partial<JevPanelView> = {}): JevPanelView => ({
   },
   seen: "the sharpest bend in the next 190 m turns 63° to the left within 40 m, starting 70 m ahead",
   decisions: 12,
-  latencyMs: 236.4,
   ...overrides,
 });
 
@@ -66,7 +65,7 @@ describe("JevPanel", () => {
     expect(picked("steer")).toEqual(["left"]);
     expect(conf("steer")).toBe("conf 0.81");
 
-    // An even pedal accelerates, as in jevInput; an even wheel reads as the first option.
+    // An even pedal accelerates and an even wheel steers nothing, as in jevInput.
     panel.update(
       view({
         decision: {
@@ -79,7 +78,7 @@ describe("JevPanel", () => {
       }),
     );
     expect(picked("pedal")).toEqual(["accelerate"]);
-    expect(picked("steer")).toEqual(["left"]);
+    expect(picked("steer")).toEqual(["nothing"]);
     expect(conf("steer")).toBe("conf 0.05");
     panel.update(
       view({
@@ -111,21 +110,19 @@ describe("JevPanel", () => {
     expect(bar("steer", "nothing")).toBe("scaleX(0.650)");
   });
 
-  it("heads the box with the model, the decision count, the latency and what Jev saw", () => {
+  it("heads the box with the model, the decision count and what Jev saw", () => {
     const panel = new JevPanel(parent, "jev-1.13.0");
     panel.update(view());
     expect(q(".jev-panel-sub").textContent).toBe("jev-1.13.0");
     expect(q("[data-jev-decisions]").textContent).toBe("12");
-    expect(q(".jev-stats").textContent).toBe("12 decisions · 236 ms");
+    expect(q(".jev-stats").textContent).toBe("12 decisions");
     expect(q(".jev-card-state .jev-tag").textContent).toBe("STATE");
     expect(q(".jev-seen").textContent).toBe(view().seen);
   });
 
-  it("omits latency for a recorded lap and removes itself on dispose", () => {
+  it("removes itself on dispose", () => {
     const panel = new JevPanel(parent, "recorded");
-    panel.update(view({ latencyMs: undefined, decisions: 3 }));
-    expect(q(".jev-stats").textContent).toBe("3 decisions");
-    expect(q(".jev-latency").textContent).toBe("");
+    panel.update(view());
     panel.dispose();
     expect(parent.querySelector(".jev-panel")).toBeNull();
   });

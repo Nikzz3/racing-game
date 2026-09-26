@@ -6,8 +6,6 @@ export interface JevPanelView {
   seen: string;
   /** Decisions made so far in this lap. */
   decisions: number;
-  /** Round trip of the latest decision; absent for a recorded lap. */
-  latencyMs?: number;
 }
 
 /**
@@ -82,10 +80,8 @@ export class JevPanel {
   ]);
   private readonly seenEl: HTMLElement;
   private readonly decisionsEl: HTMLElement;
-  private readonly latencyEl: HTMLElement;
   private seen: string | null = null;
   private decisions = NaN;
-  private latencyMs: number | undefined | null = null;
 
   constructor(parent: HTMLElement, subtitle: string) {
     this.element.className = "jev-panel";
@@ -93,7 +89,7 @@ export class JevPanel {
     this.element.innerHTML = `
       <header class="jev-panel-head">
         <span class="jev-panel-name">JEV</span><span class="jev-panel-sub"></span>
-        <span class="jev-stats"><span data-jev-decisions>0</span> decisions<span class="jev-latency"></span></span>
+        <span class="jev-stats"><span data-jev-decisions>0</span> decisions</span>
       </header>
       <div class="jev-card jev-card-state">
         <p class="jev-q"><span class="jev-tag">STATE</span><span class="jev-seen"></span></p>
@@ -102,7 +98,6 @@ export class JevPanel {
     this.element.querySelector(".jev-panel-sub")!.textContent = subtitle;
     this.seenEl = this.element.querySelector(".jev-seen")!;
     this.decisionsEl = this.element.querySelector("[data-jev-decisions]")!;
-    this.latencyEl = this.element.querySelector(".jev-latency")!;
     this.element.append(this.pedal.element, this.steer.element);
     parent.append(this.element);
   }
@@ -112,8 +107,9 @@ export class JevPanel {
     const { accelerate, left, right, pedalConfidence, steerConfidence } = view.decision;
     this.pedal.update([1 - accelerate, accelerate], accelerate < 0.5 ? 0 : 1, pedalConfidence);
     const steer = [left, Math.max(0, 1 - left - right), right];
-    // The likeliest option is lit; a tie goes to the earlier one (left, then nothing).
-    const pick = steer.indexOf(Math.max(...steer));
+    // The likeliest option is lit. Even left and right steer nothing, so that tie
+    // lights "nothing"; any other tie goes to the earlier option.
+    const pick = left === right ? 1 : steer.indexOf(Math.max(...steer));
     this.steer.update(steer, pick, steerConfidence);
     if (view.seen !== this.seen) {
       this.seen = view.seen;
@@ -122,11 +118,6 @@ export class JevPanel {
     if (view.decisions !== this.decisions) {
       this.decisions = view.decisions;
       this.decisionsEl.textContent = String(view.decisions);
-    }
-    if (view.latencyMs !== this.latencyMs) {
-      this.latencyMs = view.latencyMs;
-      this.latencyEl.textContent =
-        view.latencyMs === undefined ? "" : ` · ${Math.round(view.latencyMs)} ms`;
     }
   }
 
