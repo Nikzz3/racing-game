@@ -1,31 +1,62 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RacingApp } from "./app";
+import type { ServerMessage } from "@racing/shared";
 import type { ConnectionState } from "./net";
 
-const { connect, loadAssets, paintGarage } = vi.hoisted(() => ({
+const { connect, loadAssets, paintGarage, links } = vi.hoisted(() => ({
   connect: vi.fn<() => Promise<void>>(),
   loadAssets: vi.fn<() => Promise<void>>(),
   paintGarage: vi.fn<() => boolean>(),
+  links: [] as Array<{
+    args: unknown[];
+    setMembers: ReturnType<typeof vi.fn>;
+    receiveSignal: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+  }>,
 }));
 let reportStatus: (state: ConnectionState) => void;
+let deliver: (message: ServerMessage) => void;
 vi.mock("./net", () => ({
   Net: class {
     connect = connect;
-    onMessage() {}
+    send = vi.fn();
+    onMessage(callback: (message: ServerMessage) => void) {
+      deliver = callback;
+    }
     onStatus(callback: (state: ConnectionState) => void) {
       reportStatus = callback;
     }
   },
 }));
-vi.mock("./game/game", () => ({ Game: class {} }));
+vi.mock("./game/game", () => ({
+  Game: class {
+    onMessage() {}
+    dispose() {}
+  },
+}));
+vi.mock("./direct-links", () => ({
+  DirectLinks: class {
+    static supported = () => true;
+    setMembers = vi.fn();
+    receiveSignal = vi.fn();
+    dispose = vi.fn();
+    constructor(...args: unknown[]) {
+      const { setMembers, receiveSignal, dispose } = this;
+      links.push({ args, setMembers, receiveSignal, dispose });
+    }
+  },
+}));
 vi.mock("./game/replay", () => ({ ReplayViewer: class {} }));
 vi.mock("./game/models", () => ({ preloadModels: loadAssets }));
 vi.mock("./ui/lobby", () => ({
   Lobby: class {
     paintGarageThumbnails = paintGarage;
     setConnection() {}
+    setRooms() {}
+    setLeaderboard() {}
     show() {}
+    hide() {}
   },
 }));
 
@@ -33,6 +64,7 @@ beforeEach(() => {
   connect.mockReset();
   loadAssets.mockReset().mockResolvedValue();
   paintGarage.mockReset().mockReturnValue(true);
+  links.length = 0;
 });
 afterEach(async () => {
   vi.useRealTimers();
@@ -153,5 +185,41 @@ describe("initial garage loading", () => {
     expect(document.querySelector(".loading-status")!.textContent).toContain(
       "could not start on this device",
     );
+  });
+});
+
+describe("Direct Links", () => {
+  const joined = {
+    type: "joined",
+    roomId: "r1",
+    roomName: "Dusk",
+    difficulty: "medium",
+    track: "sunset-ridge",
+  } as const;
+
+  it("opens links on joining, routes signals and membership to them, and closes them on leaving", () => {
+    new RacingApp(document.body);
+    deliver({ type: "welcome", playerId: "me", rooms: [], leaderboard: [] });
+    const iceServers = [{ urls: "stun:stun.example.test:3478" }];
+    deliver({ ...joined, iceServers });
+    // Links open before the race view, which waits for assets: peers may signal first.
+    expect(links).toHaveLength(1);
+    expect(links[0].args.slice(0, 2)).toEqual(["me", iceServers]);
+
+    const signal = { kind: "description", type: "offer", sdp: "v=0" } as const;
+    deliver({ type: "signal", from: "p2", signal });
+    expect(links[0].receiveSignal).toHaveBeenCalledWith("p2", signal);
+    deliver({ type: "snapshot", t: 0, players: [] });
+    expect(links[0].setMembers).toHaveBeenCalledWith([]);
+
+    deliver({ type: "left" });
+    expect(links[0].dispose).toHaveBeenCalledOnce();
+  });
+
+  it("never links through a server that predates Direct Links", () => {
+    new RacingApp(document.body);
+    deliver({ type: "welcome", playerId: "me", rooms: [], leaderboard: [] });
+    deliver(joined);
+    expect(links).toEqual([]);
   });
 });

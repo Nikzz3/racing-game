@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { MAX_SPEED_MS, type PlayerSnapshot, type Variant } from "@racing/shared";
+import type { DirectPose, PoseSource } from "../direct-links";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import type { CarObstacle } from "./car-collision";
 import { interpolateHeading } from "./pose-interpolation";
@@ -7,13 +8,21 @@ import { interpolateHeading } from "./pose-interpolation";
 /** A remote car's reported state, at the server time it was current. */
 interface Sample {
   t: number;
-  /** Broadcast time of the snapshot that first carried it: unlike `t`, never the sender's say. */
+  /**
+   * Broadcast time of the snapshot that first carried it: unlike `t`, never the
+   * sender's say. A Direct Link pose has no broadcast, so it repeats `t`.
+   */
   seen: number;
   x: number;
   z: number;
   rot: number;
   speed: number;
+  /** Respawns so far: the server's count, or the sender's own epoch for stamped states. */
   spawns: number;
+  /** The sender's pose sequence number; null for a sender predating Direct Links. */
+  seq: number | null;
+  /** First delivered over a Direct Link rather than relayed by the server. */
+  direct: boolean;
 }
 interface RemoteCar {
   mesh: THREE.Group;
@@ -25,6 +34,19 @@ interface RemoteCar {
   speed: number;
   /** Whether the local car collides with it this frame; see `obstacles()`. */
   solid: boolean;
+  /** Newest stamped state the server relayed: Direct Link poses must stay close to it. */
+  relayHead: Sample | null;
+  /** Server clock minus the sender's clock, from `relayHead`: places Direct Link poses in time. */
+  relayOffset: number;
+  newestSeq: number;
+  /** Highest seq whose first copy came over a Direct Link. */
+  lastDirectSeq: number;
+  /** Poses whose first copy came over a Direct Link. */
+  directPoses: number;
+  /** A Direct Link pose disagreed with the relayed copy of the same pose. */
+  distrusted: boolean;
+  /** How far behind the server clock the car is drawn (ms), eased toward its target. */
+  delay: number | null;
 }
 export interface RemotePosition {
   id: string;
@@ -39,6 +61,20 @@ export interface RemotePosition {
  * state later than that is briefly extrapolated, then held.
  */
 export const INTERPOLATION_DELAY_MS = 150;
+/** A pose over a Direct Link skips the broadcast tick, so its car can be drawn that much sooner. */
+export const DIRECT_INTERPOLATION_DELAY_MS = INTERPOLATION_DELAY_MS - 50;
+/** A car's draw delay moves by at most this fraction of elapsed time, so a source change never jumps it. */
+const DELAY_EASE_RATE = 0.1;
+/**
+ * A Direct Link carries a car while it delivered one of its newest poses first.
+ * Counted in poses, not wall time, so a client drawing a few frames a second
+ * (whose sends and receipts bunch up between frames) still reads its link as live.
+ */
+const DIRECT_SEQ_SLACK = 2;
+/** How many poses a Direct Link pose may run ahead of, or behind, the newest relayed one. */
+const MAX_DIRECT_LEAD_SEQ = 20;
+/** Both copies of a pose carry the same doubles, so any disagreement is a forgery. */
+const COPY_TOLERANCE = 1e-6;
 const SAMPLE_LIMIT = 30;
 /** Floor on the span a remote car's motion is judged over: states can land a few ms, or one tick, apart. */
 const MIN_SOLID_SPAN_MS = 50;
@@ -50,6 +86,12 @@ const MIN_SOLID_SPAN_MS = 50;
 const MAX_SOLID_SPAN_MS = 100;
 /** Headroom over the Room's top speed before a remote car's motion reads as a teleport; two sends can share a tick. */
 const SOLID_SPEED_TOLERANCE = 2.5;
+/**
+ * Headroom over the top speed for how far a stamped car may be drawn from the
+ * state the server last relayed. Tighter than the hop tolerance: it bounds
+ * position, not a single step.
+ */
+const REACH_SPEED_TOLERANCE = 1.5;
 /** How far past its newest state a car is extrapolated, as a fraction of the last span. */
 const MAX_EXTRAPOLATION = 1.25;
 
@@ -66,7 +108,23 @@ function record(samples: Sample[], sample: Sample): void {
   if (samples.length > SAMPLE_LIMIT) samples.shift();
 }
 
-/** Buffer each remote car's states so it moves continuously between them. */
+function sameCopy(a: Sample, b: Sample): boolean {
+  return (
+    a.spawns === b.spawns &&
+    Math.abs(a.x - b.x) <= COPY_TOLERANCE &&
+    Math.abs(a.z - b.z) <= COPY_TOLERANCE &&
+    Math.abs(a.rot - b.rot) <= COPY_TOLERANCE &&
+    Math.abs(a.speed - b.speed) <= COPY_TOLERANCE
+  );
+}
+
+/**
+ * Buffer each remote car's states so it moves continuously between them. A
+ * car's states arrive by up to two paths — the server relay and a Direct Link
+ * (ADR-0009) — and merge into one buffer by sequence number: whichever copy
+ * lands first is drawn, so a lost or failed Direct Link simply leaves the
+ * relayed copies.
+ */
 export class RemotePlayers {
   private readonly cars = new Map<string, RemoteCar>();
 
@@ -86,19 +144,73 @@ export class RemotePlayers {
     for (const player of players) {
       if (player.id === this.myId) continue;
       present.add(player.id);
-      const { x, z, rot, speed, spawns } = player;
-      record(this.car(player).samples, { t: player.t ?? t, seen: t, x, z, rot, speed, spawns });
+      const car = this.car(player);
+      const { x, z, rot, speed, stamp } = player;
+      if (stamp && player.t !== undefined) {
+        const sample: Sample = {
+          t: player.t,
+          seen: t,
+          x,
+          z,
+          rot,
+          speed,
+          spawns: stamp.epoch,
+          seq: stamp.seq,
+          direct: false,
+        };
+        this.addStamped(car, sample);
+        if (!car.relayHead || sample.seq! > car.relayHead.seq!) {
+          car.relayHead = sample;
+          car.relayOffset = player.t - stamp.sentAt;
+        }
+      } else {
+        const sample = { t: player.t ?? t, seen: t, x, z, rot, speed, spawns: player.spawns };
+        record(car.samples, { ...sample, seq: null, direct: false });
+      }
     }
     for (const id of this.cars.keys()) {
       if (!present.has(id)) this.removeCar(id);
     }
   }
 
-  /** Draw every remote car as it was `INTERPOLATION_DELAY_MS` before `serverNow`. */
+  /**
+   * Take a pose sent over a Direct Link, placed on the server clock through the
+   * sender's relayed states. A peer could send a different pose than the one it
+   * reports to the server, so a pose must sit near the car's newest relayed
+   * one, and a car whose two copies of any pose disagree is drawn from the
+   * relay alone from then on.
+   */
+  onDirectPose(id: string, pose: DirectPose): void {
+    const car = this.cars.get(id);
+    const head = car?.relayHead;
+    if (!car || !head || car.distrusted) return;
+    const { seq, epoch } = pose.stamp;
+    if (Math.abs(seq - head.seq!) > MAX_DIRECT_LEAD_SEQ) return;
+    const t = pose.t + car.relayOffset;
+    const { x, z, rot, speed } = pose;
+    const sample = { t, seen: t, x, z, rot, speed, spawns: epoch, seq, direct: true };
+    if (!this.addStamped(car, sample)) return;
+    car.lastDirectSeq = Math.max(car.lastDirectSeq, seq);
+    car.directPoses++;
+  }
+
+  /**
+   * Draw every remote car as it was `INTERPOLATION_DELAY_MS` before `serverNow`,
+   * or `DIRECT_INTERPOLATION_DELAY_MS` while a Direct Link carries it.
+   */
   update(dt: number, serverNow: number): void {
-    const renderT = serverNow - INTERPOLATION_DELAY_MS;
     for (const car of this.cars.values()) {
       const { mesh, samples } = car;
+      if (samples.length === 0) continue;
+      const target = this.carriedDirect(car)
+        ? DIRECT_INTERPOLATION_DELAY_MS
+        : INTERPOLATION_DELAY_MS;
+      const step = dt * 1000 * DELAY_EASE_RATE;
+      car.delay =
+        car.delay === null
+          ? target
+          : car.delay + Math.min(Math.max(target - car.delay, -step), step);
+      const renderT = serverNow - car.delay;
       // The last state at or before the render time and the one after it, or
       // the first two (clamped) or the last two (extrapolated).
       let index = samples.length - 1;
@@ -136,6 +248,20 @@ export class RemotePlayers {
         car.speed = before.speed + (after.speed - before.speed) * amount;
       }
       animateCar(mesh, car.speed, 0, dt);
+      // Direct Link poses reach this client before the server has seen them, so
+      // a stamped car is solid only where it could have driven from the state
+      // the server last relayed: a peer cannot ram with a pose it never
+      // reported. The time allowed is bounded by the head's broadcast, which the
+      // sender does not control.
+      const head = car.relayHead;
+      if (car.solid && head && after.seq !== null) {
+        const elapsed = Math.max(
+          Math.min(Math.abs(renderT - head.t), Math.abs(renderT - head.seen) + MAX_SOLID_SPAN_MS),
+          MIN_SOLID_SPAN_MS,
+        );
+        const reach = (this.topSpeed * REACH_SPEED_TOLERANCE * elapsed) / 1000;
+        car.solid = Math.hypot(mesh.position.x - head.x, mesh.position.z - head.z) <= reach;
+      }
     }
   }
 
@@ -148,9 +274,21 @@ export class RemotePlayers {
     }));
   }
 
+  /** Which path each remote car's poses are currently drawn from. */
+  sources(): Record<string, PoseSource> {
+    return Object.fromEntries(
+      [...this.cars].map(([id, car]) => [id, this.carriedDirect(car) ? "direct" : "relay"]),
+    );
+  }
+
+  /** How many of each remote car's poses a Direct Link delivered before the relay did. */
+  directPoses(): Record<string, number> {
+    return Object.fromEntries([...this.cars].map(([id, car]) => [id, car.directPoses]));
+  }
+
   /**
    * Where each remote car is drawn this frame, for the local car to collide with.
-   * Poses are reported by other clients and relayed unchecked, so a car is only
+   * Poses are reported by other clients and passed on unchecked, so a car is only
    * solid while its drawn motion is one a car could make in this Room: a
    * teleport — a respawn, a player just joining from the origin, or a forged
    * position — passes through instead of shoving the local car.
@@ -179,6 +317,33 @@ export class RemotePlayers {
     for (const id of this.cars.keys()) this.removeCar(id);
   }
 
+  private carriedDirect(car: RemoteCar): boolean {
+    return !car.distrusted && car.newestSeq - car.lastDirectSeq <= DIRECT_SEQ_SLACK;
+  }
+
+  /**
+   * Buffer a stamped state in time order unless a copy of it (same seq) is
+   * already held; returns whether it was taken.
+   */
+  private addStamped(car: RemoteCar, sample: Sample): boolean {
+    const { samples } = car;
+    const copy = samples.find(({ seq }) => seq === sample.seq);
+    if (copy) {
+      if (copy.direct === sample.direct || sameCopy(copy, sample)) return false;
+      // The relayed copy is what the server saw: it replaces the forgery.
+      car.distrusted = true;
+      car.samples = samples.filter(({ direct }) => !direct);
+      return !sample.direct && this.addStamped(car, sample);
+    }
+    let index = samples.length;
+    while (index > 0 && samples[index - 1].t > sample.t) index--;
+    if (index === 0 && samples.length >= SAMPLE_LIMIT) return false;
+    samples.splice(index, 0, sample);
+    if (samples.length > SAMPLE_LIMIT) samples.shift();
+    car.newestSeq = Math.max(car.newestSeq, sample.seq!);
+    return true;
+  }
+
   /** The player's car, (re)built when it is new or its name or Variant changed; its states carry over. */
   private car(player: PlayerSnapshot): RemoteCar {
     const variant = resolveVariant(player.id, player.variant);
@@ -188,14 +353,23 @@ export class RemotePlayers {
     const mesh = createCarMesh(player.id, player.name, variant);
     mesh.position.set(player.x, 0, player.z);
     mesh.rotation.y = player.rot;
-    const car: RemoteCar = {
-      mesh,
-      variant,
-      name: player.name,
-      samples: existing?.samples ?? [],
-      speed: player.speed,
-      solid: false,
-    };
+    const car: RemoteCar = existing
+      ? { ...existing, mesh, variant, name: player.name }
+      : {
+          mesh,
+          variant,
+          name: player.name,
+          samples: [],
+          speed: player.speed,
+          solid: false,
+          relayHead: null,
+          relayOffset: 0,
+          newestSeq: -Infinity,
+          lastDirectSeq: -Infinity,
+          directPoses: 0,
+          distrusted: false,
+          delay: null,
+        };
     this.cars.set(player.id, car);
     this.scene.add(mesh);
     return car;

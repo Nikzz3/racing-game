@@ -37,6 +37,21 @@ async function gapTo(page: Page, playerId: string): Promise<number | undefined> 
   }, playerId);
 }
 
+/**
+ * This page's Direct Link to a player, and whether it has drawn any of that
+ * player's poses from it. Both paths run over loopback here, so which copy of
+ * a given pose lands first is a race; one direct arrival proves the link is used.
+ */
+async function directLink(
+  page: Page,
+  playerId: string,
+): Promise<{ link?: string; carriesPoses: boolean } | undefined> {
+  return page.evaluate((id) => {
+    const state = window.__game?.state();
+    return state && { link: state.links[id], carriesPoses: (state.directPoses[id] ?? 0) > 0 };
+  }, playerId);
+}
+
 async function resolvedVariant(page: Page, playerId: string): Promise<string | undefined> {
   return page.evaluate((id) => window.__game?.state().variants[id], playerId);
 }
@@ -83,6 +98,18 @@ test("two players create and join a Room, see each other, and collide", async ({
 
   await expect.poll(() => remotePlayerIds(playerA)).toEqual([playerBId]);
   await expect.poll(() => remotePlayerIds(playerB)).toEqual([playerAId]);
+
+  // The server relays the WebRTC negotiation, then each client draws the other's
+  // car from poses arriving over the Direct Link (ADR-0009). Both race views are
+  // still compiling shaders on software WebGL meanwhile, which can starve the
+  // first negotiation past its timeout; the retry that follows is then awaited.
+  const linked = { timeout: 60_000 };
+  await expect
+    .poll(() => directLink(playerA, playerBId), linked)
+    .toEqual({ link: "direct", carriesPoses: true });
+  await expect
+    .poll(() => directLink(playerB, playerAId), linked)
+    .toEqual({ link: "direct", carriesPoses: true });
 
   // Under the e2e seam both cars spawn on the same grid slot. They collide rather
   // than drive through each other, so each client shoves its own car clear. Both
