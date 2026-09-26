@@ -102,7 +102,13 @@ describe("JevLiveRun requests", () => {
     expect(run.input.steer).toBeCloseTo(0.6, 9);
     expect(run.decisions).toBe(1);
     expect(run.latest).toEqual({
-      decision: { accelerate: 0.2, left: 0.8, pedalConfidence: 0.9, steerConfidence: 0.1 },
+      decision: {
+        accelerate: 0.2,
+        left: 0.8,
+        right: expect.closeTo(0.2, 9),
+        pedalConfidence: 0.9,
+        steerConfidence: 0.1,
+      },
       model: "jev-test",
       seen: jevDrivingState(sent[0].pose, SUNSET_RIDGE).bend_ahead,
       latencyMs: 240,

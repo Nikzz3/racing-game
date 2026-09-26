@@ -1,9 +1,9 @@
 // Jev drives (ADR-0009): TypeSafe's System One model reads a text description of
 // the car and the road ahead and answers two Choice questions — brake or
-// accelerate, steer left or right. Code owns the geometry, the physics and the
-// mapping from probabilities to pedals; Jev only supplies the judgment. The
-// server asks the questions (it holds the API key); the client uses the same
-// state builder to show players exactly what Jev saw.
+// accelerate, and steer left, right or nothing. Code owns the geometry, the
+// physics and the mapping from probabilities to pedals; Jev only supplies the
+// judgment. The server asks the questions (it holds the API key); the client
+// uses the same state builder to show players exactly what Jev saw.
 
 import { type Difficulty } from "./difficulty";
 import { nearestCenterline, ROAD_HALF_WIDTH, type Track, type TrackSlug } from "./track";
@@ -25,10 +25,14 @@ export interface JevPose {
   speed: number;
 }
 
-/** Jev's answers: P(accelerate) against brake, P(left) against right, and how sure each pick is. */
+/**
+ * Jev's answers: P(accelerate) against brake; P(left) and P(right), with the
+ * rest on leaving the wheel centred ("nothing"); and how sure each pick is.
+ */
 export interface JevDecision {
   accelerate: number;
   left: number;
+  right: number;
   /** TypeSafe's confidence (0–1) in the pedal pick, derived from its distribution. */
   pedalConfidence: number;
   /** TypeSafe's confidence (0–1) in the steering pick. */
@@ -167,9 +171,11 @@ export const JEV_QUESTIONS = {
   steer: {
     type: "choice" as const,
     instructions:
-      "Which way should the driver turn the steering wheel right now so the car points at the road centre ahead in `road_ahead`?",
+      "Right now, should the driver turn the steering wheel left or right, or leave it centred, so the car points at the road centre ahead in `road_ahead`?",
     criteria: {
       left: "Left: the road centre ahead lies to the left of where the car is pointing.",
+      nothing:
+        "Nothing: leave the steering wheel centred: the road centre ahead lies about where the car is already pointing.",
       right: "Right: the road centre ahead lies to the right of where the car is pointing.",
     },
   },
@@ -184,14 +190,14 @@ export interface JevInput {
 
 /**
  * The pedal is Jev's pick (full throttle or full brake); the steering amount is
- * how sure Jev is: a confident "left" turns harder than a 55/45 one, like
- * holding A longer.
+ * how sure Jev is of its side, P(left) − P(right): a confident "left" turns
+ * harder than a 55/45 one, like holding A longer, and "nothing" adds no steering.
  */
 export function jevInput(decision: JevDecision): JevInput {
   const accelerate = decision.accelerate >= 0.5;
   return {
     throttle: accelerate ? 1 : 0,
     brake: accelerate ? 0 : 1,
-    steer: Math.max(-1, Math.min(1, 2 * decision.left - 1)),
+    steer: Math.max(-1, Math.min(1, decision.left - decision.right)),
   };
 }

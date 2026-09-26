@@ -175,6 +175,7 @@ describe("connection initialization", () => {
 const ANSWER: JevAnswer = {
   accelerate: 0.8,
   left: 0.3,
+  right: 0.7,
   pedalConfidence: 0.6,
   steerConfidence: 0.4,
   latencyMs: 240,
@@ -252,7 +253,8 @@ describe("Jev live runs", () => {
     client.message(drive(7));
     await settle();
 
-    expect(client.messages).toEqual([{ type: "jevDecision", seq: 7, ...ANSWER }]);
+    const { right: _, ...relayed } = ANSWER;
+    expect(client.messages).toEqual([{ type: "jevDecision", seq: 7, ...relayed }]);
     expect(driver.decide).toHaveBeenCalledWith(POSE, SUNSET_RIDGE, {
       signal: expect.any(AbortSignal),
       timeoutMs: JEV_TIMEOUT_MS,

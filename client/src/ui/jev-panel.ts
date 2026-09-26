@@ -20,11 +20,11 @@ class ChoiceCard {
   private readonly rows: HTMLElement[];
   private readonly fills: HTMLElement[];
   private readonly confEl: HTMLElement;
-  private first = NaN;
-  private pickFirst: boolean | null = null;
+  private readonly probabilities: number[];
+  private pick = -1;
   private confidence = NaN;
 
-  constructor(name: string, question: string, options: readonly [string, string]) {
+  constructor(name: string, question: string, options: readonly string[]) {
     this.element.className = "jev-card";
     this.element.dataset.question = name;
     this.element.innerHTML = `
@@ -42,19 +42,19 @@ class ChoiceCard {
     this.rows = [...this.element.querySelectorAll<HTMLElement>(".jev-option")];
     this.fills = [...this.element.querySelectorAll<HTMLElement>(".jev-fill")];
     this.confEl = this.element.querySelector(".jev-conf-value")!;
+    this.probabilities = options.map(() => NaN);
   }
 
-  /** `first` is the first option's probability; the second gets the rest. */
-  update(first: number, pickFirst: boolean, confidence: number): void {
-    if (first !== this.first) {
-      this.first = first;
-      this.fills[0].style.transform = `scaleX(${first.toFixed(3)})`;
-      this.fills[1].style.transform = `scaleX(${(1 - first).toFixed(3)})`;
-    }
-    if (pickFirst !== this.pickFirst) {
-      this.pickFirst = pickFirst;
-      this.rows[0].toggleAttribute("data-picked", pickFirst);
-      this.rows[1].toggleAttribute("data-picked", !pickFirst);
+  /** One probability per option, in the constructor's order; `pick` indexes the lit one. */
+  update(probabilities: readonly number[], pick: number, confidence: number): void {
+    probabilities.forEach((p, i) => {
+      if (p === this.probabilities[i]) return;
+      this.probabilities[i] = p;
+      this.fills[i].style.transform = `scaleX(${p.toFixed(3)})`;
+    });
+    if (pick !== this.pick) {
+      this.pick = pick;
+      this.rows.forEach((row, i) => row.toggleAttribute("data-picked", i === pick));
     }
     if (confidence !== this.confidence) {
       this.confidence = confidence;
@@ -66,8 +66,8 @@ class ChoiceCard {
 /**
  * Shows how Jev decides as it drives, in the style of a terminal: what it was
  * told about the road, then each of its two questions with a bar per option.
- * The pick is the pedal Jev presses (see `jevInput`) and the side it steers
- * towards. Shared by the Jev Lap replay and the live run, so both read the same.
+ * The pick is the pedal Jev presses (see `jevInput`) and the likeliest of
+ * left, nothing and right, laid out as the wheel turns. Shared by the Jev Lap replay and the live run, so both read the same.
  */
 export class JevPanel {
   readonly element = document.createElement("section");
@@ -77,6 +77,7 @@ export class JevPanel {
   ]);
   private readonly steer = new ChoiceCard("steer", JEV_QUESTIONS.steer.instructions, [
     "left",
+    "nothing",
     "right",
   ]);
   private readonly seenEl: HTMLElement;
@@ -108,9 +109,12 @@ export class JevPanel {
 
   /** Cheap to call every frame: the DOM is only touched when a value changes. */
   update(view: JevPanelView): void {
-    const { accelerate, left, pedalConfidence, steerConfidence } = view.decision;
-    this.pedal.update(1 - accelerate, accelerate < 0.5, pedalConfidence);
-    this.steer.update(left, left >= 0.5, steerConfidence);
+    const { accelerate, left, right, pedalConfidence, steerConfidence } = view.decision;
+    this.pedal.update([1 - accelerate, accelerate], accelerate < 0.5 ? 0 : 1, pedalConfidence);
+    const steer = [left, Math.max(0, 1 - left - right), right];
+    // The likeliest option is lit; a tie goes to the earlier one (left, then nothing).
+    const pick = steer.indexOf(Math.max(...steer));
+    this.steer.update(steer, pick, steerConfidence);
     if (view.seen !== this.seen) {
       this.seen = view.seen;
       this.seenEl.textContent = view.seen;

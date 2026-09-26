@@ -118,6 +118,7 @@ const recording: JevRecording & { recordedAt: string } = {
     round(timeMs, 2),
     round(answer.accelerate, 3),
     round(answer.left, 3),
+    round(answer.right, 3),
     round(answer.pedalConfidence, 2),
     round(answer.steerConfidence, 2),
   ]),

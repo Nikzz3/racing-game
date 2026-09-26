@@ -47,6 +47,7 @@ export function createTypeSafeJevDriver(client: SystemOneClient): JevDriver {
       return {
         accelerate: result.answers.pedal.probabilities.accelerate,
         left: result.answers.steer.probabilities.left,
+        right: result.answers.steer.probabilities.right,
         pedalConfidence: result.answers.pedal.confidence,
         steerConfidence: result.answers.steer.confidence,
         latencyMs: Math.round(performance.now() - started),
@@ -62,7 +63,8 @@ const STUB_CRUISE_MS = 30;
 /**
  * A deterministic, network-free stand-in for e2e and local runs without a key
  * (`JEV_STUB=1`): steers at the road centre a little ahead and cruises at a
- * modest speed. It answers in the same probability shape as Jev.
+ * modest speed. It answers in the same probability shape as Jev: the further
+ * off the aim point, the more weight moves from "nothing" to that side.
  */
 export function createStubJevDriver(): JevDriver {
   return {
@@ -74,12 +76,16 @@ export function createStubJevDriver(): JevDriver {
       let bearing = Math.atan2(target.x - pose.x, target.z - pose.z) - pose.heading;
       bearing = Math.atan2(Math.sin(bearing), Math.cos(bearing));
       const accelerate = pose.speed < STUB_CRUISE_MS ? 0.9 : 0.2;
-      const left = Math.max(0, Math.min(1, 0.5 + bearing * 2));
+      const lean = Math.max(-1, Math.min(1, bearing * 4));
+      const [left, right] = [Math.max(0, lean), Math.max(0, -lean)];
+      // Confidence is the pick's margin over the runner-up.
+      const [pick, runnerUp] = [left, 1 - left - right, right].sort((p, q) => q - p);
       return Promise.resolve({
         accelerate,
         left,
+        right,
         pedalConfidence: Math.abs(2 * accelerate - 1),
-        steerConfidence: Math.abs(2 * left - 1),
+        steerConfidence: pick - runnerUp,
         latencyMs: 0,
         model: "stub",
       });

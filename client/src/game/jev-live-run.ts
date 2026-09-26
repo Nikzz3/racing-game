@@ -205,7 +205,8 @@ export class JevLiveRun {
     if (this.roundTrips++ > 0)
       this.roundTripMs += (roundTrip - this.roundTripMs) * ROUND_TRIP_WEIGHT;
     const { accelerate, left, pedalConfidence, steerConfidence, model, latencyMs } = answer;
-    const decision = { accelerate, left, pedalConfidence, steerConfidence };
+    // The live message still carries left against right only.
+    const decision = { accelerate, left, right: 1 - left, pedalConfidence, steerConfidence };
     const { throttle, brake, steer } = jevInput(decision);
     this.setInput(throttle, brake, steer);
     this.decisions++;
@@ -286,8 +287,8 @@ export class JevLiveRun {
 
   private recordDecision(t: number): void {
     const { decision, seen } = this.latest!;
-    const { accelerate, left, pedalConfidence, steerConfidence } = decision;
-    this.recorded.push([Math.round(t), accelerate, left, pedalConfidence, steerConfidence]);
+    const { accelerate, left, right, pedalConfidence, steerConfidence } = decision;
+    this.recorded.push([Math.round(t), accelerate, left, right, pedalConfidence, steerConfidence]);
     this.recordedSeen.push(seen);
   }
 
