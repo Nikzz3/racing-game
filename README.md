@@ -62,9 +62,9 @@ pacer. Rooms close automatically one hour after they are created.
 ## Watch Jev drive
 
 On Sunset Ridge at Medium, the Records tab also lets you watch **Jev**, an AI that drives
-by answering two questions many times a second: brake or accelerate, and steer left or
-right. Replay the lap Jev recorded, and a box on screen shows each question and how sure
-Jev was of every answer.
+by answering two questions many times a second: brake or accelerate, and steer left,
+right or nothing. Replay the lap Jev recorded, and a box on screen shows each question and
+how sure Jev was of every answer.
 
 ## Contributing
 

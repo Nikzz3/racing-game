@@ -9,9 +9,9 @@ import type { JevRecordedDecision, JevRecording } from "./jev-recording";
  */
 export const JEV_LAP: JevRecording | null = parseJevLap(bundled);
 
-/** A frame or a decision: five finite numbers, time first. */
-function isTuple(value: unknown): value is [number, number, number, number, number] {
-  return Array.isArray(value) && value.length === 5 && value.every((n) => Number.isFinite(n));
+/** `length` finite numbers, time first: five for a frame, six for a decision. */
+function isTuple<T extends number[]>(value: unknown, length: T["length"]): value is T {
+  return Array.isArray(value) && value.length === length && value.every((n) => Number.isFinite(n));
 }
 
 /** The recording, if it has the shape the replay relies on; otherwise null. */
@@ -19,8 +19,10 @@ export function parseJevLap(value: unknown): JevRecording | null {
   if (typeof value !== "object" || value === null) return null;
   const { model, timeMs, frames, decisions } = value as Partial<Record<string, unknown>>;
   if (typeof model !== "string" || typeof timeMs !== "number" || !(timeMs > 0)) return null;
-  if (!Array.isArray(frames) || frames.length < 2 || !frames.every(isTuple)) return null;
-  if (!Array.isArray(decisions) || !decisions.every(isTuple)) return null;
+  if (!Array.isArray(frames) || frames.length < 2) return null;
+  if (!frames.every((f) => isTuple<ReplayFrame>(f, 5))) return null;
+  if (!Array.isArray(decisions)) return null;
+  if (!decisions.every((d) => isTuple<JevRecordedDecision>(d, 6))) return null;
   return {
     model,
     timeMs,

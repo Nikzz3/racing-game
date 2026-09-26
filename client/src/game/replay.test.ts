@@ -140,8 +140,8 @@ describe("ReplayViewer with Jev's decisions", () => {
       [1000, b.x, b.z, Math.atan2(b.dirX, b.dirZ), 60],
     ],
     decisions: [
-      [100, 0.9, 0.2, 0.8, 0.6],
-      [500, 0.1, 0.7, 0.8, 0.4],
+      [100, 0.9, 0.2, 0.7, 0.8, 0.6],
+      [500, 0.1, 0.7, 0.1, 0.8, 0.4],
     ],
   };
   const seenAt = (t: number) =>
@@ -169,7 +169,13 @@ describe("ReplayViewer with Jev's decisions", () => {
     expect(decisions()).toBe("0");
     frame(250);
     expect(update).toHaveBeenLastCalledWith({
-      decision: { accelerate: 0.9, left: 0.2, pedalConfidence: 0.8, steerConfidence: 0.6 },
+      decision: {
+        accelerate: 0.9,
+        left: 0.2,
+        right: 0.7,
+        pedalConfidence: 0.8,
+        steerConfidence: 0.6,
+      },
       seen: seenAt(100),
       decisions: 1,
     });

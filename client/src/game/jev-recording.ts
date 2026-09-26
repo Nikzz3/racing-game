@@ -1,7 +1,10 @@
 import type { JevDecision, ReplayFrame } from "@racing/shared";
 
-/** One decision: [t ms since lap start, P(accelerate), P(left), pedal confidence, steer confidence]. */
-export type JevRecordedDecision = [number, number, number, number, number];
+/**
+ * One decision: [t ms since lap start, P(accelerate), P(left), P(right), pedal
+ * confidence, steer confidence]. P(nothing) is what left and right leave over.
+ */
+export type JevRecordedDecision = [number, number, number, number, number, number];
 
 /** A lap Jev drove: the bundled Jev Lap, or a Jev Live Run that just finished. */
 export interface JevRecording {
@@ -34,6 +37,10 @@ export function decisionAt(
     else hi = mid;
   }
   if (lo === 0) return null;
-  const [madeAt, accelerate, left, pedalConfidence, steerConfidence] = decisions[lo - 1];
-  return { decision: { accelerate, left, pedalConfidence, steerConfidence }, madeAt, count: lo };
+  const [madeAt, accelerate, left, right, pedalConfidence, steerConfidence] = decisions[lo - 1];
+  return {
+    decision: { accelerate, left, right, pedalConfidence, steerConfidence },
+    madeAt,
+    count: lo,
+  };
 }
