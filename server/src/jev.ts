@@ -16,7 +16,7 @@ export interface JevAnswer extends JevDecision {
 
 export interface JevRequestOptions {
   signal?: AbortSignal;
-  /** Per-attempt timeout; a live run prefers a fast failure over a stale answer. */
+  /** Per-attempt timeout. */
   timeoutMs?: number;
   maxRetries?: number;
 }

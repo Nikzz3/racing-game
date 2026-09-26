@@ -67,7 +67,7 @@ class ChoiceCard {
  * Shows how Jev decides as it drives, in the style of a terminal: what it was
  * told about the road, then each of its two questions with a bar per option.
  * The pick is the pedal Jev presses (see `jevInput`) and the likeliest of
- * left, nothing and right, laid out as the wheel turns. Shared by the Jev Lap replay and the live run, so both read the same.
+ * left, nothing and right, laid out as the wheel turns.
  */
 export class JevPanel {
   readonly element = document.createElement("section");
