@@ -1,5 +1,9 @@
 # Jev drives live through a server-side TypeSafe proxy
 
+> **Partially superseded by [ADR-0010](0010-jev-drives-only-as-a-recorded-lap.md).** The Jev
+> Lap and the way Jev is asked (two Choice questions, code owns the pedals) stand; the Jev
+> Live Run and the server-side TypeSafe proxy were removed.
+
 ADR-0002 and ADR-0006 keep the RL policy's forward pass out of the race loop: the AI
 Reference Lap is a deterministic bake, and a live policy under variable browser `dt` would
 not be the validated record. This ADR adds a second, different AI driver — **Jev**,

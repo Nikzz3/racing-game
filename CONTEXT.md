@@ -53,13 +53,9 @@ An in-Room opponent that plays back a recorded lap's poses live, alongside the d
 _Avoid_: ghost, shadow, phantom, rival/opponent (informal)
 
 **Jev**:
-TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where the road centre lies ahead, the sharpest bend coming up) and Jev answers two Choice questions — brake or accelerate, steer left or right. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (how sure Jev is of its side). The API key stays on the server (ADR-0009). Jev drives Sunset Ridge at Medium only, where its cornering guide was tuned, in its canonical car (`race-future`).
+TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where the road centre lies ahead, the sharpest bend coming up) and Jev answers two Choice questions — brake or accelerate, steer left or right. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (how sure Jev is of its side). Jev only drives offline, in `npm run jev:record`: the API key lives in the recording developer's `.env`, and neither the game nor the server talks to TypeSafe (ADR-0010). Jev drives Sunset Ridge at Medium only, where its cornering guide was tuned, in its canonical car (`race-future`).
 _Avoid_: Jeff, bot, the AI (ambiguous with the RL policy's Reference Lap)
 
 **Jev Lap**:
 One lap Jev drove headlessly against the real physics at a fixed decision cadence (one decision per 100 ms of game time), recorded by `npm run jev:record` and bundled with the client together with every decision Jev made. Replayed like a Replay, with Jev's decisions shown alongside. Never a leaderboard entry and never persisted by the server.
 _Avoid_: Jev Record (it is not the fastest possible lap, just the recorded one)
-
-**Jev Live Run**:
-A lap Jev drives in real time in the player's browser: the client simulates the car and asks the server for Jev's next decision over the WebSocket, one request in flight at a time, judging the pose predicted for when the answer arrives. Network latency varies, so no two runs are the same. Client-only and never persisted; it can be replayed right after it finishes.
-_Avoid_: live replay, stream
