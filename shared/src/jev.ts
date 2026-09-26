@@ -1,9 +1,9 @@
-// Jev drives (ADR-0009): TypeSafe's System One model reads a text description of
-// the car and the road ahead and answers two Choice questions — brake or
-// accelerate, and steer left, right or nothing. Code owns the geometry, the
-// physics and the mapping from probabilities to pedals; Jev only supplies the
-// judgment. The server asks the questions (it holds the API key); the client
-// uses the same state builder to show players exactly what Jev saw.
+// Jev drives (ADR-0009, ADR-0010): TypeSafe's System One model reads a text
+// description of the car and the road ahead and answers two Choice questions —
+// brake or accelerate, and steer left, right or nothing. Code owns the geometry,
+// the physics and the mapping from probabilities to pedals; Jev only supplies the
+// judgment. The offline recorder asks the questions with the developer's API key;
+// the client uses the same state builder to show players exactly what Jev saw.
 
 import { type Difficulty } from "./difficulty";
 import { nearestCenterline, ROAD_HALF_WIDTH, type Track, type TrackSlug } from "./track";
