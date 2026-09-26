@@ -6,8 +6,6 @@ export interface JevPanelView {
   seen: string;
   /** Decisions made so far in this lap. */
   decisions: number;
-  /** Round trip of the latest decision; absent for a recorded lap. */
-  latencyMs?: number;
 }
 
 /**
@@ -20,11 +18,11 @@ class ChoiceCard {
   private readonly rows: HTMLElement[];
   private readonly fills: HTMLElement[];
   private readonly confEl: HTMLElement;
-  private first = NaN;
-  private pickFirst: boolean | null = null;
+  private readonly probabilities: number[];
+  private pick = -1;
   private confidence = NaN;
 
-  constructor(name: string, question: string, options: readonly [string, string]) {
+  constructor(name: string, question: string, options: readonly string[]) {
     this.element.className = "jev-card";
     this.element.dataset.question = name;
     this.element.innerHTML = `
@@ -42,19 +40,19 @@ class ChoiceCard {
     this.rows = [...this.element.querySelectorAll<HTMLElement>(".jev-option")];
     this.fills = [...this.element.querySelectorAll<HTMLElement>(".jev-fill")];
     this.confEl = this.element.querySelector(".jev-conf-value")!;
+    this.probabilities = options.map(() => NaN);
   }
 
-  /** `first` is the first option's probability; the second gets the rest. */
-  update(first: number, pickFirst: boolean, confidence: number): void {
-    if (first !== this.first) {
-      this.first = first;
-      this.fills[0].style.transform = `scaleX(${first.toFixed(3)})`;
-      this.fills[1].style.transform = `scaleX(${(1 - first).toFixed(3)})`;
-    }
-    if (pickFirst !== this.pickFirst) {
-      this.pickFirst = pickFirst;
-      this.rows[0].toggleAttribute("data-picked", pickFirst);
-      this.rows[1].toggleAttribute("data-picked", !pickFirst);
+  /** One probability per option, in the constructor's order; `pick` indexes the lit one. */
+  update(probabilities: readonly number[], pick: number, confidence: number): void {
+    probabilities.forEach((p, i) => {
+      if (p === this.probabilities[i]) return;
+      this.probabilities[i] = p;
+      this.fills[i].style.transform = `scaleX(${p.toFixed(3)})`;
+    });
+    if (pick !== this.pick) {
+      this.pick = pick;
+      this.rows.forEach((row, i) => row.toggleAttribute("data-picked", i === pick));
     }
     if (confidence !== this.confidence) {
       this.confidence = confidence;
@@ -66,8 +64,8 @@ class ChoiceCard {
 /**
  * Shows how Jev decides as it drives, in the style of a terminal: what it was
  * told about the road, then each of its two questions with a bar per option.
- * The pick is the pedal Jev presses (see `jevInput`) and the side it steers
- * towards. Shared by the Jev Lap replay and the live run, so both read the same.
+ * The pick is the pedal Jev presses (see `jevInput`) and the likeliest of
+ * left, nothing and right, laid out as the wheel turns.
  */
 export class JevPanel {
   readonly element = document.createElement("section");
@@ -77,14 +75,13 @@ export class JevPanel {
   ]);
   private readonly steer = new ChoiceCard("steer", JEV_QUESTIONS.steer.instructions, [
     "left",
+    "nothing",
     "right",
   ]);
   private readonly seenEl: HTMLElement;
   private readonly decisionsEl: HTMLElement;
-  private readonly latencyEl: HTMLElement;
   private seen: string | null = null;
   private decisions = NaN;
-  private latencyMs: number | undefined | null = null;
 
   constructor(parent: HTMLElement, subtitle: string) {
     this.element.className = "jev-panel";
@@ -92,7 +89,7 @@ export class JevPanel {
     this.element.innerHTML = `
       <header class="jev-panel-head">
         <span class="jev-panel-name">JEV</span><span class="jev-panel-sub"></span>
-        <span class="jev-stats"><span data-jev-decisions>0</span> decisions<span class="jev-latency"></span></span>
+        <span class="jev-stats"><span data-jev-decisions>0</span> decisions</span>
       </header>
       <div class="jev-card jev-card-state">
         <p class="jev-q"><span class="jev-tag">STATE</span><span class="jev-seen"></span></p>
@@ -101,16 +98,18 @@ export class JevPanel {
     this.element.querySelector(".jev-panel-sub")!.textContent = subtitle;
     this.seenEl = this.element.querySelector(".jev-seen")!;
     this.decisionsEl = this.element.querySelector("[data-jev-decisions]")!;
-    this.latencyEl = this.element.querySelector(".jev-latency")!;
     this.element.append(this.pedal.element, this.steer.element);
     parent.append(this.element);
   }
 
   /** Cheap to call every frame: the DOM is only touched when a value changes. */
   update(view: JevPanelView): void {
-    const { accelerate, left, pedalConfidence, steerConfidence } = view.decision;
-    this.pedal.update(1 - accelerate, accelerate < 0.5, pedalConfidence);
-    this.steer.update(left, left >= 0.5, steerConfidence);
+    const { accelerate, left, right, pedalConfidence, steerConfidence } = view.decision;
+    this.pedal.update([1 - accelerate, accelerate], accelerate < 0.5 ? 0 : 1, pedalConfidence);
+    const steer = [left, Math.max(0, 1 - left - right), right];
+    // The likeliest option is lit; a tie goes to the earlier one (left, then nothing).
+    const pick = steer.indexOf(Math.max(...steer));
+    this.steer.update(steer, pick, steerConfidence);
     if (view.seen !== this.seen) {
       this.seen = view.seen;
       this.seenEl.textContent = view.seen;
@@ -118,11 +117,6 @@ export class JevPanel {
     if (view.decisions !== this.decisions) {
       this.decisions = view.decisions;
       this.decisionsEl.textContent = String(view.decisions);
-    }
-    if (view.latencyMs !== this.latencyMs) {
-      this.latencyMs = view.latencyMs;
-      this.latencyEl.textContent =
-        view.latencyMs === undefined ? "" : ` · ${Math.round(view.latencyMs)} ms`;
     }
   }
 

@@ -65,7 +65,6 @@ function mount(): Lobby {
     onReplay: vi.fn(),
     onReferenceLap: vi.fn(),
     onJevLap: vi.fn(),
-    onJevLive: vi.fn(),
     onVariantChange: vi.fn(),
   };
   lobby = new Lobby(parent, cbs);
@@ -530,16 +529,6 @@ describe("Lobby Jev controls", () => {
     click('[data-board-track="sunset-ridge"]');
     click(boardDiff("medium"));
     expect(q(".lb-jev-lap-btn").closest<HTMLElement>(".lb-ai-record")!.hidden).toBe(false);
-  });
-
-  it("offers the live run only once the server reports Jev is available", () => {
-    expect(q(".lb-jev-live-btn").hidden).toBe(true);
-    lobby.setJevAvailable(true);
-    expect(q(".lb-jev-live-btn").hidden).toBe(false);
-    click("button[data-jev-live]");
-    expect(cbs.onJevLive).toHaveBeenCalledOnce();
-    lobby.setJevAvailable(false);
-    expect(q(".lb-jev-live-btn").hidden).toBe(true);
   });
 });
 

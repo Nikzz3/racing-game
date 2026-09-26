@@ -75,18 +75,24 @@ describe("jevDrivingState", () => {
 const SURE = { pedalConfidence: 1, steerConfidence: 1 };
 
 describe("jevInput", () => {
-  it("floors the pedal Jev picked and steers by how sure Jev is", () => {
-    expect(jevInput({ ...SURE, accelerate: 0.7, left: 0.9 })).toEqual({
+  it("floors the pedal Jev picked and steers by how sure Jev is of its side", () => {
+    expect(jevInput({ ...SURE, accelerate: 0.7, left: 0.9, right: 0.05 })).toEqual({
       throttle: 1,
       brake: 0,
-      steer: expect.closeTo(0.8, 10),
+      steer: expect.closeTo(0.85, 10),
     });
-    expect(jevInput({ ...SURE, accelerate: 0.3, left: 0.2 })).toEqual({
+    expect(jevInput({ ...SURE, accelerate: 0.3, left: 0.1, right: 0.7 })).toEqual({
       throttle: 0,
       brake: 1,
       steer: expect.closeTo(-0.6, 10),
     });
-    expect(jevInput({ ...SURE, accelerate: 0.5, left: 0.5 }).steer).toBe(0);
+    expect(jevInput({ ...SURE, accelerate: 0.5, left: 0.4, right: 0.4 }).steer).toBe(0);
+  });
+
+  it("leaves the wheel centred for nothing, whatever its weight", () => {
+    expect(jevInput({ ...SURE, accelerate: 1, left: 0, right: 0 }).steer).toBe(0);
+    // A lean inside a mostly-centred answer still turns a little that way.
+    expect(jevInput({ ...SURE, accelerate: 1, left: 0.2, right: 0 }).steer).toBeCloseTo(0.2, 10);
   });
 });
 
@@ -105,7 +111,7 @@ describe("createTypeSafeJevDriver", () => {
           type: "choice",
           choice: "left",
           confidence: 0.9,
-          probabilities: { left: 0.95, right: 0.05 },
+          probabilities: { left: 0.9, nothing: 0.08, right: 0.02 },
         },
       },
       usage: { input_tokens: 900, output_tokens: 40 },
@@ -116,7 +122,8 @@ describe("createTypeSafeJevDriver", () => {
 
     expect(answer).toMatchObject({
       accelerate: 0.2,
-      left: 0.95,
+      left: 0.9,
+      right: 0.02,
       pedalConfidence: 0.6,
       steerConfidence: 0.9,
       model: "jev-1.13.0",
@@ -148,9 +155,19 @@ describe("createStubJevDriver", () => {
     const stub = createStubJevDriver();
     const turnedRight = await stub.decide(poseAt(STRAIGHT, { turn: -0.3, speed: 5 }), SUNSET_RIDGE);
     expect(turnedRight.left).toBeGreaterThan(0.5);
+    expect(turnedRight.right).toBe(0);
     expect(turnedRight.accelerate).toBeGreaterThan(0.5);
     const fast = await stub.decide(poseAt(STRAIGHT, { turn: 0.3, speed: 60 }), SUNSET_RIDGE);
-    expect(fast.left).toBeLessThan(0.5);
+    expect(fast.right).toBeGreaterThan(0.5);
+    expect(fast.left).toBe(0);
     expect(fast.accelerate).toBeLessThan(0.5);
+  });
+
+  it("mostly leaves the wheel alone when the car points down the road", async () => {
+    const answer = await createStubJevDriver().decide(poseAt(STRAIGHT), SUNSET_RIDGE);
+    const nothing = 1 - answer.left - answer.right;
+    expect(nothing).toBeGreaterThan(0.5);
+    expect(nothing).toBeLessThanOrEqual(1);
+    expect(answer.steerConfidence).toBeGreaterThan(0);
   });
 });

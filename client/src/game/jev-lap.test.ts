@@ -15,6 +15,8 @@ describe("the bundled Jev Lap", () => {
     for (const [t, ...answers] of decisions) {
       expect(frameTimes.has(t)).toBe(true);
       for (const p of answers) expect(p >= 0 && p <= 1).toBe(true);
+      // P(left) and P(right) leave the rest to "nothing" (up to rounding).
+      expect(answers[1] + answers[2]).toBeLessThanOrEqual(1.001);
     }
   });
 });
@@ -27,7 +29,7 @@ describe("parseJevLap", () => {
       [0, 1, 2, 0, 5],
       [100, 2, 3, 0.1, 6],
     ],
-    decisions: [[0, 0.9, 0.2, 0.8, 0.6]],
+    decisions: [[0, 0.9, 0.2, 0.7, 0.8, 0.6]],
     recordedAt: "2026-09-25T00:00:00.000Z",
   };
 
@@ -42,7 +44,8 @@ describe("parseJevLap", () => {
     ["no lap time", { ...valid, timeMs: 0 }],
     ["a single frame", { ...valid, frames: [valid.frames[0]] }],
     ["a short frame", { ...valid, frames: [valid.frames[0], [100, 2, 3]] }],
-    ["a non-numeric decision", { ...valid, decisions: [[0, "0.9", 0.2, 0.8, 0.6]] }],
+    ["a non-numeric decision", { ...valid, decisions: [[0, "0.9", 0.2, 0.7, 0.8, 0.6]] }],
+    ["a two-way steering decision", { ...valid, decisions: [[0, 0.9, 0.2, 0.8, 0.6]] }],
     ["no decisions list", { ...valid, decisions: null }],
   ])("rejects %s", (_, value) => {
     expect(parseJevLap(value)).toBeNull();

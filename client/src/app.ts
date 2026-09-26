@@ -10,18 +10,17 @@ import { Net } from "./net";
 import { Game } from "./game/game";
 import { JEV_LAP } from "./game/jev-lap";
 import type { JevRecording } from "./game/jev-recording";
-import { JevLiveViewer } from "./game/jev-live";
 import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
 import { Lobby } from "./ui/lobby";
 import { LoadingScreen } from "./ui/loading-screen";
 
-/** Owns transitions between lobby, live driving, replay playback and Jev's live runs. */
+/** Owns transitions between lobby, live driving and replay playback. */
 export class RacingApp {
   private readonly net = new Net();
   private readonly lobby: Lobby;
   private readonly assets: Promise<void>;
-  private view: Game | ReplayViewer | JevLiveViewer | null = null;
+  private view: Game | ReplayViewer | null = null;
   private playerId = "";
   private revision = 0;
   private connectionAttempt = 0;
@@ -48,14 +47,11 @@ export class RacingApp {
         if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
       },
       onJevLap: () => void this.openJevLap(),
-      onJevLive: () => void this.openJevLive(),
     });
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
       this.lobby.setConnection(state);
       if (state === "offline") {
-        // Until the next welcome says otherwise, there is no server to ask Jev.
-        this.lobby.setJevAvailable(false);
         this.returnToLobby();
         this.scheduleReconnect("Connection lost.");
       }
@@ -132,7 +128,6 @@ export class RacingApp {
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
-        this.lobby.setJevAvailable(message.jev === true);
         return;
       case "rooms":
         this.lobby.setRooms(message.rooms);
@@ -157,10 +152,6 @@ export class RacingApp {
             message.frames,
             message.variant,
           );
-        return;
-      case "jevDecision":
-      case "jevUnavailable":
-        if (this.view instanceof JevLiveViewer) this.view.receive(message);
         return;
       case "joined": {
         this.returnToLobby();
@@ -245,29 +236,6 @@ export class RacingApp {
   private async openJevLap(): Promise<void> {
     const lap = JEV_LAP;
     if (lap) await this.openReplay("Jev", JEV_TRACK, lap.timeMs, lap.frames, JEV_VARIANT, lap);
-  }
-  /** Starts a Jev Live Run: this client simulates the car and asks the server for each decision. */
-  private async openJevLive(): Promise<void> {
-    if (this.view instanceof Game || this.joining) return;
-    const revision = ++this.revision;
-    this.view?.dispose();
-    this.view = null;
-    await this.assets;
-    if (revision !== this.revision) return;
-    try {
-      this.lobby.hide();
-      this.view = new JevLiveViewer(this.root, {
-        requestDecision: ({ x, z, heading, speed }, seq) =>
-          this.net.send({ type: "jevDrive", seq, track: JEV_TRACK, x, z, heading, speed }),
-        onReplay: (run) =>
-          void this.openReplay("Jev", JEV_TRACK, run.timeMs, run.frames, JEV_VARIANT, run),
-        onClose: () => this.returnToLobby(),
-      });
-    } catch (error) {
-      console.error("Jev live run could not start", error);
-      this.returnToLobby();
-      this.showError("Jev's live run could not start. Please try again.");
-    }
   }
   private showError(message: string, reconnect = false): void {
     this.notice?.remove();

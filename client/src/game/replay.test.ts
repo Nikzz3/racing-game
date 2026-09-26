@@ -140,8 +140,8 @@ describe("ReplayViewer with Jev's decisions", () => {
       [1000, b.x, b.z, Math.atan2(b.dirX, b.dirZ), 60],
     ],
     decisions: [
-      [100, 0.9, 0.2, 0.8, 0.6],
-      [500, 0.1, 0.7, 0.8, 0.4],
+      [100, 0.9, 0.2, 0.7, 0.8, 0.6],
+      [500, 0.1, 0.7, 0.1, 0.8, 0.4],
     ],
   };
   const seenAt = (t: number) =>
@@ -169,7 +169,13 @@ describe("ReplayViewer with Jev's decisions", () => {
     expect(decisions()).toBe("0");
     frame(250);
     expect(update).toHaveBeenLastCalledWith({
-      decision: { accelerate: 0.9, left: 0.2, pedalConfidence: 0.8, steerConfidence: 0.6 },
+      decision: {
+        accelerate: 0.9,
+        left: 0.2,
+        right: 0.7,
+        pedalConfidence: 0.8,
+        steerConfidence: 0.6,
+      },
       seen: seenAt(100),
       decisions: 1,
     });
@@ -178,27 +184,6 @@ describe("ReplayViewer with Jev's decisions", () => {
       expect.objectContaining({ seen: seenAt(500), decisions: 2 }),
     );
     expect(decisions()).toBe("2");
-    viewer.dispose();
-  });
-
-  it("shows what a live run recorded Jev was told, not a description of the pose it reached", () => {
-    const update = vi.spyOn(JevPanel.prototype, "update");
-    const told = ["the road is straight for the next 190 m", "a predicted bend"];
-    const viewer = new ReplayViewer(
-      document.body,
-      "Jev",
-      "sunset-ridge",
-      JEV.timeMs,
-      JEV.frames,
-      "race-future",
-      () => {},
-      { ...JEV, seen: told },
-    );
-    vi.mocked(jevDrivingState).mockClear();
-    frame(250);
-    frame(700);
-    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ seen: told[1] }));
-    expect(jevDrivingState).not.toHaveBeenCalled();
     viewer.dispose();
   });
 
