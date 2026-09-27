@@ -24,7 +24,7 @@ const view = (overrides: Partial<JevPanelView> = {}): JevPanelView => ({
     pedalConfidence: 0.52,
     steerConfidence: 0.81,
   },
-  seen: "the sharpest bend in the next 190 m turns 63° to the left within 40 m, starting 70 m ahead",
+  seen: "too fast: the car is 12 km/h faster than it can go here and still make the road ahead",
   decisions: 12,
   ...overrides,
 });

@@ -9,8 +9,14 @@ describe("the bundled Jev Lap", () => {
     expect(model).toMatch(/^jev-/);
     expect(frames[0][0]).toBe(0);
     expect(frames.at(-1)![0]).toBe(timeMs);
-    // One decision per 100 ms of game time, all within the timed lap.
-    expect(decisions.length).toBe(Math.ceil(timeMs / JEV_DECISION_INTERVAL_MS));
+    // One decision per 100 ms of game time, all within the timed lap. The lap can
+    // start between two decisions, so the first comes within one interval.
+    expect(decisions[0][0]).toBeGreaterThanOrEqual(0);
+    expect(decisions[0][0]).toBeLessThan(JEV_DECISION_INTERVAL_MS);
+    for (let i = 1; i < decisions.length; i++) {
+      expect(decisions[i][0] - decisions[i - 1][0]).toBeCloseTo(JEV_DECISION_INTERVAL_MS, 1);
+    }
+    expect(timeMs - decisions.at(-1)![0]).toBeLessThanOrEqual(JEV_DECISION_INTERVAL_MS);
     const frameTimes = new Set(frames.map(([t]) => t));
     for (const [t, ...answers] of decisions) {
       expect(frameTimes.has(t)).toBe(true);

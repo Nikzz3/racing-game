@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   jevDrivingState,
+  racingLine,
   resolveTrack,
   type ReplayFrame,
   type Track,
@@ -38,7 +39,11 @@ class JevReplayPanel {
     private readonly parent: HTMLElement,
     private readonly recording: JevRecording,
     private readonly track: Track,
-  ) {}
+  ) {
+    // The racing line Jev's state describes takes ~20 ms to build on first use;
+    // build it now, while the replay sets up, not inside the first frame it shows.
+    racingLine(track);
+  }
 
   /** A fresh panel for a new loop, empty until Jev's first decision. */
   restart(): void {
@@ -55,7 +60,7 @@ class JevReplayPanel {
     this.seen[index] ??= jevDrivingState(
       interpolatePose(this.recording.frames, current.madeAt),
       this.track,
-    ).bend_ahead;
+    ).speed_check;
     this.panel.update({
       decision: current.decision,
       seen: this.seen[index],

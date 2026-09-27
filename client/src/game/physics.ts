@@ -1,10 +1,14 @@
 import {
   BARRIER_OFFSET,
+  BRAKE_DECEL,
   DEFAULT_DIFFICULTY,
+  DRAG,
   type Difficulty,
   MAX_SPEED_MS,
   nearestCenterline,
   ROAD_HALF_WIDTH,
+  STEER_RATE,
+  steeringGrip,
   type TrackSample,
 } from "@racing/shared";
 import { carContact, type CarObstacle } from "./car-collision";
@@ -40,12 +44,9 @@ const TUNING: Record<Difficulty, SurfaceTuning> = {
     grassFriction: 10,
   },
 };
-const BRAKE_DECEL = 38;
 const REVERSE_MAX_SPEED = 14;
 const COAST_DECEL = 5;
-const DRAG = 0.01;
 const GRASS_DECEL = 110;
-const STEER_RATE = 1.8;
 const WALL_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET - 1.2;
 /** Bounciness of car-to-car hits: 0 kills the closing speed, 1 is a perfect bounce. */
 const CAR_RESTITUTION = 0.3;
@@ -166,7 +167,7 @@ export class CarPhysics {
   }
 
   private move(dt: number, steer: number): void {
-    const grip = Math.min(Math.abs(this.speed) / 14, 1) / (1 + Math.abs(this.speed) * 0.015);
+    const grip = steeringGrip(this.speed);
     this.heading += steer * STEER_RATE * grip * Math.sign(this.speed || 1) * dt;
     this.x += Math.sin(this.heading) * this.speed * dt;
     this.z += Math.cos(this.heading) * this.speed * dt;

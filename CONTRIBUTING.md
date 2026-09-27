@@ -116,7 +116,7 @@ lap is available on Sunset Ridge at Medium difficulty. Leaderboards and recordin
 remain separated by circuit and difficulty.
 
 Jev, TypeSafe's System One model, is a second AI driver that only drives the recorded Jev
-Lap (ADR-0009, ADR-0010). Re-record it with `npm run jev:record` after changing the physics
+Lap (ADR-0009, ADR-0010, ADR-0011). Re-record it with `npm run jev:record` after changing the physics
 or Jev's questions in `shared/src/jev.ts`; that needs `TYPESAFE_API_KEY` in your `.env`
 (`JEV_STUB=1` is a dry run that writes nothing). The server never talks to TypeSafe.
 

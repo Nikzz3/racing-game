@@ -2,7 +2,7 @@ import { JEV_QUESTIONS, type JevDecision } from "@racing/shared";
 
 export interface JevPanelView {
   decision: JevDecision;
-  /** What Jev was told about the road ahead (`bend_ahead` of the pose it judged). */
+  /** What code told Jev about its speed (`speed_check` of the pose it judged). */
   seen: string;
   /** Decisions made so far in this lap. */
   decisions: number;
@@ -62,8 +62,8 @@ class ChoiceCard {
 }
 
 /**
- * Shows how Jev decides as it drives, in the style of a terminal: what it was
- * told about the road, then each of its two questions with a bar per option.
+ * Shows how Jev decides as it drives, in the style of a terminal: what code
+ * told it about its speed, then each of its two questions with a bar per option.
  * The pick is the pedal Jev presses (see `jevInput`) and the likeliest of
  * left, nothing and right, laid out as the wheel turns.
  */

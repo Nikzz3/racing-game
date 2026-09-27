@@ -2,7 +2,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as THREE from "three";
-import { jevDrivingState, SUNSET_RIDGE, type ReplayFrame, type Variant } from "@racing/shared";
+import {
+  jevDrivingState,
+  racingLine,
+  SUNSET_RIDGE,
+  type ReplayFrame,
+  type Variant,
+} from "@racing/shared";
 import { LEGACY_RECORD } from "../../../tests/fixtures/legacy-replay";
 import type { JevRecording } from "./jev-recording";
 
@@ -20,10 +26,15 @@ vi.mock("./scene", () => ({
   snapBehindCar: vi.fn(),
 }));
 vi.mock("./trackMesh", () => ({ buildTrack: vi.fn() }));
-// Spied, not stubbed: the Jev panel must describe each decision's pose only once.
+// Spied, not stubbed: the Jev panel must describe each decision's pose only once,
+// and build the racing line before its first frame.
 vi.mock("@racing/shared", async (importOriginal) => {
   const shared = await importOriginal<typeof import("@racing/shared")>();
-  return { ...shared, jevDrivingState: vi.fn(shared.jevDrivingState) };
+  return {
+    ...shared,
+    jevDrivingState: vi.fn(shared.jevDrivingState),
+    racingLine: vi.fn(shared.racingLine),
+  };
 });
 vi.mock("./car", () => ({
   createCarMesh: vi.fn(() => new THREE.Group()),
@@ -145,7 +156,7 @@ describe("ReplayViewer with Jev's decisions", () => {
     ],
   };
   const seenAt = (t: number) =>
-    jevDrivingState(interpolatePose(JEV.frames, t), SUNSET_RIDGE).bend_ahead;
+    jevDrivingState(interpolatePose(JEV.frames, t), SUNSET_RIDGE).speed_check;
 
   function makeJevViewer(): ReplayViewer {
     const { timeMs, frames } = JEV;
@@ -184,6 +195,15 @@ describe("ReplayViewer with Jev's decisions", () => {
       expect.objectContaining({ seen: seenAt(500), decisions: 2 }),
     );
     expect(decisions()).toBe("2");
+    viewer.dispose();
+  });
+
+  it("builds the racing line while the Jev replay sets up, before its first frame", () => {
+    vi.mocked(racingLine).mockClear();
+    vi.mocked(jevDrivingState).mockClear();
+    const viewer = makeJevViewer();
+    expect(racingLine).toHaveBeenCalledWith(expect.objectContaining({ id: SUNSET_RIDGE.id }));
+    expect(jevDrivingState).not.toHaveBeenCalled();
     viewer.dispose();
   });
 
