@@ -145,7 +145,7 @@ describe("ReplayViewer with Jev's decisions", () => {
     ],
   };
   const seenAt = (t: number) =>
-    jevDrivingState(interpolatePose(JEV.frames, t), SUNSET_RIDGE).bend_ahead;
+    jevDrivingState(interpolatePose(JEV.frames, t), SUNSET_RIDGE).speed_check;
 
   function makeJevViewer(): ReplayViewer {
     const { timeMs, frames } = JEV;

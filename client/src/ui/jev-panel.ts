@@ -2,7 +2,7 @@ import { JEV_QUESTIONS, type JevDecision } from "@racing/shared";
 
 export interface JevPanelView {
   decision: JevDecision;
-  /** What Jev was told about the road ahead (`bend_ahead` of the pose it judged). */
+  /** What code told Jev about its speed (`speed_check` of the pose it judged). */
   seen: string;
   /** Decisions made so far in this lap. */
   decisions: number;

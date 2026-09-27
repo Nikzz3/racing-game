@@ -55,7 +55,7 @@ class JevReplayPanel {
     this.seen[index] ??= jevDrivingState(
       interpolatePose(this.recording.frames, current.madeAt),
       this.track,
-    ).bend_ahead;
+    ).speed_check;
     this.panel.update({
       decision: current.decision,
       seen: this.seen[index],
