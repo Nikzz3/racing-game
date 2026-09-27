@@ -4,6 +4,10 @@
 > Lap and the way Jev is asked (two Choice questions, code owns the pedals) stand, except that
 > the steering question now also offers "nothing" (leave the wheel centred; steering is
 > `P(left) − P(right)`). The Jev Live Run and the server-side TypeSafe proxy were removed.
+>
+> **Cornering guide replaced by [ADR-0011](0011-code-computes-jevs-speed-check-and-racing-line.md).**
+> Code now computes a speed check and a racing line; invariant 4's "cornering guide" reads as
+> those, and steering is `2 · (P(left) − P(right))`.
 
 ADR-0002 and ADR-0006 keep the RL policy's forward pass out of the race loop: the AI
 Reference Lap is a deterministic bake, and a live policy under variable browser `dt` would
