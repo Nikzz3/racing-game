@@ -26,15 +26,16 @@ against the AI Record's 23.8 s.
 - **Code computes a racing line.** `racingLine` in `shared/src/racing-line.ts` smooths the
   centre line toward the inside of each bend, never more than 3 m from the centre. The
   speed check and `road_ahead` describe it, and the steer question asks Jev to point the car
-  at the racing line.
+  at the racing line. Every "N m ahead" is measured along the racing line itself
+  (`racingLineAhead`), since its points are unevenly spaced (about 1.7 to 4.4 m apart).
 - **Steering is doubled.** `jevInput` steers by `2 · (P(left) − P(right))`, clamped: Jev's
   steering answers are soft (a few degrees off reads as a lean of about 0.5).
 
 ## Consequences
 
 - Jev's pedal answer now mostly follows code's verdict (in the recorded lap it agreed on
-  every decision); Jev's judgment is in reading that verdict and in steering. The Jev Lap
-  came down to about 25 s, no frame off the tarmac.
+  250 of 251 decisions); Jev's judgment is in reading that verdict and in steering. The Jev Lap
+  came down to 25.1 s, no frame off the tarmac.
 - The speed check and the physics share one set of handling constants, and a test pins the
   full-lock radius and braking formulas against `CarPhysics`, so retuning the physics carries
   over to Jev. Re-record the Jev Lap after changing either.

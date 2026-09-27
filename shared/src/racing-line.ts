@@ -10,16 +10,56 @@ export const RACING_LINE_HALF_WIDTH = 3;
 const NEIGHBOUR = 3;
 const ITERATIONS = 3000;
 
-const cache = new WeakMap<Track, TrackSample[]>();
+interface RacingLine {
+  points: TrackSample[];
+  /** Arc length (m) along the line from point 0 to each point. */
+  distance: Float64Array;
+  /** Arc length (m) of the whole closed loop. */
+  length: number;
+}
+
+const cache = new WeakMap<Track, RacingLine>();
 
 /**
  * One point per centre-line sample (same index, same closed loop), each moved
  * sideways along the road's left normal: repeatedly relaxing every point toward
  * the midpoint of its neighbours straightens the path — it cuts across the
  * inside of bends — and clamping keeps it within RACING_LINE_HALF_WIDTH.
- * Deterministic, and computed once per Track.
+ * Deterministic, and computed once per Track: about 20 ms, so warm it up before
+ * anything time-critical first needs it.
  */
 export function racingLine(track: Track): TrackSample[] {
+  return build(track).points;
+}
+
+/**
+ * The point `metres` further along the racing line from its point `index`,
+ * measured along the line itself — centre-line samples, and so the line's
+ * points, are unevenly spaced — with the direction of the segment it lies on.
+ */
+export function racingLineAhead(track: Track, index: number, metres: number): TrackSample {
+  const { points, distance, length } = build(track);
+  const n = points.length;
+  const target = (((distance[index % n] + metres) % length) + length) % length;
+  // The last point at or before the target distance.
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (distance[mid] <= target) lo = mid;
+    else hi = mid - 1;
+  }
+  const from = points[lo];
+  const along = target - distance[lo];
+  return {
+    x: from.x + from.dirX * along,
+    z: from.z + from.dirZ * along,
+    dirX: from.dirX,
+    dirZ: from.dirZ,
+  };
+}
+
+function build(track: Track): RacingLine {
   const cached = cache.get(track);
   if (cached) return cached;
   const { samples } = track;
@@ -39,17 +79,18 @@ export function racingLine(track: Track): TrackSample[] {
       offset[i] = Math.max(-RACING_LINE_HALF_WIDTH, Math.min(RACING_LINE_HALF_WIDTH, relaxed));
     }
   }
-  const points = samples.map((_, i) => ({ x: x(i), z: z(i) }));
-  const line = points.map((p, i) => {
-    const next = points[(i + 1) % n];
-    const length = Math.hypot(next.x - p.x, next.z - p.z) || 1;
-    return {
-      x: p.x,
-      z: p.z,
-      dirX: (next.x - p.x) / length,
-      dirZ: (next.z - p.z) / length,
-    };
+  const coords = samples.map((_, i) => ({ x: x(i), z: z(i) }));
+  const distance = new Float64Array(n);
+  const points = coords.map((p, i) => {
+    const next = coords[(i + 1) % n];
+    const segment = Math.hypot(next.x - p.x, next.z - p.z);
+    if (i + 1 < n) distance[i + 1] = distance[i] + segment;
+    const unit = segment || 1;
+    return { x: p.x, z: p.z, dirX: (next.x - p.x) / unit, dirZ: (next.z - p.z) / unit };
   });
+  const closing = coords[n - 1];
+  const length = distance[n - 1] + Math.hypot(coords[0].x - closing.x, coords[0].z - closing.z);
+  const line = { points, distance, length };
   cache.set(track, line);
   return line;
 }

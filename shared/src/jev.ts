@@ -8,7 +8,7 @@
 
 import { MAX_SPEED_MS, type Difficulty } from "./difficulty";
 import { BRAKE_DECEL, DRAG, FULL_GRIP_SPEED, speedForTurnRadius } from "./handling";
-import { racingLine } from "./racing-line";
+import { racingLineAhead } from "./racing-line";
 import {
   nearestCenterline,
   ROAD_HALF_WIDTH,
@@ -58,8 +58,11 @@ export interface JevDrivingState {
   speed_check: string;
 }
 
-/** Distances (m) along the road at which the racing line is described. */
-const AIM_DISTANCES = [15, 30, 50, 80];
+/**
+ * Distances (m) along the racing line at which it is described. Jev steers
+ * mostly by the second; at 30 m it cut the tight bends in simulation.
+ */
+const AIM_DISTANCES = [15, 25, 40, 70];
 /** The racing-line point the car must be able to turn onto now, this far ahead. */
 const TURN_AIM = 30;
 /** A bend is measured as the heading change over this many metres of road. */
@@ -82,24 +85,6 @@ export const MIN_SAFE_SPEED = FULL_GRIP_SPEED;
 /** Matches CarPhysics: the car is on the tarmac within this of the centre line. */
 const ON_TARMAC_DIST = ROAD_HALF_WIDTH + 0.6;
 
-const sampleSpacing = new WeakMap<Track, number>();
-
-/** Mean distance between consecutive centerline samples, in metres. */
-function spacing(track: Track): number {
-  let cached = sampleSpacing.get(track);
-  if (cached === undefined) {
-    const { samples } = track;
-    let length = 0;
-    for (let i = 0; i < samples.length; i++) {
-      const next = samples[(i + 1) % samples.length];
-      length += Math.hypot(next.x - samples[i].x, next.z - samples[i].z);
-    }
-    cached = length / samples.length;
-    sampleSpacing.set(track, cached);
-  }
-  return cached;
-}
-
 function normalizeAngle(a: number): number {
   let r = a % (Math.PI * 2);
   if (r > Math.PI) r -= Math.PI * 2;
@@ -115,13 +100,14 @@ const headingOf = (s: TrackSample): number => Math.atan2(s.dirX, s.dirZ);
 const bearingTo = (pose: JevPose, target: { x: number; z: number }): number =>
   normalizeAngle(Math.atan2(target.x - pose.x, target.z - pose.z) - pose.heading);
 
-/** The nearest centre-line sample, and the racing-line point `metres` further along the road. */
+/**
+ * The nearest centre-line sample, and the racing-line point `metres` further
+ * along the racing line from the car's point on it (the line's point at the
+ * same index), measured along the line.
+ */
 function locate(pose: JevPose, track: Track) {
-  const step = spacing(track);
   const nearest = nearestCenterline(pose.x, pose.z, track.samples);
-  const line = racingLine(track);
-  const ahead = (metres: number): TrackSample =>
-    line[(nearest.index + Math.round(metres / step)) % line.length];
+  const ahead = (metres: number): TrackSample => racingLineAhead(track, nearest.index, metres);
   return { nearest, ahead };
 }
 
