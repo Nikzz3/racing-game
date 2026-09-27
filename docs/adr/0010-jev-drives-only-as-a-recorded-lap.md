@@ -22,7 +22,7 @@ ADR-0009's description of how Jev is asked (the plain-English state, two Choice 
 code owning the pedals) and its invariants 3 and 4 (never a leaderboard row; Medium, Sunset
 Ridge) still hold for the Jev Lap. The steering question has since gained a third option,
 "nothing" (brake or accelerate, and steer left, right or nothing); steering is
-`P(left) − P(right)`, so "nothing" adds none.
+`P(left) − P(right)`, so "nothing" adds none (doubled since ADR-0011).
 
 ## Consequences
 

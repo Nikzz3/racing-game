@@ -62,8 +62,8 @@ class ChoiceCard {
 }
 
 /**
- * Shows how Jev decides as it drives, in the style of a terminal: what it was
- * told about the road, then each of its two questions with a bar per option.
+ * Shows how Jev decides as it drives, in the style of a terminal: what code
+ * told it about its speed, then each of its two questions with a bar per option.
  * The pick is the pedal Jev presses (see `jevInput`) and the likeliest of
  * left, nothing and right, laid out as the wheel turns.
  */

@@ -9,7 +9,7 @@ can be taken at up to 190 km/h", a braking distance) and ask it to compare the g
 it is not built for ("Jev is not a calculator": compute in code and pass a number or a named
 bucket). It also only described bends starting _ahead_, never the turn the car was already
 in, so Jev accelerated out of the hairpins while still turning, ran wide onto the grass
-twice a lap, and flip-flopped the pedal at the guide's limit. The lap was about 36.9 s
+twice a lap, and flip-flopped the pedal at the guide's limit. The lap was 36.4 s
 against the AI Record's 23.8 s.
 
 ## Decision
