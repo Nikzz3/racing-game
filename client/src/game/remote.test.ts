@@ -8,7 +8,7 @@ vi.mock("./car", async (importOriginal) => {
 
 import type { PlayerSnapshot, Variant } from "@racing/shared";
 import { createCarMesh, disposeCarMesh, resolveVariant } from "./car";
-import { INTERPOLATION_DELAY_MS, RemotePlayers } from "./remote";
+import { DIRECT_INTERPOLATION_DELAY_MS, INTERPOLATION_DELAY_MS, RemotePlayers } from "./remote";
 import { ServerClock } from "./server-clock";
 
 /** Draw the cars as they were at server time `t`. */
@@ -511,5 +511,124 @@ describe("RemotePlayers obstacles", () => {
       drawAt(rp, t);
       expect(rp.obstacles()).toEqual([]);
     }
+  });
+});
+
+describe("RemotePlayers with Direct Links", () => {
+  // Pose n was current at server time 50n; the sender's clock reads 5 s behind
+  // the server's, and the snapshot carrying it is broadcast 30 ms later.
+  const SENDER_CLOCK = -5000;
+  const relayed = (seq: number, overrides: Partial<PlayerSnapshot> = {}): PlayerSnapshot => ({
+    ...makeSnapshot("p1"),
+    // 5 m per 50 ms pose: 100 m/s, just under the default (hard) top speed.
+    x: seq * 5,
+    speed: 20,
+    t: seq * 50,
+    stamp: { seq, epoch: 0, sentAt: seq * 50 + SENDER_CLOCK },
+    direct: true,
+    ...overrides,
+  });
+  const relay = (remote: RemotePlayers, seq: number) =>
+    remote.onSnapshot([relayed(seq)], seq * 50 + 30);
+  const direct = (seq: number, x = seq * 5, z = 0) => ({
+    stamp: { seq, epoch: 0 },
+    t: seq * 50 + SENDER_CLOCK,
+    x,
+    z,
+    rot: 0,
+    speed: 20,
+  });
+
+  let mesh: THREE.Group;
+  let remote: RemotePlayers;
+
+  beforeEach(() => {
+    mesh = new THREE.Group();
+    vi.mocked(createCarMesh).mockReset().mockReturnValue(mesh);
+    remote = new RemotePlayers(makeMockScene(), "me");
+  });
+
+  it("draws a directly linked car sooner, placing its poses on the server clock", () => {
+    relay(remote, 1);
+    for (const seq of [2, 3, 4]) {
+      remote.onDirectPose("p1", direct(seq));
+      relay(remote, seq);
+    }
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    expect(remote.directPoses()).toEqual({ p1: 3 });
+    // Drawn DIRECT_INTERPOLATION_DELAY_MS behind: server time 120, 40% from pose 2 to 3.
+    remote.update(1 / 60, 120 + DIRECT_INTERPOLATION_DELAY_MS);
+    expect(mesh.position.x).toBeCloseTo(12);
+    expect(remote.obstacles()).toHaveLength(1);
+  });
+
+  it("keeps drawing relayed poses when the Direct Link falls silent", () => {
+    relay(remote, 1);
+    remote.onDirectPose("p1", direct(2));
+    for (let seq = 2; seq <= 12; seq++) relay(remote, seq);
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    drawAt(remote, 450);
+    expect(mesh.position.x).toBeCloseTo(45);
+  });
+
+  it("counts a link as carrying the car until the relay runs more than two poses ahead of it", () => {
+    relay(remote, 1);
+    // A page drawing a few frames a second receives in bursts: direct, then relayed.
+    for (const seq of [2, 3, 4]) remote.onDirectPose("p1", direct(seq));
+    for (const seq of [2, 3, 4, 5, 6]) relay(remote, seq);
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    relay(remote, 7);
+    expect(remote.sources()).toEqual({ p1: "relay" });
+  });
+
+  it("draws from the relay when it, not the Direct Link, delivers poses first", () => {
+    for (const seq of [1, 2, 3, 4, 5]) {
+      relay(remote, seq);
+      remote.onDirectPose("p1", direct(seq));
+    }
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    expect(remote.directPoses()).toEqual({ p1: 0 });
+  });
+
+  it("stops trusting a Direct Link whose copy of a pose differs from the relayed one", () => {
+    relay(remote, 1);
+    remote.onDirectPose("p1", direct(2, 500));
+    relay(remote, 2);
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    // Later Direct Link poses are ignored and the forged one is gone.
+    remote.onDirectPose("p1", direct(3, 900));
+    drawAt(remote, 100);
+    expect(mesh.position.x).toBe(10);
+  });
+
+  it("never collides with a Direct Link pose the car could not have reached from its relayed one", () => {
+    for (const seq of [1, 2, 3]) relay(remote, seq);
+    // Each forged hop is a plausible 11 m in 50 ms, so the motion alone looks
+    // drivable; but it veers away from where the server last saw the car.
+    remote.onDirectPose("p1", direct(4, 20, 10));
+    remote.onDirectPose("p1", direct(5, 25, 20));
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    // Drawn between the two forged poses.
+    remote.update(1 / 60, 230 + DIRECT_INTERPOLATION_DELAY_MS);
+    expect(mesh.position.z).toBeCloseTo(16);
+    expect(remote.obstacles()).toEqual([]);
+  });
+
+  it("ignores Direct Link poses before the relay has placed the car, or far ahead of it", () => {
+    remote.onDirectPose("p1", direct(1));
+    remote.onDirectPose("ghost", direct(1));
+    expect(remote.positions()).toEqual([]);
+    relay(remote, 1);
+    remote.onDirectPose("p1", direct(100));
+    expect(remote.sources()).toEqual({ p1: "relay" });
+    expect(remote.directPoses()).toEqual({ p1: 0 });
+  });
+
+  it("keeps a car's Direct Link state when its mesh is rebuilt for a new name", () => {
+    relay(remote, 1);
+    remote.onDirectPose("p1", direct(2));
+    remote.onSnapshot([relayed(2, { name: "Renamed" })], 130);
+    expect(remote.sources()).toEqual({ p1: "direct" });
+    expect(remote.directPoses()).toEqual({ p1: 1 });
   });
 });

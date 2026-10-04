@@ -1,4 +1,5 @@
 import type { Variant } from "@racing/shared";
+import type { LinkState, PoseSource } from "../direct-links";
 import type { CarInput } from "./input";
 
 export const E2E_DT = 1 / 60;
@@ -37,8 +38,14 @@ export interface E2eGameBindings {
   localState(): E2eLocalState;
   /** Where each remote car is drawn this frame. */
   remotePositions(): { id: string; x: number; z: number }[];
-  /** Pushes local state to the server; the seam paces these off simulated time. */
+  /** Pushes local state to the server and Direct Links; the seam paces these off simulated time. */
   sendState(): void;
+  /** Direct Link state per linked player id. */
+  linkStates(): Record<string, LinkState>;
+  /** Which path each remote car's poses are drawn from. */
+  poseSources(): Record<string, PoseSource>;
+  /** Poses per remote car that a Direct Link delivered before the relay. */
+  directPoses(): Record<string, number>;
   /** Resolved (rendered) Variant per player id, local player included. */
   playerVariants(): Record<string, Variant>;
   /** Resolved Variant of the armed Pacer, or null when no Pacer is armed. */
@@ -53,6 +60,9 @@ export interface E2eState extends E2eLocalState {
   variants: Record<string, Variant>;
   pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
+  links: Record<string, LinkState>;
+  poseSources: Record<string, PoseSource>;
+  directPoses: Record<string, number>;
   injectionFinished: boolean;
   lapSubmitted: boolean;
   serverLaps: number;
@@ -176,6 +186,9 @@ export class E2eSeam {
       variants: this.game.playerVariants(),
       pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),
+      links: this.game.linkStates(),
+      poseSources: this.game.poseSources(),
+      directPoses: this.game.directPoses(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
       serverLaps: this.serverLaps,

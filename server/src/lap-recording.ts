@@ -50,6 +50,10 @@ export function recordState(
   player.rot = rot;
   player.speed = speed;
   player.stateT = stateTime(player, state.t, now);
+  // Relayed so receivers can merge it with the Direct Link copy of the same pose,
+  // and map the sender's clock onto the server's through the reported `t`.
+  player.stamp =
+    state.stamp && state.t !== undefined ? { ...state.stamp, sentAt: state.t } : undefined;
 
   const timing = player.timing;
   settleSpawn(timing);

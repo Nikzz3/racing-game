@@ -17,6 +17,9 @@ function workerServers(worker: number): WebServer[] {
       env: {
         DATABASE_URL: databaseUrl && workerDatabaseUrl(databaseUrl, worker),
         PORT: String(serverPort(worker)),
+        // Both players share this machine, so Direct Links connect over host
+        // candidates alone; no public STUN server becomes a test dependency.
+        ICE_SERVERS: "[]",
       },
       // Not "/": the server falls back to client/dist/index.html and 404s until the
       // client is built, which Playwright never accepts as ready. Nothing in this suite
@@ -93,7 +96,16 @@ export default defineConfig({
           // platform; it is repeated here so the config does not depend on that. The
           // --use-gl / --use-angle pair makes the backend an explicit choice rather
           // than a fallback that a future Chromium can remove.
-          args: ["--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader-webgl"],
+          //
+          // Chromium hides host ICE candidates behind random .local mDNS names, which
+          // a CI runner may not resolve; both players are on this machine, so Direct
+          // Links pair over the real addresses instead.
+          args: [
+            "--enable-unsafe-swiftshader",
+            "--use-gl=angle",
+            "--use-angle=swiftshader-webgl",
+            "--disable-features=WebRtcHideLocalIpsWithMdns",
+          ],
         },
       },
     },

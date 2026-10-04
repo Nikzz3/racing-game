@@ -7,6 +7,7 @@ import {
   type Variant,
 } from "@racing/shared";
 import { Net } from "./net";
+import { DirectLinks } from "./direct-links";
 import { Game } from "./game/game";
 import { JEV_LAP } from "./game/jev-lap";
 import type { JevRecording } from "./game/jev-recording";
@@ -21,6 +22,7 @@ export class RacingApp {
   private readonly lobby: Lobby;
   private readonly assets: Promise<void>;
   private view: Game | ReplayViewer | null = null;
+  private links: DirectLinks | null = null;
   private playerId = "";
   private revision = 0;
   private connectionAttempt = 0;
@@ -113,11 +115,14 @@ export class RacingApp {
       type: "hello",
       name: this.lobby.playerName,
       variant: this.lobby.selectedVariant,
+      direct: DirectLinks.supported(),
     });
   }
   private returnToLobby(): void {
     this.revision++;
     this.joining = false;
+    this.links?.dispose();
+    this.links = null;
     this.view?.dispose();
     this.view = null;
     this.lobby.show();
@@ -141,6 +146,9 @@ export class RacingApp {
       case "error":
         this.showError(message.message);
         return;
+      case "signal":
+        void this.links?.receiveSignal(message.from, message.signal);
+        return;
       case "replay":
         if (this.view instanceof Game)
           this.view.receiveReplayFrames(message.frames, message.variant);
@@ -156,6 +164,12 @@ export class RacingApp {
       case "joined": {
         this.returnToLobby();
         this.joining = true;
+        // Links open while the race view loads: peers may signal before it exists.
+        // A server that sends no ICE servers predates Direct Links and relays no signals.
+        if (message.iceServers && DirectLinks.supported())
+          this.links = new DirectLinks(this.playerId, message.iceServers, (to, signal) =>
+            this.net.send({ type: "signal", to, signal }),
+          );
         const revision = this.revision;
         const choice = this.lobby.armedPacer;
         const pacer =
@@ -177,6 +191,7 @@ export class RacingApp {
             pacer,
             this.lobby.selectedVariant,
             this.lobby.steering,
+            this.links,
           );
           this.view = game;
           this.joining = false;
@@ -197,7 +212,9 @@ export class RacingApp {
         return;
       }
       default:
+        // The race view first: Direct Links are an extra, never a reason to miss a snapshot.
         if (this.view instanceof Game) this.view.onMessage(message);
+        if (message.type === "snapshot") this.links?.setMembers(message.players);
     }
   }
   private async openReplay(
