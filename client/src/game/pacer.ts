@@ -156,11 +156,14 @@ export function createPacerMesh(driverName: string, variant: Variant, badge: str
 }
 
 // Every material on a Pacer is a per-instance clone, unlike a plain car's
-// shared Blender materials, so dispose them all along with the badge.
+// shared Blender materials, so dispose them all along with the badge and the
+// fallback car's own geometry.
 export function disposePacerMesh(mesh: THREE.Group): void {
   mesh.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) disposeMaterials(obj.material);
-    else if (obj instanceof THREE.Sprite) {
+    if (obj instanceof THREE.Mesh) {
+      if (obj.userData.owned) obj.geometry.dispose();
+      disposeMaterials(obj.material);
+    } else if (obj instanceof THREE.Sprite) {
       obj.material.map?.dispose();
       obj.material.dispose();
     }

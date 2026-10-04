@@ -10,7 +10,7 @@ vi.mock("./car", async (importOriginal) => {
 });
 
 import { createCarMesh, resolveVariant } from "./car";
-import { pacerPoseAt, pacerDelta, PacerOverlay } from "./pacer";
+import { disposePacerMesh, pacerPoseAt, pacerDelta, PacerOverlay } from "./pacer";
 
 const frames: ReplayFrame[] = [
   [0, 0, 0, 0, 0],
@@ -306,5 +306,19 @@ describe("PacerOverlay.state", () => {
     overlay.update(1100, 1 / 60);
     overlay.onRespawn();
     expect(overlay.state()).toMatchObject({ playing: false, visible: false });
+  });
+});
+
+describe("disposePacerMesh", () => {
+  it("releases the fallback car's own geometry along with the cloned materials", () => {
+    const geometry = new THREE.BoxGeometry();
+    const material = new THREE.MeshStandardMaterial();
+    const body = new THREE.Mesh(geometry, material);
+    body.userData.owned = true;
+    const released: string[] = [];
+    geometry.addEventListener("dispose", () => released.push("geometry"));
+    material.addEventListener("dispose", () => released.push("material"));
+    disposePacerMesh(new THREE.Group().add(body));
+    expect(released.sort()).toEqual(["geometry", "material"]);
   });
 });

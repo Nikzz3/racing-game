@@ -101,7 +101,7 @@ export class Game {
   private mode: DriveMode = "drive";
   /** GO time of the race this car was last put on the grid for. */
   private gridFor: number | null = null;
-  /** The car a Spectator chose to watch; the leader when unset or no longer racing. */
+  /** The car a Spectator chose to watch; unset follows whoever leads. */
   private following: string | null = null;
   private nextCheckpoint = 0;
   private localLapStart: number | null = null;
@@ -322,7 +322,8 @@ export class Game {
   /** The car a Spectator watches, named in the banner, and its pose if it is drawn. */
   private watch(): Pose | null {
     const target = spectatorTarget(this.race, this.following);
-    this.following = target?.id ?? null;
+    // A chosen car that stopped racing hands the camera back to whoever leads.
+    if (target?.id !== this.following) this.following = null;
     this.hud.setSpectating(target?.name ?? null);
     return target && (this.remote.pose(target.id) ?? this.gridPacers.pose(target.id));
   }

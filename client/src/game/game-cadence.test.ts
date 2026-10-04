@@ -235,6 +235,17 @@ describe("races", () => {
     expect(carMesh.position.distanceTo(grid)).toBeGreaterThan(0);
   });
 
+  it("keeps a Spectator on whoever leads until they pick a car", () => {
+    const target = () =>
+      document.querySelector(".spectator-banner.visible .spectator-target")?.textContent;
+    game.onMessage({ type: "race", race: race({ entrants: [entrant("a", 0), entrant("b", 1)] }) });
+    tick(1000 / 60);
+    expect(target()).toBe("A");
+    game.onMessage({ type: "race", race: race({ entrants: [entrant("b", 1), entrant("a", 0)] }) });
+    tick(1000 / 60);
+    expect(target()).toBe("B");
+  });
+
   it("puts a Spectator's car away, then drives it again from the spawn once the race is over", () => {
     game.onMessage({ type: "race", race: race({}) });
     tick(1000 / 60);

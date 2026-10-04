@@ -2210,6 +2210,8 @@ a {
   width: min(400px, calc(100vw - 32px));
   max-height: calc(100% - 32px);
   overflow: auto;
+  /* A long field scrolls on a short screen. */
+  pointer-events: auto;
   padding: 22px 26px;
   background: #151720ed;
   border-left: 3px solid #ffc582;
