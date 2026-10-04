@@ -145,17 +145,39 @@ describe("touch steering through Input", () => {
   });
 });
 
+/** A keydown carrying both the key's label and its position, unlike `key()`. */
+function press(init: KeyboardEventInit, target: EventTarget = window): void {
+  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+}
+
 describe("mute key", () => {
   it("toggles mute once per M press, never from a text field", () => {
     const control = input();
     control.onToggleMute = vi.fn();
-    key("KeyM");
-    key("KeyM", true);
+    press({ key: "m", code: "KeyM" });
+    press({ key: "m", code: "KeyM", repeat: true });
     const textarea = document.createElement("textarea");
     document.body.append(textarea);
-    key("KeyM", false, textarea);
+    press({ key: "m", code: "KeyM" }, textarea);
     expect(control.onToggleMute).toHaveBeenCalledOnce();
     expect(control.read(1)).toEqual({ throttle: 0, brake: 0, steer: 0 });
+  });
+
+  it("follows the key labelled M, wherever the layout puts it", () => {
+    const control = input();
+    control.onToggleMute = vi.fn();
+    // AZERTY: M sits where QWERTY has the semicolon, and Caps Lock makes it "M".
+    press({ key: "M", code: "Semicolon" });
+    press({ key: ",", code: "KeyM" });
+    expect(control.onToggleMute).toHaveBeenCalledOnce();
+  });
+
+  it("leaves M with a modifier to the browser and the OS", () => {
+    const control = input();
+    control.onToggleMute = vi.fn();
+    for (const modifier of ["ctrlKey", "metaKey", "altKey"])
+      press({ key: "m", code: "KeyM", [modifier]: true });
+    expect(control.onToggleMute).not.toHaveBeenCalled();
   });
 });
 
@@ -170,6 +192,7 @@ describe("gamepad driving through Input", () => {
     const pads = () => [
       {
         connected: true,
+        mapping: "standard",
         axes: [state.stick, 0, 0, 0],
         buttons: Array.from({ length: 17 }, (_, index) =>
           button(

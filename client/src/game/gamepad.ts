@@ -37,15 +37,24 @@ export function browserGamepads(): GamepadList {
 }
 
 /**
- * Analog pedals and steering from every connected pad: the right trigger or A (Cross)
+ * A connected pad the browser maps to the standard layout. On any other (`mapping` is
+ * empty) the button and axis numbers mean nothing in particular, so a stray button could
+ * respawn the car; those pads are ignored.
+ */
+function usable(pad: Gamepad | null): pad is Gamepad {
+  return pad?.connected === true && pad.mapping === "standard";
+}
+
+/**
+ * Analog pedals and steering from every usable pad: the right trigger or A (Cross)
  * accelerates, the left trigger or X (Square) brakes, the left stick or the d-pad steers
  * and Y (Triangle) respawns. Pads add up like the keyboard and touch controls do.
- * Steering is left-positive, like CarInput. Null when no pad is connected.
+ * Steering is left-positive, like CarInput. Null when no usable pad is connected.
  */
 export function readGamepads(pads: GamepadList): PadInput | null {
   let reading: PadInput | null = null;
   for (const pad of pads) {
-    if (!pad?.connected) continue;
+    if (!usable(pad)) continue;
     reading ??= { throttle: 0, brake: 0, steer: 0, respawn: false };
     reading.throttle = Math.max(
       reading.throttle,
@@ -86,7 +95,7 @@ const SURFACE_PULSE_MS = 120;
 const SURFACE_RENEW_MS = 100;
 
 /**
- * Dual-rumble feedback on every connected pad that has a haptic actuator (Chromium,
+ * Dual-rumble feedback on every usable pad that has a haptic actuator (Chromium,
  * including the desktop app; Firefox has none). A new effect replaces the one playing,
  * so a collision's jolt holds off the off-road buzz until it has finished.
  */
@@ -119,9 +128,7 @@ export class Rumble {
   private play(effect: GamepadEffectParameters): void {
     for (const pad of this.pads()) {
       // Typed as always present, but missing outside Chromium and on pads without motors.
-      const actuator = pad?.connected
-        ? (pad.vibrationActuator as GamepadHapticActuator | null)
-        : null;
+      const actuator = usable(pad) ? (pad.vibrationActuator as GamepadHapticActuator | null) : null;
       // Rejected while the pad is busy or the page is hidden; rumble is best effort.
       actuator?.playEffect("dual-rumble", effect).catch(() => undefined);
     }

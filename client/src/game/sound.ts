@@ -39,6 +39,8 @@ const OTHER_ENGINE_LEVEL = 0.3;
 const PACER_ENGINE_LEVEL = 0.2;
 /** Only the nearest cars get an engine voice; anything further is barely audible anyway. */
 const HEARD_CARS = 6;
+/** A heard car competes for its voice as if this much nearer than it is. */
+const VOICE_HYSTERESIS = 0.8;
 /** Shortest gap between two thuds (s): a shove that lasts several steps is one hit. */
 const THUD_GAP = 0.12;
 /** A teleport (respawn, join) is not motion: cap the speed Doppler sees (m/s). */
@@ -78,96 +80,124 @@ function browserContext(): AudioContext | null {
 
 /**
  * The game's audio output, one per app: the AudioContext, the master volume that follows
- * the driver's settings, and the synthesised sounds. Autoplay rules only let audio start
- * after a user gesture; the Lobby's clicks are one, so a race normally starts with sound,
- * and any later gesture resumes it otherwise. The context only runs while a race is on
- * screen.
+ * the driver's settings, and the synthesised sounds. Autoplay rules only let a context
+ * start inside a user gesture (Safari) or after one (Chromium), so the first gesture in
+ * the Lobby creates and starts it, which lets a race resume it later without one. The
+ * context only runs while a race is on a visible page.
  */
 export class Sound {
-  private output: { context: AudioContext; master: GainNode; buffers: SoundBuffers } | null = null;
+  private context: AudioContext | null = null;
+  /** Built for the first race: synthesising the sounds takes tens of milliseconds. */
+  private mix: { master: GainNode; buffers: SoundBuffers } | null = null;
   private races = 0;
+  /** No Web Audio, or the browser refused a context: every race runs silent. */
+  private unavailable = false;
 
   constructor(
     readonly settings: SoundSettings,
     private readonly createContext: () => AudioContext | null = browserContext,
   ) {
     settings.subscribe(() => this.applyVolume());
-    for (const type of GESTURES) window.addEventListener(type, this.wake, { capture: true });
+    for (const type of GESTURES) window.addEventListener(type, this.gesture, { capture: true });
     document.addEventListener("visibilitychange", this.wake);
   }
 
   /** The sound of one race, or null where the browser has no Web Audio. */
   race(topSpeed: number): RaceSound | null {
-    const output = this.open();
-    if (!output) return null;
+    const context = this.open();
+    if (!context) return null;
+    this.mix ??= buildMix(context, this.settings.gain);
     this.races++;
     this.wake();
-    return new RaceSound(output.context, output.master, output.buffers, topSpeed, () => {
+    return new RaceSound(context, this.mix.master, this.mix.buffers, topSpeed, () => {
       this.races--;
       // Let the stopped voices fade before the context stops rendering.
       setTimeout(this.wake, (RELEASE * 2 + 0.05) * 1000);
     });
   }
 
-  /** The output as the e2e journey sees it; null before the first race. */
+  /** The output as the e2e journey sees it: null before the first race. */
   state(): Omit<E2eSoundState, "engines"> | null {
-    return this.output && { context: this.output.context.state, gain: this.settings.gain };
+    if (!this.context || !this.mix) return null;
+    return { context: this.context.state, gain: this.mix.master.gain.value };
   }
 
-  private open(): { context: AudioContext; master: GainNode; buffers: SoundBuffers } | null {
-    if (this.output) return this.output;
-    let context: AudioContext | null;
+  private open(): AudioContext | null {
+    if (this.context || this.unavailable) return this.context;
     try {
-      context = this.createContext();
+      this.context = this.createContext();
     } catch (error) {
-      // Browsers cap how many contexts a page may hold; the race runs silent instead.
+      // Browsers cap how many contexts a page may hold; the races run silent instead.
       console.warn("Audio could not start", error);
+    }
+    if (!this.context) {
+      this.unavailable = true;
       return null;
     }
-    if (!context) return null;
-    const master = context.createGain();
-    master.gain.value = this.settings.gain;
-    // Several cars, a squeal and a thud can stack up; squash the peaks instead of clipping.
-    const limiter = context.createDynamicsCompressor();
-    limiter.threshold.value = -10;
-    limiter.knee.value = 10;
-    limiter.ratio.value = 6;
-    master.connect(limiter).connect(context.destination);
-    const loop = (samples: Float32Array) => {
-      const buffer = context.createBuffer(1, samples.length, context.sampleRate);
-      buffer.getChannelData(0).set(samples);
-      return buffer;
-    };
-    const rate = context.sampleRate;
-    const buffers: SoundBuffers = {
-      engine: ENGINE_LOOP_RPMS.map((rpm, index) => loop(engineLoop(rate, rpm, index + 1))),
-      squeal: loop(squealLoop(rate)),
-      road: loop(roadLoop(rate)),
-      gravel: loop(gravelLoop(rate)),
-      thud: loop(thudShot(rate)),
-    };
-    this.output = { context, master, buffers };
-    return this.output;
+    // A suspend or resume only lands later, so act again on whatever state it reaches.
+    this.context.onstatechange = this.wake;
+    return this.context;
   }
+
+  private gesture = (): void => {
+    const unlocking = !this.context;
+    const context = this.open();
+    // Started inside a gesture, the context may be resumed later without one.
+    if (unlocking) context?.resume().catch(() => undefined);
+    else this.wake();
+  };
 
   /**
    * Runs the context while a race is on a visible page and suspends it otherwise. As a
    * gesture listener it also retries a start the autoplay policy refused.
    */
   private wake = (): void => {
-    const context = this.output?.context;
+    const context = this.context;
     if (!context) return;
     const wanted = this.races > 0 && !document.hidden;
+    // Safari also stops a context as "interrupted" (a phone call, say), which resume() ends.
     // Both reject while the context is closing; there is nothing left to play then.
-    if (wanted && context.state === "suspended") context.resume().catch(() => undefined);
-    else if (!wanted && context.state === "running") context.suspend().catch(() => undefined);
+    const { state } = context;
+    if (wanted && state !== "running" && state !== "closed")
+      context.resume().catch(() => undefined);
+    else if (!wanted && state === "running") context.suspend().catch(() => undefined);
   };
 
   private applyVolume(): void {
-    if (!this.output) return;
-    const { context, master } = this.output;
-    master.gain.setTargetAtTime(this.settings.gain, context.currentTime, GLIDE);
+    if (!this.context || !this.mix) return;
+    this.mix.master.gain.setTargetAtTime(this.settings.gain, this.context.currentTime, GLIDE);
   }
+}
+
+/** The master volume, a limiter after it, and every sound synthesised at the context's rate. */
+function buildMix(
+  context: AudioContext,
+  gain: number,
+): { master: GainNode; buffers: SoundBuffers } {
+  const master = context.createGain();
+  master.gain.value = gain;
+  // Several cars, a squeal and a thud can stack up; squash the peaks instead of clipping.
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = -10;
+  limiter.knee.value = 10;
+  limiter.ratio.value = 6;
+  master.connect(limiter).connect(context.destination);
+  const loop = (samples: Float32Array) => {
+    const buffer = context.createBuffer(1, samples.length, context.sampleRate);
+    buffer.getChannelData(0).set(samples);
+    return buffer;
+  };
+  const rate = context.sampleRate;
+  return {
+    master,
+    buffers: {
+      engine: ENGINE_LOOP_RPMS.map((rpm, index) => loop(engineLoop(rate, rpm, index + 1))),
+      squeal: loop(squealLoop(rate)),
+      road: loop(roadLoop(rate)),
+      gravel: loop(gravelLoop(rate)),
+      thud: loop(thudShot(rate)),
+    },
+  };
 }
 
 /**
@@ -234,21 +264,29 @@ export class RaceSound {
 
   /** Gives the nearest cars an engine voice placed where they are, and releases the rest. */
   private hear(dt: number, listener: Listener, cars: readonly HeardCar[]): void {
-    const heard = cars
-      .map((car) => ({ car, ...hearing(listener, car.x, car.z) }))
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, HEARD_CARS);
+    const audible: (HeardCar & ReturnType<typeof hearing> & { rank: number })[] = [];
+    for (const car of cars) {
+      const heard = hearing(listener, car.x, car.z);
+      // Other clients' poses are relayed unchecked, and an AudioParam throws on a value
+      // that isn't finite: a forged pose must not reach one.
+      if (!Number.isFinite(heard.distance) || !Number.isFinite(car.speed)) continue;
+      // A car already heard keeps its voice until another is clearly nearer, so two cars
+      // at the edge of earshot don't trade one back and forth.
+      const rank = heard.distance * (this.others.has(car.id) ? VOICE_HYSTERESIS : 1);
+      audible.push({ ...car, ...heard, rank });
+    }
+    audible.sort((a, b) => a.rank - b.rank);
     const present = new Set<string>();
-    for (const { car, distance, pan, level } of heard) {
+    for (const car of audible.slice(0, HEARD_CARS)) {
       present.add(car.id);
       let other = this.others.get(car.id);
       if (!other) {
         other = new OtherCar(this.context, this.buffers.engine, this.output, this.topSpeed);
-        other.place(distance, car.speed);
+        other.place(car.distance, car.speed);
         this.others.set(car.id, other);
       }
       const base = car.pacer ? PACER_ENGINE_LEVEL : OTHER_ENGINE_LEVEL;
-      other.update(dt, car.speed, distance, pan, base * level);
+      other.update(dt, car.speed, car.distance, car.pan, base * car.level);
     }
     for (const [id, other] of this.others) {
       if (present.has(id)) continue;
@@ -353,10 +391,15 @@ class OtherCar {
     this.voice = new EngineVoice(context, buffers, this.panner);
   }
 
-  /** Where it was first heard, so its first frame isn't heard as a jump. */
+  /**
+   * Where it was first heard and how fast it was going, so its first frame isn't heard as
+   * a jump in Doppler or as an engine revving up from idle.
+   */
   place(distance: number, speed: number): void {
     this.distance = distance;
     this.speed = speed;
+    // A second of steady driving settles the gearbox at this speed.
+    this.engine.update(1, speed, apparentThrottle(speed, speed, 1));
   }
 
   update(dt: number, speed: number, distance: number, pan: number, level: number): void {

@@ -53,7 +53,8 @@ A gamepad works alongside the keyboard: the right trigger (or A / Cross) acceler
 left trigger (or X / Square) brakes, the left stick or the d-pad steers, and Y / Triangle
 respawns. The triggers and stick are analog. Pads with motors rumble on hits and off the
 road (Chromium-based browsers and the desktop app). A pad only shows up after you press
-one of its buttons with the game open.
+one of its buttons with the game open, and only pads the browser recognises (it maps them
+to the standard layout) are used.
 
 ## How to race
 

@@ -43,7 +43,10 @@ export class Input {
       event.target.closest("input, textarea, select, [contenteditable]")
     )
       return;
-    if (event.code === "KeyM" && !event.repeat) this.onToggleMute?.();
+    // A letter shortcut, so the key's label, not its position (unlike WASD); Cmd+M and the
+    // like belong to the browser or the OS.
+    const shortcut = !event.ctrlKey && !event.metaKey && !event.altKey && !event.repeat;
+    if (shortcut && event.key.toLowerCase() === "m") this.onToggleMute?.();
     if (!DRIVING_KEYS.has(event.code)) return;
     event.preventDefault();
     if (event.code === "KeyR") {

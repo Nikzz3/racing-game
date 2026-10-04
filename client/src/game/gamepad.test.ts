@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { browserGamepads, readGamepads, Rumble, type GamepadList } from "./gamepad";
 
 interface PadState {
+  mapping?: GamepadMappingType;
   axes?: number[];
   /** Button index → analog value; at least 0.5 counts as pressed. */
   buttons?: Record<number, number>;
@@ -9,7 +10,13 @@ interface PadState {
   playEffect?: GamepadHapticActuator["playEffect"] | null;
 }
 
-function pad({ axes = [0, 0, 0, 0], buttons = {}, connected = true, playEffect }: PadState = {}) {
+function pad({
+  mapping = "standard",
+  axes = [0, 0, 0, 0],
+  buttons = {},
+  connected = true,
+  playEffect,
+}: PadState = {}) {
   const list = Array.from({ length: 17 }, (_, index) => {
     const value = buttons[index] ?? 0;
     return { pressed: value >= 0.5, touched: value > 0, value };
@@ -18,7 +25,7 @@ function pad({ axes = [0, 0, 0, 0], buttons = {}, connected = true, playEffect }
     axes,
     buttons: list,
     connected,
-    mapping: "standard",
+    mapping,
     vibrationActuator:
       playEffect === null
         ? null
@@ -34,6 +41,18 @@ describe("readGamepads", () => {
     expect(readGamepads([])).toBeNull();
     expect(readGamepads([null, null])).toBeNull();
     expect(readGamepads([pad({ connected: false, buttons: { [RT]: 1 } })])).toBeNull();
+  });
+
+  it("ignores a pad the browser can't map to the standard layout", () => {
+    // Its button 3 may be anything, and must not respawn the car.
+    const raw = pad({ mapping: "", axes: [-1, 0], buttons: { 3: 1, [RT]: 1 } });
+    expect(readGamepads([raw])).toBeNull();
+    expect(readGamepads([raw, pad({ buttons: { [LT]: 1 } })])).toEqual({
+      throttle: 0,
+      brake: 1,
+      steer: 0,
+      respawn: false,
+    });
   });
 
   it("is neutral with a pad at rest", () => {
@@ -105,6 +124,12 @@ describe("Rumble", () => {
     expect(hard.strongMagnitude!).toBeGreaterThan(soft.strongMagnitude!);
     expect(hard.duration!).toBeGreaterThan(soft.duration!);
     expect(hard.strongMagnitude).toBeLessThanOrEqual(1);
+  });
+
+  it("leaves a pad it doesn't read alone", () => {
+    const playEffect = vi.fn(() => Promise.resolve("complete" as const));
+    rumbling([pad({ mapping: "", playEffect })]).impact(1, 0);
+    expect(playEffect).not.toHaveBeenCalled();
   });
 
   it("ignores a hit of nothing", () => {

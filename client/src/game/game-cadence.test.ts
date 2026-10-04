@@ -5,6 +5,8 @@ import type { PlayerSnapshot } from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
 import { Hud } from "../ui/hud";
+import type { Sound } from "./sound";
+import { SoundSettings } from "./sound-settings";
 
 const linking = vi.hoisted(() => ({ programs: [] as { isReady(): boolean }[] }));
 vi.mock("three", async (importOriginal) => {
@@ -139,6 +141,54 @@ describe("local car render cadence", () => {
     // A poll after dispose() would read the disposed renderer's programs.
     expect(isReady).toHaveBeenCalledTimes(polls);
     expect(frame).toBeUndefined();
+  });
+});
+
+describe("race sound", () => {
+  it("keeps the race running, silent, if the audio API throws mid-frame", async () => {
+    game.dispose();
+    frame = undefined;
+    const race = {
+      engines: 1,
+      update: vi.fn(() => {
+        throw new TypeError("The provided float value is non-finite.");
+      }),
+      dispose: vi.fn(),
+    };
+    const audio = { settings: new SoundSettings(), race: () => race, state: () => null };
+    const added = vi.mocked(THREE.Scene.prototype.add).mock.calls.length;
+    game = new Game(
+      document.body,
+      new Net(),
+      "local",
+      "Test room",
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      audio as unknown as Sound,
+    );
+    carMesh = vi
+      .mocked(THREE.Scene.prototype.add)
+      .mock.calls.slice(added)
+      .flat()
+      .find((object) => object instanceof THREE.Group)! as THREE.Group;
+    await vi.waitFor(() => expect(frame).toBeDefined());
+    throttle();
+    const first = frame!;
+    frame = undefined;
+    now += 1000 / 60;
+    first(now);
+    expect(race.update).toHaveBeenCalledOnce();
+    expect(race.dispose).toHaveBeenCalledOnce();
+    // The frame loop carried on: it asked for the next frame, and the car still drives.
+    expect(frame).toBeDefined();
+    const position = carMesh.position.clone();
+    for (let i = 0; i < 10; i++) tick(1000 / 60);
+    expect(carMesh.position.distanceTo(position)).toBeGreaterThan(0);
+    expect(race.update).toHaveBeenCalledOnce();
   });
 });
 

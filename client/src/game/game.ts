@@ -81,7 +81,7 @@ export class Game {
   private readonly started: Promise<void>;
   private readonly resolution: AdaptiveResolution | null;
   private pacer: PacerOverlay | null = null;
-  private readonly sound: RaceSound | null;
+  private sound: RaceSound | null;
   private readonly rumble = new Rumble();
   /** Where the camera hears from; refreshed every frame. */
   private readonly listener: Listener = { x: 0, z: 0, forwardX: 0, forwardZ: 1 };
@@ -398,18 +398,25 @@ export class Game {
     const cars = pacer
       ? [...remotes, { id: "pacer", x: pacer.x, z: pacer.z, speed: pacer.speed, pacer: true }]
       : remotes;
-    this.sound.update(
-      dt,
-      {
-        speed: this.car.speed,
-        throttle: input.throttle,
-        steer: input.steer,
-        onTrack: this.car.onTrack,
-        hit,
-      },
-      this.listener,
-      cars,
-    );
+    try {
+      this.sound.update(
+        dt,
+        {
+          speed: this.car.speed,
+          throttle: input.throttle,
+          steer: input.steer,
+          onTrack: this.car.onTrack,
+          hit,
+        },
+        this.listener,
+        cars,
+      );
+    } catch (error) {
+      // The browser's audio API throws where the frame loop must not: lose the sound, not the race.
+      console.warn("Race sound stopped", error);
+      this.sound.dispose();
+      this.sound = null;
+    }
   }
   private adaptResolution(now: number): void {
     const step = this.resolution?.frame(now) ?? null;

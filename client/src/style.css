@@ -960,6 +960,11 @@ a {
   border: 0;
   accent-color: var(--accent);
 }
+/* The slider has no border to light up like the other fields, so it takes the buttons' ring. */
+.setup-field input.sound-volume:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .sound-volume-value {
   flex: none;
   width: 4ch;

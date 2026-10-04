@@ -4,10 +4,14 @@ import { Sound, type DriverSound, type HeardCar } from "./sound";
 import { SoundSettings } from "./sound-settings";
 import type { Listener } from "./sound-model";
 
-/** An AudioParam that jumps straight to each target, so tests read where it is headed. */
+/**
+ * An AudioParam that jumps straight to each target, so tests read where it is headed. Like
+ * a browser's, it throws on a value that isn't finite.
+ */
 class FakeParam {
   constructor(public value: number) {}
   setTargetAtTime(value: number): this {
+    if (!Number.isFinite(value)) throw new TypeError(`The provided float value is non-finite.`);
     this.value = value;
     return this;
   }
@@ -73,14 +77,22 @@ class FakeContext {
   readonly sources: FakeSource[] = [];
   /** Whether resume() may start the context; autoplay rules can refuse it. */
   allowed = true;
-  resume = vi.fn(() => {
-    if (this.allowed) this.state = "running";
-    return Promise.resolve();
-  });
-  suspend = vi.fn(() => {
-    this.state = "suspended";
-    return Promise.resolve();
-  });
+  /** Like a real browser, change state a moment after the call and say so; else at once. */
+  deferred = false;
+  onstatechange: (() => void) | null = null;
+  resume = vi.fn(() => this.become(this.allowed ? "running" : this.state));
+  suspend = vi.fn(() => this.become("suspended"));
+  private become(state: AudioContextState): Promise<void> {
+    if (!this.deferred) {
+      this.state = state;
+      return Promise.resolve();
+    }
+    return Promise.resolve().then(() => {
+      if (this.state === state) return;
+      this.state = state;
+      this.onstatechange?.();
+    });
+  }
   createGain(): FakeGain {
     const gain = new FakeGain();
     this.gains.push(gain);
@@ -162,6 +174,35 @@ describe("Sound", () => {
     expect(context.state).toBe("running");
   });
 
+  it("starts the context on the Lobby's first gesture, so a race can resume it later", async () => {
+    context.deferred = true;
+    const create = vi.fn(() => context as unknown as AudioContext);
+    const output = new Sound(new SoundSettings(), create);
+    window.dispatchEvent(new PointerEvent("pointerdown"));
+    window.dispatchEvent(new PointerEvent("pointerup"));
+    expect(create).toHaveBeenCalledOnce();
+    expect(context.resume).toHaveBeenCalledOnce();
+    // Started, and with no race on, stopped again.
+    await vi.waitFor(() => expect(context.suspend).toHaveBeenCalled());
+    await vi.waitFor(() => expect(context.state).toBe("suspended"));
+    output.race(TOP_SPEED);
+    await vi.waitFor(() => expect(context.state).toBe("running"));
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("resumes a race whose page came back before its suspend landed", async () => {
+    const output = sound();
+    output.race(TOP_SPEED);
+    context.deferred = true;
+    hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    hidden = false;
+    // Still reported running: the suspend has not landed yet.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(context.resume).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(context.state).toBe("running"));
+  });
+
   it("retries a start the autoplay policy refused on the next user gesture", () => {
     context.allowed = false;
     const output = sound();
@@ -212,14 +253,45 @@ describe("RaceSound", () => {
     expect(playing().length).toBe(before + perEngine);
   });
 
-  it("hears only the nearest six cars", () => {
+  it("hears only the nearest six cars, and swaps one in only once it is clearly nearer", () => {
     const race = sound().race(TOP_SPEED)!;
+    const stopped = () => context.sources.filter((source) => source.stoppedAt !== null).length;
+    // Listed farthest first: c0 at 300 m in to c7 at 90 m.
     const cars = Array.from({ length: 8 }, (_, index) => car(`c${index}`, 300 - index * 30));
     race.update(1 / 60, PARKED, LISTENER, cars);
     expect(race.engines).toBe(7);
-    // The farthest two are the first two listed.
+    // Dropping the two farthest releases no voice: they never had one.
     race.update(1 / 60, PARKED, LISTENER, cars.slice(2));
+    expect(stopped()).toBe(0);
+    // c1 edging just past c2, the farthest heard, doesn't take its voice…
+    cars[1] = car("c1", 230);
+    race.update(1 / 60, PARKED, LISTENER, cars);
+    expect(stopped()).toBe(0);
+    // …but well past it, it does.
+    cars[1] = car("c1", 150);
+    race.update(1 / 60, PARKED, LISTENER, cars);
     expect(race.engines).toBe(7);
+    expect(stopped()).toBeGreaterThan(0);
+  });
+
+  it("starts a car's engine at the revs its speed implies, not from idle", () => {
+    const race = sound().race(TOP_SPEED)!;
+    const before = context.sources.length;
+    race.update(1 / 60, PARKED, LISTENER, [car("fast", 20, { speed: 60 })]);
+    const idleLoop = context.sources.slice(before).filter((source) => source.loop)[0];
+    // The first engine loop is built at 1000 rpm: at 60 m/s the revs are far above it.
+    expect(idleLoop.playbackRate.value).toBeGreaterThan(5);
+  });
+
+  it("ignores a car whose relayed pose or speed isn't a finite number", () => {
+    const race = sound().race(TOP_SPEED)!;
+    const forged = [
+      car("far", 0, { x: 1.5e308, z: 1.5e308 }),
+      car("nan", 20, { speed: Number.NaN }),
+      car("fine", 30),
+    ];
+    expect(() => race.update(1 / 60, PARKED, LISTENER, forged)).not.toThrow();
+    expect(race.engines).toBe(2);
   });
 
   it("revs the driver's engine with speed, and pulls harder on the throttle", () => {

@@ -14,9 +14,16 @@ interface PadControls {
   respawn?: boolean;
 }
 
+/** One effect the pad was asked to play: its type and its two motors' strengths. */
+interface Rumble {
+  type: string;
+  strong: number;
+  weak: number;
+}
+
 declare global {
   interface Window {
-    __pad?: { set(controls: PadControls): void; rumbles: { type: string; strong: number }[] };
+    __pad?: { set(controls: PadControls): void; rumbles: Rumble[] };
   }
 }
 
@@ -27,7 +34,7 @@ declare global {
 function installFakePad(): void {
   const buttons = Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 }));
   const axes = [0, 0, 0, 0];
-  const rumbles: { type: string; strong: number }[] = [];
+  const rumbles: { type: string; strong: number; weak: number }[] = [];
   const pad = {
     id: "Fake standard pad",
     index: 0,
@@ -37,8 +44,12 @@ function installFakePad(): void {
     axes,
     buttons,
     vibrationActuator: {
-      playEffect(type: string, params: { strongMagnitude?: number } = {}) {
-        rumbles.push({ type, strong: params.strongMagnitude ?? 0 });
+      playEffect(type: string, params: { strongMagnitude?: number; weakMagnitude?: number } = {}) {
+        rumbles.push({
+          type,
+          strong: params.strongMagnitude ?? 0,
+          weak: params.weakMagnitude ?? 0,
+        });
         return Promise.resolve("complete");
       },
       reset: () => Promise.resolve("complete"),
@@ -84,17 +95,18 @@ test("drives with an analog gamepad, rumbles off the road and respawns from the 
   expect(await heading()).toBeCloseTo(start.heading, 6);
 
   // Full left stick with full throttle turns left (a growing heading), and the tight
-  // circle soon leaves the road, where the pad rumbles.
+  // circle soon leaves the road, where the pad buzzes: a light rumble led by the weak
+  // (high-frequency) motor, unlike a hit's jolt, which leads with the strong one.
   const beforeTurn = await game.state();
   await setPad(page, { throttle: 1, steer: -1 });
   await expect.poll(heading, slow).toBeGreaterThan(beforeTurn.heading + 0.4);
   await expect(page.locator(".offtrack-warn")).toHaveClass(/\bvisible\b/, slow);
-  await expect
-    .poll(() => page.evaluate(() => window.__pad!.rumbles.filter((r) => r.strong > 0).length))
-    .toBeGreaterThan(0);
-  expect(await page.evaluate(() => window.__pad!.rumbles.map((r) => r.type))).toContain(
-    "dual-rumble",
-  );
+  const buzzes = () =>
+    page.evaluate(
+      () =>
+        window.__pad!.rumbles.filter((r) => r.type === "dual-rumble" && r.weak > r.strong).length,
+    );
+  await expect.poll(buzzes, slow).toBeGreaterThan(0);
 
   // Y respawns the car on the grid, standing still.
   await setPad(page, { respawn: true });
@@ -127,16 +139,19 @@ test("plays the race at the Lobby's volume and mutes from the HUD or the M key",
   // The lobby clicks were the user gesture autoplay needs, so the engine runs from the
   // start; muted in the Lobby, it is silent.
   await expect.poll(sound).toMatchObject({ context: "running", engines: 1, gain: 0 });
+  // The master gain glides to each new level, so polls wait for it to settle there.
+  const gain = async () => (await sound())?.gain ?? Number.NaN;
   const hudMute = page.getByRole("button", { name: "Mute", exact: true });
   await expect(hudMute).toHaveAttribute("aria-pressed", "true");
 
   await page.keyboard.press("m");
   await expect(hudMute).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(async () => (await sound())?.gain).toBeGreaterThan(0);
+  // 40% on the slider plays at 0.16, the square of the volume.
+  await expect.poll(gain).toBeCloseTo(0.16, 3);
 
   await hudMute.click();
   await expect(hudMute).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(async () => (await sound())?.gain).toBe(0);
+  await expect.poll(gain).toBeLessThan(0.001);
 
   // Both choices persist like the other Lobby choices.
   await page.reload();
