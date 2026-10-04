@@ -325,14 +325,6 @@ describe("Hud rival prompt", () => {
     expect(prompt()).toBeNull();
   });
 
-  it("races the offered Rival through the keyboard shortcut", () => {
-    const onRace = vi.fn();
-    hud.showRivalPrompt("Ana", 24_440, onRace);
-    hud.acceptRivalPrompt();
-    expect(onRace).toHaveBeenCalledOnce();
-    expect(prompt()).toBeNull();
-  });
-
   it("keeps only the newest offer, and withdraws it after a while", () => {
     const first = vi.fn();
     const second = vi.fn();

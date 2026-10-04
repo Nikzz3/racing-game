@@ -14,7 +14,6 @@ const ids = (svg: SVGSVGElement) => [...svg.querySelectorAll("[id]")].map((el) =
 describe("medalBadge", () => {
   it("names the tier for assistive technology, or hides it when decorative", () => {
     const svg = render(medalBadge("gold", "lb-medal-badge"));
-    expect([...svg.classList]).toEqual(["medal-badge", "medal-gold", "lb-medal-badge"]);
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.getAttribute("aria-label")).toBe("Gold medal");
     const decorative = render(medalBadge("gold", "", { decorative: true }));

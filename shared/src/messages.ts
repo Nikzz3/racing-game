@@ -78,6 +78,14 @@ export type ClientMessage =
       t?: number;
     };
 
+/** Longest driver name the server keeps; longer names are cut to it. */
+export const MAX_NAME_LENGTH = 16;
+
+/** The name a driver races, and their Medals and Standings belong to, under the server's rules. */
+export function driverName(name: string): string {
+  return name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
+}
+
 const isString = (value: unknown): value is string => typeof value === "string";
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);

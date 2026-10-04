@@ -54,11 +54,15 @@ _Avoid_: ghost, shadow, phantom, opponent (informal); rival, except for the Pace
 
 **Medal**:
 One of four tiers a driver's best lap can earn on a `(Track, Difficulty)`: Bronze, Silver, Gold and Author, from easiest to hardest. Each tier is a target lap time: Author is set per `(Track, Difficulty)` (on Sunset Ridge at Medium it is the AI Reference Lap time), and Gold, Silver and Bronze are 106%, 120% and 150% of it. A Medal is never stored: it is read off the driver name's persisted best lap, so only Plausible Laps earn one, and the driver keeps it on any device under the same name (ADR-0012).
-_Avoid_: badge, trophy, award
+_Avoid_: trophy, achievement
 
 **Rival**:
 The Pacer the Rival ladder offers next: the slowest lap on a `(Track, Difficulty)` leaderboard that has a Replay, belongs to another driver, and is still faster than the driver's persisted best (or, before their first Plausible Lap there, the slowest such lap). Offered after every lap in a Room and in the Lobby's Pacer picker; beating it advances to the next Rival, so the next target is always just ahead.
 _Avoid_: opponent, target, nemesis
+
+**Standing**:
+A driver name's place on one `(Track, Difficulty)` leaderboard: their persisted best lap (if any) and their current Rival. Medals, car unlocks and the Rival ladder are all read off a driver's Standings; the server sends them on request and after each of the driver's Plausible Laps.
+_Avoid_: profile, stats, progress
 
 **Jev**:
 TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where a racing line code computed lies ahead, and code's speed check: whether the car is too fast to make the road ahead, and by how much) and Jev answers two Choice questions — brake or accelerate given the speed check, and steer left, right or nothing (leave the wheel centred) to point at the racing line. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (twice how sure Jev is of its side, 2 · (P(left) − P(right)) clamped, so "nothing" adds no steering). Code does the physics and Jev the judgment, so Jev's pedal mostly follows the speed check (ADR-0011). Jev only drives offline, in `npm run jev:record`: the API key lives in the recording developer's `.env`, and neither the game nor the server talks to TypeSafe (ADR-0010). Jev drives Sunset Ridge at Medium only, where its racing line and speed check were tuned, in its canonical car (`race-future`).

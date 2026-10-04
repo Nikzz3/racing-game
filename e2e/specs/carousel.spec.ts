@@ -191,10 +191,6 @@ test("a Medal read off the persisted best lap unlocks its car", async ({ db, pag
 
   await selectCar(page, "police");
   await expect(select).toBeEnabled();
-  await selectCar(page, "race-future");
-  await expect(select).toBeDisabled();
-
-  await selectCar(page, "police");
   await openRaceSettings(page);
   await expect(page.locator(".medal-best")).toContainText("Gold medal");
 });

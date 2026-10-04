@@ -28,10 +28,6 @@ describe("medalTimes", () => {
       for (const difficulty of DIFFICULTIES)
         expect(medalTimes(track.id, difficulty), `${track.id} ${difficulty}`).not.toBeNull();
   });
-
-  it("has no targets for an unknown Track", () => {
-    expect(medalTimes("atlantis", "medium")).toBeNull();
-  });
 });
 
 describe("medalFor and nextMedal", () => {

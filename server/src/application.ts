@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
-import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
+import {
+  driverName,
+  MAX_NAME_LENGTH,
+  parseClientMessage,
+  type ClientMessage,
+  type ServerMessage,
+} from "@racing/shared";
 import { bestTime, standings, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -8,10 +14,6 @@ import { createPlayer, RoomManager, type Player } from "./rooms";
 import { SerialQueues } from "./serial";
 import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
-
-const MAX_NAME_LENGTH = 16;
-
-const driverName = (name: string): string => name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
 
 /** ws hands text frames over as a Buffer, but its `RawData` type also admits an
  *  ArrayBuffer (whose `toString()` is "[object ArrayBuffer]") and Buffer chunks. */

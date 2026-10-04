@@ -44,7 +44,7 @@ export class Hud {
   private lapShown: number | null = null;
   private checkpointFill = "";
   private readonly remoteDots = new Map<string, HTMLElement>();
-  private medal = "";
+  private medalKey = "";
   private rivalPrompt: {
     element: HTMLElement;
     race: () => void;
@@ -175,8 +175,8 @@ export class Hud {
     const earned = medalFor(times, bestMs),
       next = nextMedal(times, bestMs);
     const key = `${earned}:${next}:${next ? times[next] : bestMs}`;
-    if (key === this.medal) return;
-    this.medal = key;
+    if (key === this.medalKey) return;
+    this.medalKey = key;
     chip.dataset.medal = earned ?? "none";
     chip.dataset.next = next ?? "none";
     this.el(".hud-medal-badge").innerHTML = earned

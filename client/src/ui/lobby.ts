@@ -1,6 +1,7 @@
 import {
   asVariant,
   bestMedal,
+  driverName,
   CAR_VARIANTS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
@@ -370,7 +371,7 @@ export class Lobby {
     this.callbacks.onNameChange();
   }
   get playerName(): string {
-    return this.nameInput.value.trim().slice(0, 16) || "Racer";
+    return driverName(this.nameInput.value);
   }
   /** The car the driver races (and hello carries): never a locked Variant. */
   get selectedVariant(): Variant {
