@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
 import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
-import { bestTime, topEntries } from "./leaderboard";
+import { bestTime, standings, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
 import { createPlayer, RoomManager, type Player } from "./rooms";
@@ -10,6 +10,8 @@ import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
 
 const MAX_NAME_LENGTH = 16;
+
+const driverName = (name: string): string => name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
 
 /** ws hands text frames over as a Buffer, but its `RawData` type also admits an
  *  ArrayBuffer (whose `toString()` is "[object ArrayBuffer]") and Buffer chunks. */
@@ -92,7 +94,7 @@ export class RacingApplication {
   private receive(player: Player, message: ClientMessage): void {
     switch (message.type) {
       case "hello":
-        player.name = message.name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
+        player.name = driverName(message.name);
         player.variant = message.variant;
         return;
       case "createRoom":
@@ -117,7 +119,7 @@ export class RacingApplication {
         return;
       case "state": {
         const lap = recordState(player, message, Date.now());
-        if (lap) this.completeLap(lap);
+        if (lap) this.completeLap(player, lap);
         return;
       }
       case "getReplay":
@@ -125,6 +127,9 @@ export class RacingApplication {
           console.error("Failed to load replay:", error);
           send(player.ws, { type: "error", message: "Replay is temporarily unavailable" });
         });
+        return;
+      case "getStandings":
+        void this.sendStandings(player, driverName(message.name));
         return;
     }
   }
@@ -161,7 +166,17 @@ export class RacingApplication {
     send(player.ws, { type: "replay", name, track: message.track, ...replay });
   }
 
-  private completeLap(lap: CompletedLap): void {
+  /** Standings are background state, so a failed lookup is only logged, never shown. */
+  private async sendStandings(player: Player, name: string): Promise<void> {
+    if (player.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      send(player.ws, { type: "standings", name, standings: await standings(name) });
+    } catch (error) {
+      console.error("Failed to load standings:", error);
+    }
+  }
+
+  private completeLap(player: Player, lap: CompletedLap): void {
     const { room, message } = lap;
     if (!lap.plausible) {
       console.info(
@@ -191,6 +206,9 @@ export class RacingApplication {
       } finally {
         room.broadcast(message);
       }
+      // Improved or not, the client offers the Rival after every lap. Sent to the
+      // driver's socket rather than the room, which they may have left by now.
+      void this.sendStandings(player, message.name);
     });
   }
 
