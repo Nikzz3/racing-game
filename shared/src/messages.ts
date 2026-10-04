@@ -187,7 +187,8 @@ export type ServerMessage =
     }
   /**
    * Every board's Standing for one driver name: the answer to getStandings, and
-   * sent unprompted to a driver after each of their Plausible Laps is persisted.
+   * sent unprompted to a driver after each of their Plausible Laps is persisted
+   * (`afterLap`). A driver receives them in the order they were asked for.
    */
-  | { type: "standings"; name: string; standings: Standing[] }
+  | { type: "standings"; name: string; standings: Standing[]; afterLap: boolean }
   | { type: "error"; message: string };

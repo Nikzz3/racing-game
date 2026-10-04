@@ -84,8 +84,6 @@ export class Game {
   private pacerTimes: (number | null)[] = [];
   private readonly board: Board;
   private standings: readonly Standing[] = [];
-  /** One of the driver's laps finished since the last Standings, which the next ones answer. */
-  private lapPending = false;
   private nextCheckpoint = 0;
   private localLapStart: number | null = null;
   private progress: PlayerSnapshot | null = null;
@@ -257,17 +255,16 @@ export class Game {
   /**
    * The driver's Standings feed the HUD's Medal chip. Those answering one of the
    * driver's laps may also award a better Medal and climb the Rival ladder; the
-   * baseline, or a late reply to the Lobby's request, only refreshes the chip.
+   * baseline, or a reply to the Lobby's request, only refreshes the chip.
    */
-  setStandings(standings: readonly Standing[]): void {
+  setStandings(standings: readonly Standing[], afterLap = false): void {
     const before = this.standings;
     this.standings = standings;
     this.hud.setMedal(
       medalTimes(this.board.track, this.board.difficulty),
       standingOn(standings, this.board)?.bestMs ?? null,
     );
-    if (!this.lapPending) return;
-    this.lapPending = false;
+    if (!afterLap) return;
     const { award, rival } = ladderStep(
       before,
       standings,
@@ -315,7 +312,6 @@ export class Game {
       }
     } else if (message.type === "lap") {
       if (message.playerId === this.myId) {
-        this.lapPending = true;
         this.seam?.recordLapSubmission(message.laps);
         const suffix = message.isTrackRecord
           ? "  TRACK RECORD!"

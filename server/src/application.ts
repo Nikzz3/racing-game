@@ -28,6 +28,9 @@ export class RacingApplication {
   // Each (track, difficulty) board compares the record and writes the lap as
   // one job, so two laps finishing together cannot both claim the record.
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
+  // Each driver's Standings go out in the order they were asked for, so an older
+  // lookup can never land after, and overwrite, the one answering a newer lap.
+  private readonly standingsSends = new SerialQueues("Failed to load standings");
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -131,7 +134,7 @@ export class RacingApplication {
         });
         return;
       case "getStandings":
-        void this.sendStandings(player, driverName(message.name));
+        void this.sendStandings(player, driverName(message.name), false);
         return;
     }
   }
@@ -169,13 +172,11 @@ export class RacingApplication {
   }
 
   /** Standings are background state, so a failed lookup is only logged, never shown. */
-  private async sendStandings(player: Player, name: string): Promise<void> {
-    if (player.ws.readyState !== WebSocket.OPEN) return;
-    try {
-      send(player.ws, { type: "standings", name, standings: await standings(name) });
-    } catch (error) {
-      console.error("Failed to load standings:", error);
-    }
+  private sendStandings(player: Player, name: string, afterLap: boolean): Promise<void> {
+    return this.standingsSends.enqueue(player.id, async () => {
+      if (player.ws.readyState !== WebSocket.OPEN) return;
+      send(player.ws, { type: "standings", name, afterLap, standings: await standings(name) });
+    });
   }
 
   private completeLap(player: Player, lap: CompletedLap): void {
@@ -211,7 +212,7 @@ export class RacingApplication {
       // Improved or not, the client offers the Rival after every lap. Sent to the
       // driver's socket rather than the room, which they may have left by now, and
       // awaited so a board's laps answer in the order they finished.
-      await this.sendStandings(player, message.name);
+      await this.sendStandings(player, message.name, true);
     });
   }
 

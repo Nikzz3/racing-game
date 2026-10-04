@@ -225,6 +225,7 @@ describe("standings", () => {
       expect(client.messages).toContainEqual({
         type: "standings",
         name: "Ava",
+        afterLap: false,
         standings: STANDINGS,
       }),
     );
@@ -256,10 +257,31 @@ describe("standings", () => {
     expect(driver.messages.at(-1)).toEqual({
       type: "standings",
       name: "Ava",
+      afterLap: true,
       standings: STANDINGS,
     });
     expect(other.messages).toContainEqual(expect.objectContaining({ type: "lap", name: "Ava" }));
     expect(other.messages.some((m) => m.type === "standings")).toBe(false);
+  });
+
+  it("sends a driver's standings in the order they were asked for", async () => {
+    let release!: (value: Standing[]) => void;
+    vi.mocked(standings).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    const driver = await connected("Ava");
+    await enter(driver, DUSK);
+
+    // A slow lookup the Lobby asked for must not land after the newer lap's.
+    driver.message({ type: "getStandings", name: "Ava" });
+    driveLap(driver, 5_000);
+    await vi.waitFor(() => expect(submitLap).toHaveBeenCalledOnce());
+    release([]);
+    await vi.waitFor(() =>
+      expect(driver.messages.filter((m) => m.type === "standings")).toHaveLength(2),
+    );
+    expect(driver.messages.filter((m) => m.type === "standings").map((m) => m.afterLap)).toEqual([
+      false,
+      true,
+    ]);
   });
 
   it("sends no standings after an implausible lap", async () => {

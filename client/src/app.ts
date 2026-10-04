@@ -138,7 +138,7 @@ export class RacingApp {
         // A lap finished under a name the driver has since changed reports the old name.
         if (message.name !== this.lobby.playerName) return;
         this.lobby.setStandings(message.standings);
-        if (this.view instanceof Game) this.view.setStandings(message.standings);
+        if (this.view instanceof Game) this.view.setStandings(message.standings, message.afterLap);
         return;
       case "rooms":
         this.lobby.setRooms(message.rooms);

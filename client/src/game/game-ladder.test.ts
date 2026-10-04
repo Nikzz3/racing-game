@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as THREE from "three";
-import type { ReplayFrame, ServerMessage, Standing } from "@racing/shared";
+import type { ReplayFrame, Standing } from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
 import type { Rival } from "./ladder";
@@ -45,16 +45,6 @@ vi.mock("./pacer", async (importOriginal) => ({
 
 const ANA: Rival = { name: "Ana", timeMs: 24_440 };
 const BEN: Rival = { name: "Ben", timeMs: 24_100 };
-const LAP: ServerMessage = {
-  type: "lap",
-  playerId: "me",
-  name: "Me",
-  lapTimeMs: 25_000,
-  bestLapMs: 25_000,
-  laps: 1,
-  isPersonalBest: true,
-  isTrackRecord: false,
-};
 const standing = (bestMs: number, rival: Rival | null): Standing[] => [
   { track: "sunset-ridge", difficulty: "medium", bestMs, rival },
 ];
@@ -82,8 +72,7 @@ it("climbs the Rival ladder after laps, ignoring a Replay asked for before a swa
   game.setStandings(standing(26_000, ANA));
   expect(document.querySelector(".rival-prompt, .medal-award")).toBeNull();
 
-  game.onMessage(LAP);
-  game.setStandings(standing(25_000, ANA));
+  game.setStandings(standing(25_000, ANA), true);
   expect(document.querySelector(".medal-award-gold")).not.toBeNull();
   window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyN" }));
   expect(sent).toHaveBeenLastCalledWith({
@@ -94,8 +83,7 @@ it("climbs the Rival ladder after laps, ignoring a Replay asked for before a swa
   });
   expect(text(".pacer-chip-name")).toBe("Ana");
 
-  game.onMessage(LAP);
-  game.setStandings(standing(24_300, BEN));
+  game.setStandings(standing(24_300, BEN), true);
   expect(sent).toHaveBeenLastCalledWith(expect.objectContaining({ name: "Ben" }));
   expect(text(".pacer-chip-name")).toBe("Ben");
   expect(text(".toast.record")).toContain("Rival beaten!");
