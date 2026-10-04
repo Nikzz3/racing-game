@@ -24,3 +24,6 @@ desktop/release/
 .env
 .env.*
 !.env.example
+
+# npm run track:check output (drive reports and their images).
+track-reports/

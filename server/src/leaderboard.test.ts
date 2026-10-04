@@ -81,6 +81,9 @@ describe.skipIf(!testDatabaseUrl)("standings", () => {
       await submitLap("Storm", "stormhaven", "medium", 59_500, frames);
 
       expect(await standings("Ava")).toEqual([
+        { track: "arrowhead", difficulty: "easy", bestMs: null, rival: null },
+        { track: "arrowhead", difficulty: "hard", bestMs: null, rival: null },
+        { track: "arrowhead", difficulty: "medium", bestMs: null, rival: null },
         { track: "stormhaven", difficulty: "easy", bestMs: null, rival: null },
         { track: "stormhaven", difficulty: "hard", bestMs: null, rival: null },
         {

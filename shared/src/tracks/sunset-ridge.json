@@ -1,0 +1,32 @@
+{
+  "id": "sunset-ridge",
+  "name": "Sunset Ridge Circuit",
+  "description": "Start straight along the bottom, a fast right sweeper, a left-right chicane, a blast up to the top-right corner, esses across the top, a dive on the left into a double-apex sweep, and a bottom-left corner back onto the start straight.",
+  "checkpoints": 12,
+  "controlPoints": [
+    [-40, -210],
+    [40, -213],
+    [110, -205],
+    [175, -180],
+    [215, -120],
+    [196, -58],
+    [157, -20],
+    [178, 32],
+    [225, 85],
+    [235, 150],
+    [195, 200],
+    [125, 185],
+    [70, 215],
+    [5, 185],
+    [-60, 215],
+    [-130, 205],
+    [-185, 155],
+    [-150, 95],
+    [-100, 60],
+    [-105, -5],
+    [-160, -35],
+    [-205, -80],
+    [-195, -150],
+    [-130, -195]
+  ]
+}

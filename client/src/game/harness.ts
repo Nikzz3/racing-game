@@ -1,6 +1,9 @@
 import {
   CHECKPOINT_RADIUS,
+  jevSafeSpeed,
   MAX_SPEED_MS,
+  nearestCenterline,
+  racingLineAhead,
   ROAD_HALF_WIDTH,
   SUNSET_RIDGE,
   TRACK_DIVISIONS,
@@ -196,6 +199,27 @@ export async function runDecidedLap<T extends CarInput>(
 
 export function runAutopilotLap(options: RunOptions = {}): RunResult | null {
   return runLap(options, (car, samples) => autopilotInput(car, samples));
+}
+
+/**
+ * A tidy driver for judging layouts: brakes whenever Jev's speed check says the
+ * car is too fast for the road ahead (ADR-0011) and steers for the racing line,
+ * looking further ahead the faster it goes. Unlike the autopilot it brakes for
+ * corners, so it survives long straights into hairpins. No Jev, no network.
+ */
+export function runRacingLineLap(options: RunOptions = {}): RunResult | null {
+  const track = options.track ?? SUNSET_RIDGE;
+  return runLap(options, (car) => {
+    const { index } = nearestCenterline(car.x, car.z, track.samples);
+    const aim = racingLineAhead(track, index, Math.max(10, Math.min(25, car.speed * 0.4)));
+    const bearing = normalizeAngle(Math.atan2(aim.x - car.x, aim.z - car.z) - car.heading);
+    const brake = car.speed > jevSafeSpeed(car, track);
+    return {
+      throttle: brake ? 0 : 1,
+      brake: brake ? 1 : 0,
+      steer: Math.max(-1, Math.min(1, bearing * 2.5)),
+    };
+  });
 }
 
 /**

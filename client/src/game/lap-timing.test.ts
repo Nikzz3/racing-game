@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CheckpointTracker, runAutopilotLap, replayInputs } from "./harness";
-import { NUM_CHECKPOINTS, STORMHAVEN, SUNSET_RIDGE } from "@racing/shared";
+import { STORMHAVEN, SUNSET_RIDGE } from "@racing/shared";
 
 const TRACKS = [
   { track: SUNSET_RIDGE, maxSteps: 36_000, maxLapMs: 300_000 },
@@ -47,8 +47,8 @@ describe("CheckpointTracker track isolation", () => {
 
   it("Sunset Ridge checkpoint positions do not complete a Stormhaven lap", () => {
     const tracker = new CheckpointTracker(sh);
-    for (let k = 0; k < NUM_CHECKPOINTS; k++) tracker.update(sr[k].x, sr[k].z, k * 60);
-    expect(tracker.update(sr[0].x, sr[0].z, NUM_CHECKPOINTS * 60)).toBeNull();
+    for (let k = 0; k < sr.length; k++) tracker.update(sr[k].x, sr[k].z, k * 60);
+    expect(tracker.update(sr[0].x, sr[0].z, sr.length * 60)).toBeNull();
   });
 
   it("a straight grass-cut across the Stormhaven infield does not complete a lap", () => {

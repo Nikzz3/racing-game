@@ -26,6 +26,9 @@ export type MedalTimes = Record<Medal, number>;
 const AUTHOR_MS: Record<string, Record<Difficulty, number>> = {
   "sunset-ridge": { easy: 30_500, medium: 23_800, hard: 22_000 },
   stormhaven: { easy: 39_000, medium: 30_000, hard: 28_500 },
+  // No Track Record yet: the racing-line lap (npm run track:check) scaled by Sunset
+  // Ridge's Author-to-racing-line ratio on each Difficulty (0.92, 0.86, 0.81).
+  arrowhead: { easy: 38_000, medium: 27_000, hard: 24_500 },
 };
 
 // Trackmania's editor defaults: each lower tier is a share of the Author time.

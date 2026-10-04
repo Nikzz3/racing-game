@@ -1,6 +1,7 @@
 """
 Python port of the car physics and track math, mirrored exactly from
-shared/src/track.ts (control points, Catmull-Rom sampling, nearest_centerline)
+shared/src/track.ts (Catmull-Rom sampling, nearest_centerline; control points
+from shared/src/tracks/*.json)
 and client/src/game/physics.ts (CarPhysics.update, difficulty tuning, wall clamp).
 rl/tests/test_golden.py replays Node-generated trajectories through this port,
 so keep the arithmetic order identical to the TypeScript.
@@ -8,34 +9,22 @@ so keep the arithmetic order identical to the TypeScript.
 Track-taking functions accept a `samples` centerline and default to Sunset Ridge.
 """
 
+import json
 import math
+from pathlib import Path
 from dataclasses import dataclass
 
 ROAD_HALF_WIDTH = 7
 BARRIER_OFFSET = 6
 TRACK_DIVISIONS = 512
 
-_SUNSET_RIDGE_CONTROL_POINTS = [
-    (-40, -210), (40, -213), (110, -205),
-    (175, -180), (215, -120),
-    (196, -58), (157, -20), (178, 32),
-    (225, 85), (235, 150),
-    (195, 200), (125, 185),
-    (70, 215), (5, 185), (-60, 215), (-130, 205),
-    (-185, 155),
-    (-150, 95), (-100, 60), (-105, -5),
-    (-160, -35), (-205, -80),
-    (-195, -150), (-130, -195),
-]
+_TRACKS_DIR = Path(__file__).resolve().parent.parent / "shared" / "src" / "tracks"
 
-# "Serpent's Coil": an apex at every control point (ADR 0003).
-_STORMHAVEN_CONTROL_POINTS = [
-    (232, 30), (228, -60), (218, -150), (188, -202), (110, -220), (25, -220),
-    (-65, -208), (-150, -188), (-198, -150), (-190, -102), (-150, -72),
-    (-110, -100), (-70, -73), (-30, -100), (10, -70), (45, -94), (95, -70),
-    (135, -20), (140, 40), (110, 80), (60, 95), (0, 80), (-70, 112),
-    (-140, 150), (-95, 172), (-40, 178), (90, 175), (185, 140), (225, 90),
-]
+
+def _control_points(slug):
+    """A Track's control points from the same JSON the TypeScript reads."""
+    with open(_TRACKS_DIR / f"{slug}.json") as f:
+        return [tuple(p) for p in json.load(f)["controlPoints"]]
 
 
 def _catmull_rom(p0, p1, p2, p3, t):
@@ -49,7 +38,7 @@ def _catmull_rom(p0, p1, p2, p3, t):
     )
 
 
-def _sample_track(control_points, divisions=TRACK_DIVISIONS):
+def sample_track(control_points, divisions=TRACK_DIVISIONS):
     n = len(control_points)
     pts = []
     for s in range(divisions):
@@ -74,9 +63,9 @@ def _sample_track(control_points, divisions=TRACK_DIVISIONS):
     return samples
 
 
-TRACK_SAMPLES = _sample_track(_SUNSET_RIDGE_CONTROL_POINTS)
-STORMHAVEN_SAMPLES = _sample_track(_STORMHAVEN_CONTROL_POINTS)
-TRACKS = {"sunset-ridge": TRACK_SAMPLES, "stormhaven": STORMHAVEN_SAMPLES}
+TRACKS = {p.stem: sample_track(_control_points(p.stem)) for p in sorted(_TRACKS_DIR.glob("*.json"))}
+TRACK_SAMPLES = TRACKS["sunset-ridge"]
+STORMHAVEN_SAMPLES = TRACKS["stormhaven"]
 
 
 def nearest_centerline(x, z, samples=TRACK_SAMPLES):
