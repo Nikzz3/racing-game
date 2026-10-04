@@ -25,6 +25,8 @@ export interface PlayerSnapshot {
   lapStartT: number | null;
   /** Checkpoint Penalties the lap in progress has collected; absent from servers predating them. */
   lapPenaltyMs?: number;
+  /** Checkpoints missed this session; only grows. Absent from servers predating penalties. */
+  missedCheckpoints?: number;
   nextCheckpoint: number;
   /** Respawns so far, advanced together with the spawn position. A change between snapshots is a teleport, not movement. */
   spawns: number;

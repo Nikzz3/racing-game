@@ -186,7 +186,7 @@ describe("local lap timer", () => {
     }
   });
 
-  it("adds the lap's Checkpoint Penalties and flashes each new one once", () => {
+  it("adds the lap's Checkpoint Penalties and flashes each new miss once", () => {
     const shown = vi.spyOn(Hud.prototype, "setCurrentLap");
     const flash = vi.spyOn(Hud.prototype, "flashCheckpointPenalty");
     const me: PlayerSnapshot = {
@@ -202,17 +202,24 @@ describe("local lap timer", () => {
       bestLapMs: null,
       lapStartT: 0,
       lapPenaltyMs: 0,
+      missedCheckpoints: 0,
       nextCheckpoint: 1,
       spawns: 0,
     };
     game.onMessage({ type: "snapshot", t: 0, players: [me] });
     tick(1000 / 60);
     const clean = shown.mock.lastCall![0]!;
-    for (let i = 0; i < 2; i++)
-      game.onMessage({ type: "snapshot", t: 0, players: [{ ...me, lapPenaltyMs: 2000 }] });
+    const penalized = { ...me, lapPenaltyMs: 2000, missedCheckpoints: 1 };
+    for (let i = 0; i < 2; i++) game.onMessage({ type: "snapshot", t: 0, players: [penalized] });
     tick(1000 / 60);
     expect(shown.mock.lastCall![0]! - clean).toBeGreaterThanOrEqual(2000);
     expect(shown.mock.lastCall![0]! - clean).toBeLessThan(2100);
     expect(flash).toHaveBeenCalledExactlyOnceWith(2000);
+
+    // A gate missed on the final stretch is charged and cleared as the lap completes.
+    const nextLap = { ...me, lapStartT: 1, missedCheckpoints: 2 };
+    game.onMessage({ type: "snapshot", t: 0, players: [nextLap] });
+    expect(flash).toHaveBeenLastCalledWith(2000);
+    expect(flash).toHaveBeenCalledTimes(2);
   });
 });

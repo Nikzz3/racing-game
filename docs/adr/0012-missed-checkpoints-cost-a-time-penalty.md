@@ -34,8 +34,12 @@ plus penalties.
   cannot pad a fabricated lap over the floor.
 - **The penalty is published**: the penalty so far this lap rides in each snapshot
   (`PlayerSnapshot.lapPenaltyMs`) and on the `lap` message (`penaltyMs`). The HUD's
-  running lap timer includes it, and a brief "CHECKPOINT MISSED +2s" flash replaces the
-  persistent warning.
+  running lap timer includes it. A brief "CHECKPOINT MISSED +2s" flash replaces the
+  persistent warning. The flash keys off a session count of missed gates
+  (`PlayerSnapshot.missedCheckpoints`), not the lap's penalty. A gate missed on the final
+  stretch is charged and cleared in the same update that completes the lap, and the
+  `lap` message trails the snapshots (it waits for the leaderboard write). So only a
+  count that never resets reports every miss exactly once.
 
 ## Considered options
 

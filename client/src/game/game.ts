@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {
+  CHECKPOINT_PENALTY_MS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   MAX_SPEED_MS,
@@ -84,6 +85,7 @@ export class Game {
   private lapStartT: number | null = null;
   /** Checkpoint Penalties the lap in progress has collected, per the server. */
   private lapPenaltyMs = 0;
+  private missedCheckpoints = 0;
   private previous = performance.now();
   /**
    * When the car's physical state was current, on the local clock. Sent with
@@ -254,10 +256,13 @@ export class Game {
         this.progress = me;
         this.hud.setMyProgress(me);
         this.lapStartT = me.lapStartT;
-        const penaltyMs = me.lapPenaltyMs ?? 0;
-        if (penaltyMs > this.lapPenaltyMs)
-          this.hud.flashCheckpointPenalty(penaltyMs - this.lapPenaltyMs);
-        this.lapPenaltyMs = penaltyMs;
+        this.lapPenaltyMs = me.lapPenaltyMs ?? 0;
+        const missed = me.missedCheckpoints ?? 0;
+        if (missed > this.missedCheckpoints)
+          this.hud.flashCheckpointPenalty(
+            (missed - this.missedCheckpoints) * CHECKPOINT_PENALTY_MS,
+          );
+        this.missedCheckpoints = missed;
       }
     } else if (message.type === "lap") {
       if (message.playerId === this.myId) {
@@ -267,8 +272,6 @@ export class Game {
           : message.isPersonalBest
             ? "  Personal best!"
             : "";
-        // The only report of a gate missed on the final stretch: it is charged and
-        // cleared as the lap completes, so no snapshot carries it.
         const penalty = message.penaltyMs ? ` (+${message.penaltyMs / 1000}s)` : "";
         this.hud.toast(
           `Lap ${message.laps} / ${formatMs(message.lapTimeMs)}${penalty}${suffix}`,

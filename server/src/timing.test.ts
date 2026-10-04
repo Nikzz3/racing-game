@@ -169,6 +169,7 @@ describe("updateTiming — Checkpoint Penalties", () => {
     at(t, 1, 5000);
     at(t, 4, 10_000);
     expect(t.penaltyMs).toBe(2 * CHECKPOINT_PENALTY_MS);
+    expect(t.missedCheckpoints).toBe(2);
     expect(t.next).toBe(5);
 
     const { result } = lapMissing(createTiming(), [2, 3]);
@@ -184,6 +185,8 @@ describe("updateTiming — Checkpoint Penalties", () => {
     const t = createTiming();
     const first = lapMissing(t, [5]);
     expect(t.penaltyMs).toBe(0);
+    // The session count survives the lap, so the miss is still announced.
+    expect(t.missedCheckpoints).toBe(1);
     expect(finishLap(t, first.now, 5000).result?.penaltyMs).toBe(0);
 
     at(t, 2, first.now + 70_000);

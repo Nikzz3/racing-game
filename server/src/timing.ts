@@ -13,6 +13,11 @@ export interface TimingState {
   lapStartT: number | null;
   /** Checkpoint Penalties the lap in progress has collected (ADR-0012). */
   penaltyMs: number;
+  /**
+   * Checkpoints missed this session. Only grows, so a client can flash each miss
+   * however its snapshots and lap messages interleave, even one charged as a lap completes.
+   */
+  missedCheckpoints: number;
   laps: number;
   lastLapMs: number | null;
   bestLapMs: number | null;
@@ -31,6 +36,7 @@ export function createTiming(): TimingState {
     next: 0,
     lapStartT: null,
     penaltyMs: 0,
+    missedCheckpoints: 0,
     laps: 0,
     lastLapMs: null,
     bestLapMs: null,
@@ -128,8 +134,9 @@ export function updateTiming(
 
   const reached = reachedCheckpoint(checkpoints, t.next, x, z);
   if (reached === null) return null;
-  t.penaltyMs +=
-    ((reached - t.next + checkpoints.length) % checkpoints.length) * CHECKPOINT_PENALTY_MS;
+  const missed = (reached - t.next + checkpoints.length) % checkpoints.length;
+  t.missedCheckpoints += missed;
+  t.penaltyMs += missed * CHECKPOINT_PENALTY_MS;
 
   let result: LapResult | null = null;
   if (reached === 0) {
