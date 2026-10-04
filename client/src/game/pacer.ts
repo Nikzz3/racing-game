@@ -44,7 +44,7 @@ export class PacerOverlay {
   }
 
   private buildMesh(): THREE.Group {
-    const mesh = createPacerMesh(this.driverName, this.variant);
+    const mesh = createPacerMesh(this.driverName, this.variant, "REPLAY");
     mesh.visible = false;
     this.scene.add(mesh);
     return mesh;
@@ -112,17 +112,9 @@ export class PacerOverlay {
     animateCar(this.mesh, pose.speed, 0, dt);
   }
 
-  // Every material on the Pacer is a per-instance clone, unlike a plain car's
-  // shared Blender materials, so dispose them all along with the badge.
   private removeMesh(): void {
     this.scene.remove(this.mesh);
-    this.mesh.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) disposeMaterials(obj.material);
-      else if (obj instanceof THREE.Sprite) {
-        obj.material.map?.dispose();
-        obj.material.dispose();
-      }
-    });
+    disposePacerMesh(this.mesh);
   }
 
   dispose(): void {
@@ -142,7 +134,8 @@ function ghosted(m: THREE.Material): THREE.Material {
   return cloned;
 }
 
-function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
+/** A Pacer's translucent car with `badge` floating above it; release it with disposePacerMesh. */
+export function createPacerMesh(driverName: string, variant: Variant, badge: string): THREE.Group {
   const group = createCarMesh(driverName, undefined, variant);
   group.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
@@ -151,7 +144,7 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
     obj.receiveShadow = false;
   });
   group.add(
-    labelSprite("REPLAY", {
+    labelSprite(badge.slice(0, 14), {
       background: "rgba(20, 20, 30, 0.6)",
       radius: 12,
       font: "bold 28px sans-serif",
@@ -160,4 +153,16 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
     }),
   );
   return group;
+}
+
+// Every material on a Pacer is a per-instance clone, unlike a plain car's
+// shared Blender materials, so dispose them all along with the badge.
+export function disposePacerMesh(mesh: THREE.Group): void {
+  mesh.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) disposeMaterials(obj.material);
+    else if (obj instanceof THREE.Sprite) {
+      obj.material.map?.dispose();
+      obj.material.dispose();
+    }
+  });
 }

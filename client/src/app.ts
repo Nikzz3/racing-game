@@ -1,6 +1,8 @@
 import {
   JEV_TRACK,
   JEV_VARIANT,
+  type RacePacer,
+  type RaceState,
   type ReplayFrame,
   type ServerMessage,
   type TrackSlug,
@@ -28,6 +30,12 @@ export class RacingApp {
   private reconnectDelay = 1000;
   private joining = false;
   private notice: HTMLElement | null = null;
+  /**
+   * The Room's latest race and its grid Pacers. A driver joining mid-race is sent
+   * both right after `joined`, before the Game exists to take them.
+   */
+  private race: RaceState | null = null;
+  private racePacers: RacePacer[] = [];
 
   constructor(private readonly root: HTMLElement) {
     this.lobby = new Lobby(root, {
@@ -118,6 +126,8 @@ export class RacingApp {
   private returnToLobby(): void {
     this.revision++;
     this.joining = false;
+    this.race = null;
+    this.racePacers = [];
     this.view?.dispose();
     this.view = null;
     this.lobby.show();
@@ -140,6 +150,14 @@ export class RacingApp {
         return;
       case "error":
         this.showError(message.message);
+        return;
+      case "race":
+        this.race = message.race;
+        if (this.view instanceof Game) this.view.onMessage(message);
+        return;
+      case "racePacers":
+        this.racePacers = message.pacers;
+        if (this.view instanceof Game) this.view.onMessage(message);
         return;
       case "replay":
         if (this.view instanceof Game)
@@ -180,6 +198,10 @@ export class RacingApp {
           );
           this.view = game;
           this.joining = false;
+          if (this.race) {
+            game.onMessage({ type: "racePacers", pacers: this.racePacers });
+            game.onMessage({ type: "race", race: this.race });
+          }
           if (pacer?.kind === "ai") game.receiveReplayFrames(pacer.frames, pacer.variant);
           if (pacer?.kind === "replay")
             this.net.send({

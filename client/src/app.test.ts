@@ -1,35 +1,55 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RaceState, ServerMessage } from "@racing/shared";
 import { RacingApp } from "./app";
 import type { ConnectionState } from "./net";
 
-const { connect, loadAssets, paintGarage } = vi.hoisted(() => ({
+const { connect, loadAssets, paintGarage, games } = vi.hoisted(() => ({
   connect: vi.fn<() => Promise<void>>(),
   loadAssets: vi.fn<() => Promise<void>>(),
   paintGarage: vi.fn<() => boolean>(),
+  /** The messages each Game was handed, in the order it was created. */
+  games: [] as ServerMessage[][],
 }));
 let reportStatus: (state: ConnectionState) => void;
+let deliver: (message: ServerMessage) => void;
 vi.mock("./net", () => ({
   Net: class {
     connect = connect;
-    onMessage() {}
+    onMessage(callback: (message: ServerMessage) => void) {
+      deliver = callback;
+    }
     onStatus(callback: (state: ConnectionState) => void) {
       reportStatus = callback;
     }
   },
 }));
-vi.mock("./game/game", () => ({ Game: class {} }));
+vi.mock("./game/game", () => ({
+  Game: class {
+    private readonly messages: ServerMessage[] = [];
+    constructor() {
+      games.push(this.messages);
+    }
+    onMessage(message: ServerMessage) {
+      this.messages.push(message);
+    }
+    dispose() {}
+  },
+}));
 vi.mock("./game/replay", () => ({ ReplayViewer: class {} }));
 vi.mock("./game/models", () => ({ preloadModels: loadAssets }));
 vi.mock("./ui/lobby", () => ({
   Lobby: class {
     paintGarageThumbnails = paintGarage;
+    armedPacer = null;
     setConnection() {}
     show() {}
+    hide() {}
   },
 }));
 
 beforeEach(() => {
+  games.length = 0;
   connect.mockReset();
   loadAssets.mockReset().mockResolvedValue();
   paintGarage.mockReset().mockReturnValue(true);
@@ -153,5 +173,37 @@ describe("initial garage loading", () => {
     expect(document.querySelector(".loading-status")!.textContent).toContain(
       "could not start on this device",
     );
+  });
+});
+
+describe("joining a Room mid-race", () => {
+  const joined: ServerMessage = {
+    type: "joined",
+    roomId: "r1",
+    roomName: "Room",
+    difficulty: "medium",
+    track: "sunset-ridge",
+  };
+  const race: RaceState = {
+    format: "knockout",
+    phase: "racing",
+    laps: 2,
+    goT: 1_000,
+    entrants: [{ id: "a", name: "A", slot: 0, laps: 0, status: "racing" }],
+  };
+  const pacers: ServerMessage = { type: "racePacers", pacers: [] };
+
+  it("hands the Game the race sent while it was still loading, and forgets it on leaving", async () => {
+    new RacingApp(document.body);
+    deliver(joined);
+    deliver(pacers);
+    deliver({ type: "race", race });
+    await vi.waitFor(() => expect(games).toHaveLength(1));
+    expect(games[0]).toEqual([pacers, { type: "race", race }]);
+
+    deliver({ type: "left" });
+    deliver(joined);
+    await vi.waitFor(() => expect(games).toHaveLength(2));
+    expect(games[1]).toEqual([]);
   });
 });
