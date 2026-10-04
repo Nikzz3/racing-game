@@ -1,8 +1,7 @@
 // Shrinks the Blender asset-library export in place.
 // Run after every Blender export: `npm run optimize:glb -w client` (see assets/blender/README.md).
 //
-// 1. Known source defects listed in REPAIRS are patched (see below).
-//    UV sets on primitives whose material has no texture are dropped: nothing samples them.
+// 1. UV sets on primitives whose material has no texture are dropped: nothing samples them.
 // 2. Over-dense nature models (the scattered trees) are simplified with meshoptimizer to
 //    about the size of the light ones, keeping their flat shading. This is the one lossy step.
 // 3. Normal maps: Blender packs Poly Haven's 16-bit PNGs. Browsers decode every texture to
@@ -30,20 +29,6 @@ const DEFAULT_PATH = fileURLToPath(
 // Anything denser than this is almost certainly a modifier applied by mistake in Blender.
 const DENSE_MESH_VERTICES = 100_000;
 
-// Defects in sunset-ridge.blend, patched until the source is fixed. Each repair only runs
-// while `node` is still denser than DENSE_MESH_VERTICES, so it becomes a no-op once
-// the .blend is corrected and can then be deleted.
-const REPAIRS = [
-  {
-    // Since the garage-lobby export (7c932e6), the race car's front-left rim is ~730k
-    // triangles of spiky, corrupted geometry, 4 cm larger than the rim it replaced. Its
-    // other three rims are the clean 1,876-triangle part. The rear-left rim is the same
-    // left-hand mesh; the front-left node's own transform only turns it by one spoke (45°).
-    node: "car_race_Brushed alloy",
-    useMeshOf: "car_race_Brushed alloy.001",
-  },
-];
-
 const [input = DEFAULT_PATH, output = input] = process.argv.slice(2);
 
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready, MeshoptSimplifier.ready]);
@@ -60,18 +45,16 @@ const vertexCount = (mesh) =>
     (sum, primitive) => sum + (primitive.getAttribute("POSITION")?.getCount() ?? 0),
     0,
   );
-const findNode = (name) => root.listNodes().find((node) => node.getName() === name);
-
-for (const repair of REPAIRS) {
-  const target = findNode(repair.node);
-  const source = findNode(repair.useMeshOf)?.getMesh();
-  if (!target || !source || vertexCount(target.getMesh()) <= DENSE_MESH_VERTICES) continue;
-  console.log(
-    `repair: ${repair.node} (${vertexCount(target.getMesh()).toLocaleString("en")} vertices) ` +
-      `now uses the mesh of ${repair.useMeshOf} (${vertexCount(source).toLocaleString("en")}).`,
-  );
-  target.setMesh(source);
-}
+// Drop vertex attributes no material reads before the nature layout check (UVs on
+// untextured surfaces; COLOR_0 and NORMAL stay). Nodes and extras stay as exported.
+await document.transform(
+  prune({
+    propertyTypes: [PropertyType.MESH, PropertyType.PRIMITIVE, PropertyType.ACCESSOR],
+    keepLeaves: true,
+    keepAttributes: false,
+    keepExtras: true,
+  }),
+);
 
 // Nature models are scattered by the hundred, so their triangles are paid per instance in
 // both the colour and the shadow pass. Three of the five trees are ~12,700 triangles; any
@@ -166,8 +149,7 @@ for (const model of root.listNodes()) {
   );
 }
 
-// Drop the data the repairs orphaned, plus vertex attributes no material reads (UVs on
-// untextured surfaces; COLOR_0 and NORMAL stay). Nodes and extras stay as exported.
+// Simplification replaces geometry buffers; remove the now-unreferenced accessors.
 await document.transform(
   prune({
     propertyTypes: [PropertyType.MESH, PropertyType.PRIMITIVE, PropertyType.ACCESSOR],

@@ -64,17 +64,42 @@ describe("Blender asset integration", () => {
   it.each(CAR_VARIANTS)("connects both %s mirrors to the cabin", (variant) => {
     const car = getModel(`car:${variant}`)!;
     car.updateMatrixWorld(true);
-    for (const side of [-1, 1]) {
-      const ray = new THREE.Raycaster(
-        new THREE.Vector3(side * 0.93, 1.12, 0.45),
-        new THREE.Vector3(0, -1, 0),
-        0,
-        0.14,
-      );
+    const cabin = car.getObjectByName(`car_${variant}_Cabin_coachwork`)!;
+    expect(cabin).toBeDefined();
+    const cabinBounds = new THREE.Box3().setFromObject(cabin, true).expandByScalar(0.02);
+    for (const [side, number] of [
+      ["left", -1],
+      ["right", 1],
+    ] as const) {
+      const mount = car.getObjectByName(`car_${variant}_mirror_mount_${side}`)!;
+      const housing = car.getObjectByName(`car_${variant}_Mirror_housing_${number}`)!;
+      expect(mount, `${variant} ${side} mirror mount`).toBeDefined();
+      expect(housing, `${variant} ${side} mirror housing`).toBeDefined();
+      const mountBounds = new THREE.Box3().setFromObject(mount, true);
+      expect(mountBounds.intersectsBox(cabinBounds), "mount must meet the cabin").toBe(true);
       expect(
-        ray.intersectObject(car, true).length,
-        `${variant} ${side < 0 ? "left" : "right"} mirror has an empty attachment gap`,
-      ).toBeGreaterThan(0);
+        mountBounds.intersectsBox(new THREE.Box3().setFromObject(housing, true)),
+        "mount must meet the housing",
+      ).toBe(true);
+    }
+  });
+
+  it("gives every car a distinct cabin silhouette at the game's common length", () => {
+    const profiles = CAR_VARIANTS.map((variant) => {
+      const car = createCarMesh("silhouette-test", undefined, variant);
+      const cabin = car.getObjectByName(`car_${variant}_Cabin_coachwork`)!;
+      expect(cabin).toBeDefined();
+      car.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(cabin, true);
+      return { variant, profile: new THREE.Vector3(bounds.max.y, bounds.min.z, bounds.max.z) };
+    });
+    for (let i = 0; i < profiles.length; i++) {
+      for (let j = i + 1; j < profiles.length; j++) {
+        expect(
+          profiles[i].profile.distanceTo(profiles[j].profile),
+          `${profiles[i].variant} and ${profiles[j].variant} share a silhouette`,
+        ).toBeGreaterThan(0.04);
+      }
     }
   });
 

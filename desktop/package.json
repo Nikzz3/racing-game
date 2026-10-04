@@ -1,6 +1,6 @@
 {
   "name": "@racing/desktop",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
   "description": "Electron desktop wrapper for Sunset Ridge Racing (macOS, Windows and Linux installers)",
   "author": "Nick Zimmermann",

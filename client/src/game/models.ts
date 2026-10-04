@@ -45,7 +45,6 @@ export function registerLibrary(root: THREE.Group): void {
       const offset = new THREE.Vector3(center.x, bounds.min.y, center.z);
       for (const child of group.children) child.position.sub(offset);
       group.updateMatrixWorld(true);
-      separateHeadlightLenses(group);
     } else {
       group.updateMatrixWorld(true);
       if (name.startsWith("nature:")) batchNatureSurfaces(group);
@@ -147,31 +146,6 @@ function geometryLayoutKey(geometry: THREE.BufferGeometry): string {
     .sort()
     .join(";");
   return `${Boolean(geometry.index)}|${layout}`;
-}
-
-/** The authored front lenses coincide with the enamel. Keep a physical gap so
- * both the color and shadow passes have distinct surfaces at every view angle. */
-function separateHeadlightLenses(car: THREE.Group): void {
-  const front = new THREE.Box3().setFromObject(car, true).max.z;
-  const point = new THREE.Vector3();
-  car.traverse((part) => {
-    if (!(part instanceof THREE.Mesh) || !part.name.includes("Warm_headlights")) return;
-    // The taxi roof sign shares this material/mesh; only move the front lenses.
-    const geometry = part.geometry.clone();
-    const positions = geometry.getAttribute("position");
-    const inverse = part.matrixWorld.clone().invert();
-    for (let index = 0; index < positions.count; index++) {
-      point.fromBufferAttribute(positions, index).applyMatrix4(part.matrixWorld);
-      if (point.z < front - 0.2) continue;
-      point.z += 0.012;
-      point.applyMatrix4(inverse);
-      positions.setXYZ(index, point.x, point.y, point.z);
-    }
-    positions.needsUpdate = true;
-    geometry.computeBoundingBox();
-    geometry.computeBoundingSphere();
-    part.geometry = geometry;
-  });
 }
 
 export type ModelLoadProgress = {

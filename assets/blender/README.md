@@ -1,22 +1,16 @@
 # Blender asset library
 
 `sunset-ridge.blend` is the editable source. The game loads the full collection export at
-`client/public/models/rework/sunset-ridge.glb`. Edit the source in Blender and export
-glTF Binary through File > Export > glTF 2.0. Export the active scene with collection
+`client/public/models/rework/sunset-ridge.glb`. Edit and save the source in Blender, then run `export-library.py` in Blender
+(see its console invocation) to batch static car details by material and export.
+The helper reloads the saved source after exporting, preserving editable components.
+A manual glTF Binary export also works, but produces more car draw calls. Export the active scene with collection
 hierarchy, including hidden objects, and exclude cameras and lights.
 
 After every export, run `npm run optimize:glb -w client` before committing the GLB. The
 script (`client/scripts/optimize-glb.mjs`) rewrites the file in place. Apart from the
-repair and the tree simplification below, the output renders the same as the export:
+tree simplification below, the output renders the same as the export:
 
-- Known defects in this `.blend` are patched (the `REPAIRS` list in the script). The race
-  car's front-left rim, `car_race_Brushed alloy`, has been about 730,000 triangles of
-  spiky, corrupted geometry since the garage-lobby export. Its other three rims are the
-  clean 1,876-triangle part, and the script points the front-left rim at the rear-left
-  rim's mesh. That drops the race car from 778,430 triangles to 50,750. Each repair
-  applies only while its object is still that dense. To fix the defect in Blender, replace
-  that object's mesh data with the rear-left rim's mesh (`car_race_Brushed alloy.001`).
-  Then delete the repair from the script.
 - Any `nature:` model over 6,000 triangles is simplified to about 3,000 with
   meshoptimizer. The race scatters 220 trees, drawn in both the color and shadow passes,
   and `tree_default`, `tree_detailed`, and `tree_oak` were 12,684 triangles each; the two
@@ -129,3 +123,30 @@ or run the game.
 `tracks.json` records the shared circuit samples used when the track source was made.
 The asset integration test parses the exported GLB, checks every car's tire contact
 and wheel pivots, and raycasts both roads against the shared driving surface.
+
+## Distinct car bodywork
+
+The car redesign was authored through Blender MCP. Each car has its own longitudinal
+body sections, wheelbase, cabin proportions, roofline and equipment:
+
+| Collection | Shape and details |
+| --- | --- |
+| `car:race` | Low GT coupe, raised fenders, cooling louvers, supported rear wing |
+| `car:race-future` | Wide wedge, low canopy, flying buttresses, triangular side intakes |
+| `car:sedan-sports` | Long three-box sedan, tapered cabin, small trunk lip |
+| `car:hatchback-sports` | Short wheelbase, tall rear cabin, roof spoiler |
+| `car:suv` | Upright two-box body, roof rails, running boards, skid plate |
+| `car:taxi` | Long classic sedan, round lamps, chrome bumper, checker strip and roof sign |
+| `car:police` | Broad cruiser, long hood, push bar, lightbar and aerial |
+| `car:van` | Tall cargo body, short hood, sliding-door track and split rear doors |
+
+Body shells have curved shoulders and cut wheel openings. Clearcoat paint, smoked
+reflective glass, satin trim, polished aluminum and separate emissive lamp lenses use
+exportable PBR inputs. Glass remains opaque to avoid transparent sorting and transmission
+passes in the eight-car garage. These are detailed real-time models, not scanned cars.
+The damaged race front-left rim has been repaired in the source; no export repair is needed.
+
+The export batches small static details by material while keeping wheel pivots, body
+shells, cabins, windscreens and mirror attachments individually addressable. The source
+retains separate editable detail objects. Tests verify distinct normalized cabin profiles,
+mirror connections, clear headlights, tire contact and triangle budgets.
