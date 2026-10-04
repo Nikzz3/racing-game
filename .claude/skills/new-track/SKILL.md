@@ -52,5 +52,6 @@ Done when the export round-trips (re-exporting changes nothing in the JSON) and 
 - Import the JSON in `shared/src/track.ts` `with { type: "json" }` (Playwright and the Railway server load it through plain Node) and append the Track to `TRACKS` (lobby order).
 - Name the Track in `CONTEXT.md`'s Track entry and the player-facing `README.md` line.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npx oxfmt --check`: the asset and layout tests cover every Track automatically.
-- Drive it in the running app when one serves this checkout.
+- `npm run test:e2e -- specs/track-start.spec.ts`: in the real client and server, crossing the start line starts the lap timer and the server counts the gates after it. Done when the new Track's test is green.
+- Drive it in the running app when one serves this checkout: the timer starts at the line and the `CP x/N` counter climbs.
 - Shipping touches `client/` and `shared/`, so cut the desktop release as `AGENTS.md` describes.

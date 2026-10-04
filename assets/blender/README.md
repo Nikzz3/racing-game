@@ -137,6 +137,7 @@ the whole workflow; the tools are:
 | `npm run track:new -- <slug> "<Name>"` | Creates `tracks/<slug>.blend` with a `centerline` curve seeded from the JSON (or a default loop), then builds it. Refuses to overwrite; delete the `.blend` to reseed from a new sketch. |
 | `npm run track:export -- <slug>` | Rebuilds from the curve, saves, writes the JSON and `client/public/models/tracks/<slug>.glb`. |
 | `npm run track:check -- <slug>` | Hard rules, design targets, and a drive report with `map.png` and `speed.png` in `track-reports/<slug>/` (gitignored). Works before the Track is registered. |
+| `npm run test:e2e -- specs/track-start.spec.ts` | Once registered: in the real client and server, every Track's lap timer starts at the line and its checkpoints count. |
 
 These need Blender 5.2 (`BLENDER` overrides the macOS default path). Run headless
 Blender outside any sandbox that blocks Metal, or it crashes on GPU detection.
