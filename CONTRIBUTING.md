@@ -143,7 +143,7 @@ restarts. Rooms also survive restarts but are automatically closed 1 hour after 
 
 The Blender source and editing instructions are in [assets/blender](assets/blender/README.md).
 New circuits are drawn in Blender and checked for drivability with `npm run track:check`;
-the `/new-track` skill and the README's Tracks section cover the workflow (ADR-0012).
+the `/new-track` skill and the README's Tracks section cover the workflow (ADR-0015).
 The client loads one shared GLB library plus a small file per newer circuit, and instances
 roadside geometry. Car geometry
 and materials are reused across live drivers, replays, and garage thumbnails.
@@ -200,7 +200,7 @@ Docker must be running. Podman users must expose its Docker-compatible socket an
 `E2E_DATABASE_URL` to a Postgres connection URL; the wrapper will use it as the admin
 connection instead of starting a container. The suite creates a `racing_e2e_w<n>`
 database per worker on that server (the role needs `CREATEDB`) and erases the `rooms`,
-`best_laps`, and `replays` tables in them, so you must also set
+`best_laps`, `replays`, and `daily_laps` tables in them, so you must also set
 `E2E_DATABASE_ALLOW_TRUNCATE=1` to confirm the server is disposable — the wrapper
 refuses to start without it.
 

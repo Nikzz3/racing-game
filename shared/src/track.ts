@@ -28,7 +28,8 @@ export interface Track {
   name: string;
   controlPoints: readonly [number, number][];
   samples: TrackSample[];
-  checkpoints: { x: number; z: number }[];
+  /** Gates in lap order, each a centerline sample; gate 0 is the start/finish. */
+  checkpoints: TrackSample[];
 }
 
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
@@ -139,14 +140,11 @@ export function defineTrack(value: unknown): Track {
     checkpoints:
       checkpoints === "control-points"
         ? // Control points are in lap order, so gate 0 is the start/finish.
-          controlPoints.map(([cx, cz]) => {
-            const s = samples[nearestCenterline(cx, cz, samples).index];
-            return { x: s.x, z: s.z };
-          })
-        : Array.from({ length: checkpoints }, (_, k) => {
-            const s = samples[Math.floor((k * TRACK_DIVISIONS) / checkpoints)];
-            return { x: s.x, z: s.z };
-          }),
+          controlPoints.map(([cx, cz]) => samples[nearestCenterline(cx, cz, samples).index])
+        : Array.from(
+            { length: checkpoints },
+            (_, k) => samples[Math.floor((k * TRACK_DIVISIONS) / checkpoints)],
+          ),
   };
 }
 

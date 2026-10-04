@@ -1,4 +1,5 @@
 import {
+  CHECKPOINT_PENALTY_MS,
   asVariant,
   type Difficulty,
   type ReplayFrame,
@@ -6,6 +7,7 @@ import {
   type Variant,
 } from "@racing/shared";
 import { pool } from "./db";
+import type { PacerReplay } from "./race";
 
 /** 20 Hz × 5 minutes; longer laps drop their replay. */
 export const MAX_REPLAY_FRAMES = 6000;
@@ -78,6 +80,27 @@ export async function submitLap(
   } finally {
     client.release();
   }
+}
+
+/** A board's fastest Replays, fastest first: the laps grid Pacers drive. */
+export async function fastestReplays(
+  track: TrackSlug,
+  difficulty: Difficulty,
+  limit: number,
+): Promise<PacerReplay[]> {
+  const { rows } = await pool.query(
+    // A penalized lap's time runs past its recording, which a grid Pacer races
+    // by: only clean laps are seated, so a Pacer laps at its listed time.
+    `SELECT name, frames, variant FROM replays WHERE track = $1 AND difficulty = $2
+       AND time_ms < (frames -> -1 ->> 0)::float8 + $4
+     ORDER BY time_ms ASC, name ASC LIMIT $3`,
+    [track, difficulty, limit, CHECKPOINT_PENALTY_MS],
+  );
+  return rows.map((row) => ({
+    name: row.name,
+    frames: row.frames as ReplayFrame[],
+    variant: asVariant(row.variant),
+  }));
 }
 
 export async function getReplay(

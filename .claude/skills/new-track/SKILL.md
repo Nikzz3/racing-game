@@ -5,7 +5,7 @@ description: Design, build and ship a new Track (map, circuit) — sketch, Blend
 
 # New Track
 
-A Track goes from brief to release through one loop: **sketch → check → critique**, repeated until the critic is satisfied, then **Blender → export → integrate**. Tool reference (commands, what the generator builds, file layout): the Tracks section of `assets/blender/README.md`. Why it works this way: ADR-0012.
+A Track goes from brief to release through one loop: **sketch → check → critique**, repeated until the critic is satisfied, then **Blender → export → integrate**. Tool reference (commands, what the generator builds, file layout): the Tracks section of `assets/blender/README.md`. Why it works this way: ADR-0015.
 
 Run `npm run track:*` and headless Blender outside the sandbox: Blender crashes on Metal detection and `tsx` needs an IPC pipe.
 
@@ -50,6 +50,7 @@ Done when the export round-trips (re-exporting changes nothing in the JSON) and 
 ## 5. Integrate
 
 - Import the JSON in `shared/src/track.ts` `with { type: "json" }` (Playwright and the Railway server load it through plain Node) and append the Track to `TRACKS` (lobby order).
+- Give it medal Author times in `shared/src/medals.ts`: its `track:check` racing-line laps scaled by an existing Track's Author-to-racing-line ratio per Difficulty, until it has a Track Record to sit under.
 - Name the Track in `CONTEXT.md`'s Track entry and the player-facing `README.md` line.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npx oxfmt --check`: the asset and layout tests cover every Track automatically.
 - `npm run test:e2e -- specs/track-start.spec.ts`: in the real client and server, crossing the start line starts the lap timer and the server counts the gates after it. Done when the new Track's test is green.

@@ -43,6 +43,8 @@ export function recordState(
 ): CompletedLap | null {
   const room = player.room;
   if (!room) return null;
+  // A Spectator has no car until the race is over: nothing of theirs to place or time.
+  if (room.race && !room.race.isRacing(player.id)) return null;
   const { x, y, z, rot, speed } = state;
   player.x = x;
   player.y = y;
@@ -53,6 +55,8 @@ export function recordState(
 
   const timing = player.timing;
   settleSpawn(timing);
+  // Until GO the car may move on the grid, but its timing waits: nobody jumps the start.
+  if (room.race && now < room.race.goT) return null;
   const wasRunning = timing.lapStartT !== null;
   const lap = updateTiming(
     timing,
@@ -63,6 +67,7 @@ export function recordState(
     room.maxSpeedMs,
     room.minLapMs,
   );
+  room.race?.driverProgress(player.id, timing, now);
 
   if (!lap) {
     if (timing.lapStartT === null) return null;
@@ -75,12 +80,13 @@ export function recordState(
 
   const recording = player.lapFrames;
   const complete = recording !== null && recording.length < MAX_REPLAY_FRAMES;
-  if (complete) recording.push(makeFrame(lap.lapTimeMs, x, z, rot, speed));
+  // Frames are the drive itself: the penalty is in the lap time, not the playback.
+  if (complete) recording.push(makeFrame(lap.lapTimeMs - lap.penaltyMs, x, z, rot, speed));
   player.lapFrames = [makeFrame(0, x, z, rot, speed)];
 
   return {
     room,
-    variant: player.variant,
+    variant: room.daily?.variant ?? player.variant,
     frames: complete && recording.length >= 2 ? recording : null,
     plausible: lap.isPlausible,
     message: {
@@ -88,6 +94,7 @@ export function recordState(
       playerId: player.id,
       name: player.name,
       lapTimeMs: lap.lapTimeMs,
+      penaltyMs: lap.penaltyMs,
       bestLapMs: timing.bestLapMs ?? lap.lapTimeMs,
       laps: timing.laps,
       isPersonalBest: lap.isPersonalBest,

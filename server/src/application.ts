@@ -1,15 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
-import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
-import { bestTime, topEntries } from "./leaderboard";
+import {
+  dailyChallenge,
+  dailyEndsAt,
+  driverName,
+  GRID_SIZE,
+  MAX_NAME_LENGTH,
+  parseClientMessage,
+  type ClientMessage,
+  type DailyBoard,
+  type DailyChallenge,
+  type RaceFormat,
+  type ServerMessage,
+} from "@racing/shared";
+import { dailyBoard, submitDailyLap } from "./daily";
+import { bestTime, standings, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
-import { getReplay, submitLap } from "./replay";
+import { fastestReplays, getReplay, submitLap } from "./replay";
 import { createPlayer, RoomManager, type Player } from "./rooms";
 import { SerialQueues } from "./serial";
 import { respawnTiming } from "./timing";
 import { send, sendEncoded } from "./transport";
-
-const MAX_NAME_LENGTH = 16;
 
 /** ws hands text frames over as a Buffer, but its `RawData` type also admits an
  *  ArrayBuffer (whose `toString()` is "[object ArrayBuffer]") and Buffer chunks. */
@@ -24,9 +35,20 @@ export class RacingApplication {
   // Each (track, difficulty) board compares the record and writes the lap as
   // one job, so two laps finishing together cannot both claim the record.
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
+  // Each driver's Standings go out in the order they were asked for, so an older
+  // lookup can never land after, and overwrite, the one answering a newer lap.
+  private readonly standingsSends = new SerialQueues("Failed to load standings");
+  // Keyed by day, so each write's board is broadcast in write order.
+  private readonly dailyWrites = new SerialQueues("Failed to persist daily lap");
+  /**
+   * Today's board as last written, so a welcome never shows an older one than
+   * the broadcasts around it; tick() rolls it over at UTC midnight.
+   */
+  private daily: DailyBoard = { challenge: dailyChallenge(Date.now()), entries: [] };
 
   async load(): Promise<void> {
     await this.rooms.load();
+    this.daily = await dailyBoard(this.daily.challenge);
   }
 
   connect(socket: WebSocket): void {
@@ -68,6 +90,7 @@ export class RacingApplication {
           playerId: player.id,
           rooms: this.rooms.list(),
           leaderboard,
+          daily: this.daily,
         });
         ready = true;
         for (const message of pending.splice(0)) this.receive(player, message);
@@ -76,6 +99,11 @@ export class RacingApplication {
   }
 
   tick(now = Date.now()): void {
+    if (now >= dailyEndsAt(this.daily.challenge)) {
+      // Open Lobbies roll over; no lap of the new day can have finished yet.
+      this.daily = { challenge: dailyChallenge(now), entries: [] };
+      this.broadcast({ type: "daily", board: this.daily });
+    }
     let changed = false;
     for (const room of this.rooms.rooms.values()) {
       if (room.expired(now)) {
@@ -83,6 +111,7 @@ export class RacingApplication {
         this.rooms.close(room);
         changed = true;
       } else if (room.players.size) {
+        room.updateRace(now);
         room.broadcastSnapshot(now);
       }
     }
@@ -92,7 +121,7 @@ export class RacingApplication {
   private receive(player: Player, message: ClientMessage): void {
     switch (message.type) {
       case "hello":
-        player.name = message.name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
+        player.name = driverName(message.name);
         player.variant = message.variant;
         return;
       case "createRoom":
@@ -103,6 +132,9 @@ export class RacingApplication {
         return;
       case "joinRoom":
         this.join(player, message.roomId);
+        return;
+      case "joinDaily":
+        this.join(player, this.rooms.dailyRoom(dailyChallenge(Date.now())).id, true);
         return;
       case "leaveRoom":
         this.rooms.leave(player);
@@ -115,9 +147,14 @@ export class RacingApplication {
           player.lapFrames = [];
         }
         return;
+      case "startRace":
+        void this.startRace(player, message.format).catch((error) =>
+          console.error("Failed to start race:", error),
+        );
+        return;
       case "state": {
         const lap = recordState(player, message, Date.now());
-        if (lap) this.completeLap(lap);
+        if (lap) this.completeLap(player, lap);
         return;
       }
       case "getReplay":
@@ -126,11 +163,19 @@ export class RacingApplication {
           send(player.ws, { type: "error", message: "Replay is temporarily unavailable" });
         });
         return;
+      case "getStandings":
+        void this.sendStandings(player, driverName(message.name), false);
+        return;
     }
   }
 
-  private join(player: Player, id: string): void {
-    const room = this.rooms.join(player, id);
+  /**
+   * Only joinDaily enters a Daily Room: a client predating it would race there
+   * in its own car and scene, which on a foggy day means seeing further.
+   */
+  private join(player: Player, id: string, daily = false): void {
+    const room =
+      Boolean(this.rooms.rooms.get(id)?.daily) === daily ? this.rooms.join(player, id) : null;
     if (!room) {
       send(player.ws, { type: "error", message: "Room no longer exists" });
       return;
@@ -141,8 +186,32 @@ export class RacingApplication {
       roomName: room.name,
       difficulty: room.difficulty,
       track: room.track.id,
+      daily: room.daily,
     });
+    room.sendRace(player);
     this.broadcastRooms();
+  }
+
+  private async startRace(player: Player, format: RaceFormat): Promise<void> {
+    const room = player.room;
+    if (!room?.canStartRace()) return;
+    room.raceStarting = true;
+    try {
+      // Names are unique per board, so GRID_SIZE rows cover every driver's own Replay skipped.
+      const replays = await fastestReplays(room.track.id, room.difficulty, GRID_SIZE).catch(
+        (error) => {
+          console.error("Failed to load grid Pacers:", error);
+          return [];
+        },
+      );
+      // The caller may have left, or the Room emptied or expired, while the Pacers loaded.
+      if (player.room !== room || this.rooms.rooms.get(room.id) !== room) return;
+      if (!room.startRace(format, replays, Date.now())) {
+        send(player.ws, { type: "error", message: "A Knockout needs at least two cars" });
+      }
+    } finally {
+      room.raceStarting = false;
+    }
   }
 
   private async replay(
@@ -161,7 +230,15 @@ export class RacingApplication {
     send(player.ws, { type: "replay", name, track: message.track, ...replay });
   }
 
-  private completeLap(lap: CompletedLap): void {
+  /** Standings are background state, so a failed lookup is only logged, never shown. */
+  private sendStandings(player: Player, name: string, afterLap: boolean): Promise<void> {
+    return this.standingsSends.enqueue(player.id, async () => {
+      if (player.ws.readyState !== WebSocket.OPEN) return;
+      send(player.ws, { type: "standings", name, afterLap, standings: await standings(name) });
+    });
+  }
+
+  private completeLap(player: Player, lap: CompletedLap): void {
     const { room, message } = lap;
     if (!lap.plausible) {
       console.info(
@@ -171,6 +248,7 @@ export class RacingApplication {
       room.broadcast(message);
       return;
     }
+    if (room.daily) this.submitDaily(room.daily, message.name, message.lapTimeMs);
     // The lap is broadcast only after the record comparison so isTrackRecord
     // is right; position snapshots keep flowing meanwhile.
     void this.boardWrites.enqueue(`${room.track.id}:${room.difficulty}`, async () => {
@@ -191,6 +269,22 @@ export class RacingApplication {
       } finally {
         room.broadcast(message);
       }
+      // Improved or not, the client offers the Rival after every lap. Sent to the
+      // driver's socket rather than the room, which they may have left by now. Not
+      // awaited: the driver's own queue orders it, and the board need not wait on it.
+      void this.sendStandings(player, message.name, true);
+    });
+  }
+
+  /** Under the Room's own day, so a lap finishing past midnight stays with its challenge. */
+  private submitDaily(challenge: DailyChallenge, name: string, timeMs: number): void {
+    void this.dailyWrites.enqueue(challenge.date, async () => {
+      if (!(await submitDailyLap(challenge.date, name, timeMs))) return;
+      const board = await dailyBoard(challenge);
+      // Lobbies that already rolled over must not fall back to the closed day.
+      if (challenge.date !== this.daily.challenge.date) return;
+      this.daily = board;
+      this.broadcast({ type: "daily", board });
     });
   }
 

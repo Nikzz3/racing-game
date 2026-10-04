@@ -1,9 +1,9 @@
 # Sunset Ridge Racing
 
 A browser-based 3D multiplayer arcade racing game. Pick one of eight cars, race the
-Sunset Ridge, Stormhaven or Arrowhead circuit in a live multiplayer room, watch replays of recorded
-laps, chase a human or AI pacer around the track, and put your best lap on a persistent
-leaderboard that survives server restarts.
+Sunset Ridge, Stormhaven or Arrowhead circuit in a live multiplayer room, watch replays of
+recorded laps, chase a human or AI pacer around the track, earn medals that unlock more cars,
+and put your best lap on a persistent leaderboard that survives server restarts.
 
 ## Play in the browser
 
@@ -44,12 +44,14 @@ can install the new version by hand.
 - `S` : brake / reverse
 - `A` / `D` : steer
 - `R` : respawn (teleport back to the start, abandon the in-progress lap)
+- `N` : race the next rival the HUD offers after a lap
 
 On phones and tablets, on-screen touch controls replace the keyboard.
 
 ## How to race
 
 1. Choose a car in the garage. Cars are cosmetic only; every car has the same physics.
+   Four are free; the others unlock with your first Bronze, Silver, Gold or Author medal.
 2. Choose a circuit.
 3. Enter a driver name, then create a room (name it yourself) or join an open one from
    the room list. Everyone in a room races the same circuit at the same difficulty.
@@ -58,6 +60,11 @@ A lap only counts when you pass every checkpoint in order (the server checks thi
 cutting the track does not pay off. Your best lap is saved per circuit and difficulty and
 shows up on the leaderboard, where you can watch it as a replay or race against it as a
 pacer. Rooms close automatically one hour after they are created.
+
+Every circuit and difficulty has four medal times: Bronze, Silver, Gold and Author. Your
+best lap earns the medal it beats, shown in race setup and in the race HUD. After each
+lap the HUD also offers your next rival: the slowest recorded lap that is still faster
+than your best. Race it as a pacer, beat it, and the next one up is offered.
 
 ## Watch Jev drive
 

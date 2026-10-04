@@ -1,6 +1,8 @@
 import {
   JEV_TRACK,
   JEV_VARIANT,
+  type RacePacer,
+  type RaceState,
   type ReplayFrame,
   type ServerMessage,
   type TrackSlug,
@@ -28,6 +30,14 @@ export class RacingApp {
   private reconnectDelay = 1000;
   private joining = false;
   private notice: HTMLElement | null = null;
+  /**
+   * The Room's latest race and its grid Pacers. A driver joining mid-race is sent
+   * both right after `joined`, before the Game exists to take them.
+   */
+  private race: RaceState | null = null;
+  private racePacers: RacePacer[] = [];
+  /** The Variant the server holds for this driver, which their own car must match. */
+  private variant: Variant | undefined;
 
   constructor(private readonly root: HTMLElement) {
     this.lobby = new Lobby(root, {
@@ -42,11 +52,16 @@ export class RacingApp {
       onReplay: (name, track, difficulty) =>
         this.net.send({ type: "getReplay", name, track, difficulty }),
       onVariantChange: () => this.hello(),
+      onNameChange: () => this.requestStandings(),
       onReferenceLap: () => {
         const lap = this.lobby.getReferenceLap();
         if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
       },
       onJevLap: () => void this.openJevLap(),
+      onDaily: () => {
+        this.hello();
+        this.net.send({ type: "joinDaily" });
+      },
     });
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
@@ -109,15 +124,18 @@ export class RacingApp {
     this.reconnectTimer = setTimeout(() => void this.start(), delay);
   }
   private hello(): void {
-    this.net.send({
-      type: "hello",
-      name: this.lobby.playerName,
-      variant: this.lobby.selectedVariant,
-    });
+    this.variant = this.lobby.selectedVariant;
+    this.net.send({ type: "hello", name: this.lobby.playerName, variant: this.variant });
+  }
+  /** Medals, unlocks and the Rival all derive from the driver name's Standings. */
+  private requestStandings(): void {
+    this.net.send({ type: "getStandings", name: this.lobby.playerName });
   }
   private returnToLobby(): void {
     this.revision++;
     this.joining = false;
+    this.race = null;
+    this.racePacers = [];
     this.view?.dispose();
     this.view = null;
     this.lobby.show();
@@ -128,6 +146,17 @@ export class RacingApp {
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
+        this.lobby.setDaily(message.daily);
+        this.requestStandings();
+        return;
+      case "daily":
+        this.lobby.setDaily(message.board);
+        return;
+      case "standings":
+        // A lap finished under a name the driver has since changed reports the old name.
+        if (message.name !== this.lobby.playerName) return;
+        this.lobby.setStandings(message.standings);
+        if (this.view instanceof Game) this.view.setStandings(message.standings, message.afterLap);
         return;
       case "rooms":
         this.lobby.setRooms(message.rooms);
@@ -141,9 +170,17 @@ export class RacingApp {
       case "error":
         this.showError(message.message);
         return;
+      case "race":
+        this.race = message.race;
+        if (this.view instanceof Game) this.view.onMessage(message);
+        return;
+      case "racePacers":
+        this.racePacers = message.pacers;
+        if (this.view instanceof Game) this.view.onMessage(message);
+        return;
       case "replay":
         if (this.view instanceof Game)
-          this.view.receiveReplayFrames(message.frames, message.variant);
+          this.view.receiveReplayFrames(message.frames, message.variant, message.name);
         else if (!this.joining)
           await this.openReplay(
             message.name,
@@ -175,11 +212,18 @@ export class RacingApp {
             message.difficulty,
             message.track,
             pacer,
-            this.lobby.selectedVariant,
+            // A Daily Room forces its Variant; the Garage choice stays saved for other Rooms.
+            message.daily?.variant ?? this.variant,
             this.lobby.steering,
+            message.daily?.scene,
           );
           this.view = game;
           this.joining = false;
+          game.setStandings(this.lobby.standings);
+          if (this.race) {
+            game.onMessage({ type: "racePacers", pacers: this.racePacers });
+            game.onMessage({ type: "race", race: this.race });
+          }
           if (pacer?.kind === "ai") game.receiveReplayFrames(pacer.frames, pacer.variant);
           if (pacer?.kind === "replay")
             this.net.send({

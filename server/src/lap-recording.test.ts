@@ -43,6 +43,34 @@ describe("respawn publication", () => {
   });
 });
 
+describe("race start", () => {
+  it("moves the car to its grid slot during the countdown but times nothing until GO", () => {
+    const { player, state } = driver();
+    player.timing.laps = 2;
+    player.room!.startRace("race", [], 0);
+    const goT = player.room!.race!.goT;
+
+    recordState(player, state, goT - 1);
+    expect(player.x).toBe(state.x);
+    expect(player.timing).toMatchObject({ spawns: 1, laps: 0, lapStartT: null });
+    recordState(player, state, goT);
+    expect(player.timing.lapStartT).toBe(goT);
+  });
+
+  it("ignores a Spectator's states until the race is over", () => {
+    const { player, state } = driver();
+    const room = player.room!;
+    room.startRace("race", [], 0);
+    const late = createPlayer("late", {} as WebSocket);
+    late.room = room;
+    room.players.set(late.id, late);
+
+    recordState(late, state, room.race!.goT);
+    expect(late.x).toBe(0);
+    expect(late.timing.lapStartT).toBeNull();
+  });
+});
+
 describe("lap recording boundaries", () => {
   it("detaches completed frames and identity before the next position or room change", () => {
     const { player, state } = driver();
@@ -63,6 +91,16 @@ describe("lap recording boundaries", () => {
     expect(lap.message.name).toBe("Ava");
     expect(lap.message.laps).toBe(1);
     expect(lap.variant).toBe("taxi");
+  });
+
+  it("records a penalized lap's drive, with the penalty only in its time", () => {
+    const { player, state } = driver();
+    recordState(player, state, 1_000);
+    player.timing.next = 0;
+    player.timing.penaltyMs = 4_000;
+    const lap = recordState(player, state, 301_000)!;
+    expect(lap.message).toMatchObject({ lapTimeMs: 304_000, penaltyMs: 4_000 });
+    expect(lap.frames?.map((frame) => frame[0])).toEqual([0, 300_000]);
   });
 
   it("discards an over-cap replay and starts a fresh recording at the boundary", () => {

@@ -163,6 +163,16 @@ describe("touch driving controls", () => {
     expect(controls!.read().throttle).toBe(1);
   });
 
+  it("hides for a Spectator, letting go of what was held, and returns", () => {
+    const { gas, steer } = setup();
+    pointer(gas, "pointerdown", 1);
+    controls!.setHidden(true);
+    expect([find(".touch-pedals").hidden, steer.hidden]).toEqual([true, true]);
+    expect(controls!.read()).toEqual(NEUTRAL);
+    controls!.setHidden(false);
+    expect([find(".touch-pedals").hidden, steer.hidden]).toEqual([false, false]);
+  });
+
   it("does not steer before the slider has a layout", () => {
     const { steer } = setup({ layout: false });
     pointer(steer, "pointerdown", 1, 0);

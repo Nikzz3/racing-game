@@ -51,7 +51,9 @@ interface RunOptions {
 
 /**
  * Mirrors the server's timing.ts checkpoint logic in simulation step counts
- * rather than wall-clock time, so runs are fully deterministic.
+ * rather than wall-clock time, so runs are fully deterministic. Stricter than
+ * the server: a missed gate never completes the lap rather than costing a
+ * Checkpoint Penalty, since an AI lap benchmarks clean driving (ADR-0012).
  */
 export class CheckpointTracker {
   next = 0;

@@ -128,7 +128,7 @@ and wheel pivots, and raycasts every road against the shared driving surface.
 Each Track's source is `shared/src/tracks/<slug>.json`: name, description, checkpoint
 layout (a number of evenly spaced gates, or `"control-points"`) and the control points
 of its closed Catmull-Rom centerline, in game metres (x east, z south on the lobby map).
-The game and the Python RL port both read it (ADR-0012). The `/new-track` skill walks
+The game and the Python RL port both read it (ADR-0015). The `/new-track` skill walks
 the whole workflow; the tools are:
 
 | Command | What it does |

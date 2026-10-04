@@ -3,6 +3,7 @@ import {
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   type Difficulty,
+  type ReplayFrame,
   type TrackSlug,
 } from "@racing/shared";
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
@@ -21,12 +22,14 @@ export interface DbFixture {
     track?: TrackSlug;
     difficulty?: Difficulty;
     withReplay?: boolean;
+    /** The Replay's frames; implies `withReplay`. Without them a Replay has none. */
+    frames?: ReplayFrame[];
   }): Promise<void>;
   /** Track Records held by `name` in the `(Track, Difficulty)` a Room is created with by default. */
   bestLapFor(name: string): Promise<BestLapRow[]>;
 }
 
-const TRUNCATE = "TRUNCATE rooms, best_laps, replays";
+const TRUNCATE = "TRUNCATE rooms, best_laps, replays, daily_laps";
 
 export const test = base.extend<{ db: DbFixture }, { databasePool: Pool }>({
   // Each worker talks to its own client, and through it its own server and
@@ -85,15 +88,16 @@ export const test = base.extend<{ db: DbFixture }, { databasePool: Pool }>({
           track = DEFAULT_TRACK_SLUG,
           difficulty = DEFAULT_DIFFICULTY,
           withReplay = false,
+          frames,
         }) {
           await databasePool.query(
             "INSERT INTO best_laps (name, time_ms, track, difficulty) VALUES ($1, $2, $3, $4)",
             [name, timeMs, track, difficulty],
           );
-          if (withReplay) {
+          if (withReplay || frames) {
             await databasePool.query(
               "INSERT INTO replays (name, time_ms, frames, track, difficulty) VALUES ($1, $2, $3, $4, $5)",
-              [name, timeMs, "[]", track, difficulty],
+              [name, timeMs, JSON.stringify(frames ?? []), track, difficulty],
             );
           }
         },

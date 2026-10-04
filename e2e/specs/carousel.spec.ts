@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { CAR_VARIANTS } from "@racing/shared";
 import { expect, test } from "../fixtures/db";
-import { selectCar } from "../fixtures/lobby";
+import { openRaceSettings, selectCar } from "../fixtures/lobby";
 
 test("selects a car through the carousel before configuring a race", async ({ page }) => {
   await page.goto("/");
@@ -33,7 +33,10 @@ test("selects a car through the carousel before configuring a race", async ({ pa
   await page.keyboard.press("ArrowLeft");
   await expect(selectedCar).toHaveAttribute("data-variant", startingVariant!);
 
+  // The database starts empty, so the driver has no Medal: Police (Gold) stays locked.
   await selectCar(page, "police");
+  await expect(select).toBeDisabled();
+  await selectCar(page, "suv");
   await select.click();
   const selectTrack = page.getByRole("button", { name: "Select track", exact: true });
   await expect(selectTrack).toBeVisible();
@@ -51,7 +54,7 @@ test("selects a car through the carousel before configuring a race", async ({ pa
 
   await page.getByRole("button", { name: "Change car", exact: true }).click();
   await expect(select).toBeVisible();
-  await expect(selectedCar).toHaveAttribute("data-variant", "police");
+  await expect(selectedCar).toHaveAttribute("data-variant", "suv");
   await selectCar(page, "taxi");
   await select.click();
   await selectTrack.click();
@@ -178,3 +181,16 @@ async function expectTouchHudFits(page: Page): Promise<void> {
     }
   }
 }
+
+test("a Medal read off the persisted best lap unlocks its car", async ({ db, page }) => {
+  // 25 s on Sunset Ridge at Medium is inside Gold (25.23 s) but not Author (23.8 s).
+  await db.seedBestLap({ name: "Medallist", timeMs: 25_000 });
+  await page.addInitScript(() => localStorage.setItem("racer-name", "Medallist"));
+  await page.goto("/");
+  const select = page.getByRole("button", { name: "Select car", exact: true });
+
+  await selectCar(page, "police");
+  await expect(select).toBeEnabled();
+  await openRaceSettings(page);
+  await expect(page.locator(".medal-best")).toContainText("Gold medal");
+});

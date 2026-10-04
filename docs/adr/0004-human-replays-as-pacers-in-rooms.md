@@ -3,6 +3,10 @@
 > **Partially superseded by [ADR-0006](0006-ai-reference-lap-as-a-pacer.md).** The decision to
 > admit persisted human Replays as Pacers stands; the scope line keeping the AI Reference Lap
 > out of live Rooms is superseded.
+>
+> **Partially superseded by [ADR-0014](0014-server-run-races-in-rooms.md), for grid Pacers.**
+> Pacers the server seats on a Race's Grid are chosen by the server, broadcast to the Room and
+> ranked in race results. The Lobby-armed Pacer stays a driver-local overlay as decided here.
 
 ADR-0002 confined the AI **Reference Lap** to a client-only viewer, off the leaderboard and
 out of live Rooms, to respect PRD #7's exclusion of in-game inference. That decision was
