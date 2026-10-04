@@ -155,10 +155,12 @@ describe("updateTiming — LapResult fields", () => {
 
 describe("updateTiming — Checkpoint Penalties", () => {
   /** Start a lap, then drive to every gate except `missed` and back to the line, `stepMs` apart. */
-  function lapMissing(t: TimingState, missed: number[], stepMs = 5000, now = 0) {
-    at(t, 0, now);
-    for (let k = 1; k < CHECKPOINTS.length; k++) if (!missed.includes(k)) at(t, k, (now += stepMs));
-    return { result: at(t, 0, (now += stepMs)), now };
+  function lapMissing(t: TimingState, missed: number[], stepMs = 5000, maxSpeed = MAX_SPEED) {
+    let now = 0;
+    at(t, 0, now, maxSpeed);
+    for (let k = 1; k < CHECKPOINTS.length; k++)
+      if (!missed.includes(k)) at(t, k, (now += stepMs), maxSpeed);
+    return { result: at(t, 0, (now += stepMs), maxSpeed), now };
   }
 
   it("adds two seconds per missed gate to the lap and carries on", () => {
@@ -192,7 +194,8 @@ describe("updateTiming — Checkpoint Penalties", () => {
 
   it("judges the lap-time floor on driven time, not the penalized time", () => {
     const stepMs = Math.floor(MIN_LAP_MS / (CHECKPOINTS.length - 1)) - 1;
-    const { result } = lapMissing(createTiming(), [6], stepMs, 0);
+    // No speed bound, so only the floor can reject the lap.
+    const { result } = lapMissing(createTiming(), [6], stepMs, Infinity);
     expect(result!.lapTimeMs).toBeGreaterThan(MIN_LAP_MS);
     expect(result!.isPlausible).toBe(false);
   });

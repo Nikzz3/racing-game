@@ -262,15 +262,13 @@ export class Game {
     } else if (message.type === "lap") {
       if (message.playerId === this.myId) {
         this.seam?.recordLapSubmission(message.laps);
-        // A gate missed on the final stretch is charged and cleared as the lap completes,
-        // so no snapshot ever carries it.
-        const unannounced = (message.penaltyMs ?? 0) - this.lapPenaltyMs;
-        if (unannounced > 0) this.hud.flashCheckpointPenalty(unannounced);
         const suffix = message.isTrackRecord
           ? "  TRACK RECORD!"
           : message.isPersonalBest
             ? "  Personal best!"
             : "";
+        // The only report of a gate missed on the final stretch: it is charged and
+        // cleared as the lap completes, so no snapshot carries it.
         const penalty = message.penaltyMs ? ` (+${message.penaltyMs / 1000}s)` : "";
         this.hud.toast(
           `Lap ${message.laps} / ${formatMs(message.lapTimeMs)}${penalty}${suffix}`,
