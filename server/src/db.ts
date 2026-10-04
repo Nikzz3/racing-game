@@ -66,4 +66,16 @@ export async function initDb(): Promise<void> {
   await pool.query(
     "CREATE INDEX IF NOT EXISTS best_laps_board_idx ON best_laps (track, difficulty, time_ms)",
   );
+
+  // Each driver's fastest Plausible Lap per Daily Challenge, keyed by its UTC day.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS daily_laps (
+      day DATE NOT NULL,
+      name TEXT NOT NULL,
+      time_ms INTEGER NOT NULL,
+      date TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (day, name)
+    );
+    CREATE INDEX IF NOT EXISTS daily_laps_board_idx ON daily_laps (day, time_ms);
+  `);
 }

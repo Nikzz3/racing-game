@@ -38,6 +38,7 @@ describe("persistent lobby garage", () => {
       onReplay: vi.fn(),
       onReferenceLap: vi.fn(),
       onJevLap: vi.fn(),
+      onDaily: vi.fn(),
       onVariantChange: vi.fn(),
     });
     lobby.paintGarageThumbnails();
@@ -68,6 +69,7 @@ describe("persistent lobby garage", () => {
       onReplay: vi.fn(),
       onReferenceLap: vi.fn(),
       onJevLap: vi.fn(),
+      onDaily: vi.fn(),
       onVariantChange: vi.fn(),
     });
     lobby.paintGarageThumbnails();

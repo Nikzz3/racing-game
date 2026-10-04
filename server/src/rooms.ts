@@ -3,9 +3,11 @@ import type { WebSocket } from "ws";
 import {
   asDifficulty,
   ClockOffset,
+  dailyEndsAt,
   MAX_SPEED_MS,
   minPlausibleLapMs,
   resolveTrack,
+  type DailyChallenge,
   type Difficulty,
   type PlayerSnapshot,
   type ReplayFrame,
@@ -70,6 +72,8 @@ export class Room {
     readonly createdAt: number,
     readonly difficulty: Difficulty,
     readonly track: Track,
+    /** Set on a Daily Room, whose challenge forces its Variant and ends its day. */
+    readonly daily?: DailyChallenge,
   ) {
     this.maxSpeedMs = MAX_SPEED_MS[difficulty];
     this.minLapMs = minPlausibleLapMs(track, this.maxSpeedMs);
@@ -86,7 +90,7 @@ export class Room {
   }
 
   expired(now: number): boolean {
-    return now >= this.createdAt + ROOM_TTL_MS;
+    return now >= (this.daily ? dailyEndsAt(this.daily) : this.createdAt + ROOM_TTL_MS);
   }
 
   broadcast(message: ServerMessage): void {
@@ -105,7 +109,7 @@ export class Room {
     return Array.from(this.players.values(), (player) => ({
       id: player.id,
       name: player.name,
-      variant: player.variant,
+      variant: this.daily?.variant ?? player.variant,
       x: player.x,
       y: player.y,
       z: player.z,
@@ -163,6 +167,27 @@ export class RoomManager {
     return room;
   }
 
+  /**
+   * The challenge's Daily Room, created on first join. It is never persisted:
+   * load() would restore it as an ordinary one-hour Room.
+   */
+  dailyRoom(challenge: DailyChallenge): Room {
+    const id = `daily-${challenge.date}`;
+    let room = this.rooms.get(id);
+    if (!room) {
+      room = new Room(
+        id,
+        `Daily #${challenge.number}`,
+        Date.now(),
+        challenge.difficulty,
+        resolveTrack(challenge.track),
+        challenge,
+      );
+      this.rooms.set(id, room);
+    }
+    return room;
+  }
+
   join(player: Player, roomId: string): Room | null {
     const room = this.rooms.get(roomId);
     if (!room) return null;
@@ -199,6 +224,7 @@ export class RoomManager {
 
   private remove(room: Room): void {
     this.rooms.delete(room.id);
+    if (room.daily) return; // never persisted, so no row to delete
     void this.writes.enqueue(room.id, () =>
       pool.query("DELETE FROM rooms WHERE id = $1", [room.id]),
     );

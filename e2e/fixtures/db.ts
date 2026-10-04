@@ -26,7 +26,7 @@ export interface DbFixture {
   bestLapFor(name: string): Promise<BestLapRow[]>;
 }
 
-const TRUNCATE = "TRUNCATE rooms, best_laps, replays";
+const TRUNCATE = "TRUNCATE rooms, best_laps, replays, daily_laps";
 
 export const test = base.extend<{ db: DbFixture }, { databasePool: Pool }>({
   // Each worker talks to its own client, and through it its own server and

@@ -2,7 +2,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
-import { CAR_VARIANTS, type LeaderboardEntry, type ReplayFrame } from "@racing/shared";
+import {
+  CAR_VARIANTS,
+  type DailyBoard,
+  type DailyEntry,
+  type LeaderboardEntry,
+  type ReplayFrame,
+} from "@racing/shared";
+import { shareText } from "./daily-banner";
 import type { ReferenceLap } from "../game/reference-lap";
 import { JEV_LAP } from "../game/jev-lap";
 import { formatMs } from "../util";
@@ -65,6 +72,7 @@ function mount(): Lobby {
     onReplay: vi.fn(),
     onReferenceLap: vi.fn(),
     onJevLap: vi.fn(),
+    onDaily: vi.fn(),
     onVariantChange: vi.fn(),
   };
   lobby = new Lobby(parent, cbs);
@@ -747,6 +755,84 @@ describe("Lobby Garage picker", () => {
     expect(q<HTMLInputElement>(".create-form input").value).toBe("Last light");
     expect(lobby.armedPacer?.kind).toBe("ai");
     expect(parent.querySelectorAll('[data-setup-tab][tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe("Lobby Daily Challenge banner", () => {
+  const challenge: DailyBoard["challenge"] = {
+    number: 142,
+    date: "2027-02-22",
+    track: "stormhaven",
+    difficulty: "hard",
+    variant: "race-future",
+    scene: "golden-hour",
+  };
+  const board = (...entries: [string, number][]): DailyBoard => ({
+    challenge,
+    entries: entries.map(([name, timeMs]): DailyEntry => ({ name, timeMs })),
+  });
+  const banner = () => q(".garage-screen .daily");
+  const text = (selector: string) =>
+    [...banner().querySelectorAll(selector)].map((n) => n.textContent);
+  const share = () => q<HTMLButtonElement>(".daily-share");
+  function typeName(name: string): void {
+    const input = q<HTMLInputElement>("#driver-name");
+    input.value = name;
+    input.dispatchEvent(new Event("input"));
+  }
+
+  beforeEach(mount);
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  it("stays hidden while the server has sent no board", () => {
+    expect(banner().hidden).toBe(true);
+    lobby.setDaily(board());
+    expect(banner().hidden).toBe(false);
+    lobby.setDaily(undefined);
+    expect(banner().hidden).toBe(true);
+  });
+
+  it("shows today's challenge and the three fastest times on the Garage screen", () => {
+    lobby.setDaily(board(["<b>Ana</b>", 61000], ["Ben", 62310], ["Cy", 63000], ["Dee", 64000]));
+    expect(text(".daily-number")).toEqual(["DAILY #142"]);
+    expect(text(".daily-track")).toEqual(["Stormhaven Circuit"]);
+    expect(text(".daily-specs dd")).toEqual(["Hard", "Hyper", "Golden hour"]);
+    expect(text(".daily-name")).toEqual(["<b>Ana</b>", "Ben", "Cy"]);
+    expect(text(".daily-time")).toEqual([formatMs(61000), formatMs(62310), formatMs(63000)]);
+  });
+
+  it("shows the standing of the driver name as it is typed", () => {
+    lobby.setDaily(board(["Ana", 61000], ["Ben", 62310], ["Cy", 63000]));
+    typeName("Ben");
+    expect(text(".daily-standing span")).toEqual(["Ben", "P2 of 3 · 1:02.310"]);
+    expect(text(".daily-top .mine .daily-name")).toEqual(["Ben"]);
+    typeName("Cy");
+    expect(text(".daily-result")).toEqual(["P3 of 3 · 1:03.000"]);
+    typeName("Zed");
+    expect(text(".daily-result")).toEqual(["No time yet today"]);
+    expect(text(".daily-top .mine")).toEqual([]);
+  });
+
+  it("Race the Daily joins straight from the Garage and keeps the driver name", () => {
+    lobby.setDaily(board());
+    click(".daily-race");
+    expect(cbs.onDaily).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("racer-name")).toBe(lobby.playerName);
+  });
+
+  it("Share waits for the driver's time today, then copies their share line", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    typeName("Ben");
+    lobby.setDaily(board(["Ana", 61000]));
+    expect(share().disabled).toBe(true);
+    lobby.setDaily(board(["Ana", 61000], ["Ben", 62319]));
+    expect(share().disabled).toBe(false);
+    share().click();
+    await vi.waitFor(() => expect(share().textContent).toBe("Copied ✓"));
+    expect(writeText).toHaveBeenCalledWith(shareText(challenge, 62319));
   });
 });
 

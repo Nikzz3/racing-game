@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
-import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
+import {
+  dailyChallenge,
+  dailyEndsAt,
+  parseClientMessage,
+  type ClientMessage,
+  type DailyChallenge,
+  type ServerMessage,
+} from "@racing/shared";
+import { dailyBoard, submitDailyLap } from "./daily";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
 import { getReplay, submitLap } from "./replay";
@@ -24,6 +32,10 @@ export class RacingApplication {
   // Each (track, difficulty) board compares the record and writes the lap as
   // one job, so two laps finishing together cannot both claim the record.
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
+  // Keyed by day, so each write's board is broadcast in write order.
+  private readonly dailyWrites = new SerialQueues("Failed to persist daily lap");
+  /** The challenge open Lobbies show; tick() rolls it over at UTC midnight. */
+  private today = dailyChallenge(Date.now());
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -56,18 +68,25 @@ export class RacingApplication {
       if (room) this.broadcastRooms();
     });
 
-    void topEntries()
-      .catch((error) => {
+    const challenge = dailyChallenge(Date.now());
+    void Promise.all([
+      topEntries().catch((error) => {
         console.error("Failed to load welcome leaderboard:", error);
         return [];
-      })
-      .then((leaderboard) => {
+      }),
+      dailyBoard(challenge).catch((error) => {
+        console.error("Failed to load welcome daily board:", error);
+        return { challenge, entries: [] };
+      }),
+    ])
+      .then(([leaderboard, daily]) => {
         if (socket.readyState !== WebSocket.OPEN) return;
         send(socket, {
           type: "welcome",
           playerId: player.id,
           rooms: this.rooms.list(),
           leaderboard,
+          daily,
         });
         ready = true;
         for (const message of pending.splice(0)) this.receive(player, message);
@@ -76,6 +95,11 @@ export class RacingApplication {
   }
 
   tick(now = Date.now()): void {
+    if (now >= dailyEndsAt(this.today)) {
+      // Open Lobbies roll over; no lap of the new day can have finished yet.
+      this.today = dailyChallenge(now);
+      this.broadcast({ type: "daily", board: { challenge: this.today, entries: [] } });
+    }
     let changed = false;
     for (const room of this.rooms.rooms.values()) {
       if (room.expired(now)) {
@@ -103,6 +127,9 @@ export class RacingApplication {
         return;
       case "joinRoom":
         this.join(player, message.roomId);
+        return;
+      case "joinDaily":
+        this.join(player, this.rooms.dailyRoom(dailyChallenge(Date.now())).id);
         return;
       case "leaveRoom":
         this.rooms.leave(player);
@@ -141,6 +168,7 @@ export class RacingApplication {
       roomName: room.name,
       difficulty: room.difficulty,
       track: room.track.id,
+      daily: room.daily,
     });
     this.broadcastRooms();
   }
@@ -171,6 +199,7 @@ export class RacingApplication {
       room.broadcast(message);
       return;
     }
+    if (room.daily) this.submitDaily(room.daily, message.name, message.lapTimeMs);
     // The lap is broadcast only after the record comparison so isTrackRecord
     // is right; position snapshots keep flowing meanwhile.
     void this.boardWrites.enqueue(`${room.track.id}:${room.difficulty}`, async () => {
@@ -191,6 +220,16 @@ export class RacingApplication {
       } finally {
         room.broadcast(message);
       }
+    });
+  }
+
+  /** Under the Room's own day, so a lap finishing past midnight stays with its challenge. */
+  private submitDaily(challenge: DailyChallenge, name: string, timeMs: number): void {
+    void this.dailyWrites.enqueue(challenge.date, async () => {
+      if (!(await submitDailyLap(challenge.date, name, timeMs))) return;
+      const board = await dailyBoard(challenge);
+      // Lobbies that already rolled over must not fall back to the closed day.
+      if (challenge.date === this.today.date) this.broadcast({ type: "daily", board });
     });
   }
 

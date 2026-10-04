@@ -80,7 +80,7 @@ export function recordState(
 
   return {
     room,
-    variant: player.variant,
+    variant: room.daily?.variant ?? player.variant,
     frames: complete && recording.length >= 2 ? recording : null,
     plausible: lap.isPlausible,
     message: {

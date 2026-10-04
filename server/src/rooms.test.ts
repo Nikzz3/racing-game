@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { dailyChallenge } from "@racing/shared";
 import { pool } from "./db";
 import { createPlayer, RoomManager, ROOM_TTL_MS } from "./rooms";
 import { MAX_BUFFERED_BYTES } from "./transport";
@@ -67,6 +68,17 @@ describe("room lifecycle", () => {
     expect(second.room).toBeNull();
     expect(room.players.size).toBe(0);
     expect(manager.list()).toEqual([]);
+  });
+
+  it("never writes a Daily Room to the rooms table, where load() would restore it", async () => {
+    const manager = new RoomManager();
+    const room = manager.dailyRoom(dailyChallenge(Date.parse("2026-10-05T12:00:00Z")));
+    const player = createPlayer("driver", {} as WebSocket);
+    manager.join(player, room.id);
+    manager.leave(player);
+    await Promise.resolve();
+    expect(manager.list()).toEqual([]);
+    expect(pool.query).not.toHaveBeenCalled();
   });
 });
 

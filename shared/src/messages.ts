@@ -1,3 +1,4 @@
+import type { DailyChallenge } from "./daily";
 import { asDifficulty, type Difficulty } from "./difficulty";
 import { asTrackSlug, type TrackSlug } from "./track";
 import { asVariant, type Variant } from "./variant";
@@ -46,6 +47,18 @@ export interface LeaderboardEntry {
   track: TrackSlug;
 }
 
+/** One driver's fastest Plausible Lap in a Daily Challenge. */
+export interface DailyEntry {
+  name: string;
+  timeMs: number;
+}
+
+/** A Daily Challenge with its board: one entry per driver, fastest first. */
+export interface DailyBoard {
+  challenge: DailyChallenge;
+  entries: DailyEntry[];
+}
+
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
 export type ReplayFrame = [number, number, number, number, number];
 
@@ -53,6 +66,7 @@ export type ClientMessage =
   | { type: "hello"; name: string; variant?: Variant }
   | { type: "createRoom"; roomName: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "joinRoom"; roomId: string }
+  | { type: "joinDaily" }
   | { type: "leaveRoom" }
   | { type: "respawn" }
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
@@ -90,6 +104,7 @@ const PARSERS: {
         }
       : null,
   joinRoom: (v) => (isString(v.roomId) ? { type: "joinRoom", roomId: v.roomId } : null),
+  joinDaily: () => ({ type: "joinDaily" }),
   leaveRoom: () => ({ type: "leaveRoom" }),
   respawn: () => ({ type: "respawn" }),
   getReplay: (v) =>
@@ -140,9 +155,19 @@ export type ServerMessage =
       playerId: string;
       rooms: RoomInfo[];
       leaderboard: LeaderboardEntry[];
+      /** Absent from servers predating the Daily Challenge. */
+      daily?: DailyBoard;
     }
   | { type: "rooms"; rooms: RoomInfo[] }
-  | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty; track: TrackSlug }
+  | {
+      type: "joined";
+      roomId: string;
+      roomName: string;
+      difficulty: Difficulty;
+      track: TrackSlug;
+      /** Present when the Room is a Daily Room: its forced Variant and scene. */
+      daily?: DailyChallenge;
+    }
   | { type: "left" }
   | { type: "snapshot"; t: number; players: PlayerSnapshot[] }
   | {
@@ -156,6 +181,8 @@ export type ServerMessage =
       isTrackRecord: boolean;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
+  /** The Daily board changed, or the day rolled over to a new challenge. */
+  | { type: "daily"; board: DailyBoard }
   | {
       type: "replay";
       name: string;

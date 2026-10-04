@@ -8,6 +8,7 @@ import {
   TRACKS,
   resolveTrack,
   trackPath,
+  type DailyBoard,
   type Difficulty,
   type LeaderboardEntry,
   type ReplayFrame,
@@ -16,6 +17,7 @@ import {
   type TrackSlug,
   type Variant,
 } from "@racing/shared";
+import { DailyBanner } from "./daily-banner";
 import { renderVariantThumbnails } from "./garage-thumbs";
 import { GarageStage } from "./garage-stage";
 import { CHEAP_RENDER } from "../game/quality";
@@ -26,6 +28,7 @@ import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } f
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
 import { escapeHtml as html, formatMs, whenIdle } from "../util";
+import { VARIANT_LABELS } from "./variant-labels";
 
 export interface LobbyCallbacks {
   onCreate(roomName: string, track: TrackSlug, difficulty: Difficulty): void;
@@ -34,6 +37,8 @@ export interface LobbyCallbacks {
   onReferenceLap(): void;
   /** Replay the recorded Jev Lap (ADR-0009). */
   onJevLap(): void;
+  /** Join today's Daily Room straight from the Garage (ADR-0012). */
+  onDaily(): void;
   onVariantChange(): void;
 }
 export type ArmedPacer =
@@ -57,16 +62,6 @@ type SetupTab = "race" | "records";
 const TRACK_IDS = TRACKS.map((t) => t.id);
 const SETUP_TABS: readonly SetupTab[] = ["race", "records"];
 const CAR_COUNT = String(CAR_VARIANTS.length).padStart(2, "0");
-const LABELS: Record<Variant, string> = {
-  race: "Race",
-  "race-future": "Hyper",
-  "sedan-sports": "Coupe S",
-  "hatchback-sports": "Hatch S",
-  suv: "SUV",
-  taxi: "Taxi",
-  police: "Police",
-  van: "Van",
-};
 const STEERING_LABELS: Record<SteeringMode, string> = {
   slider: "Slider",
   buttons: "Buttons",
@@ -183,6 +178,7 @@ export class Lobby {
   private images = new Map<Variant, string>();
   private readonly nameInput: HTMLInputElement;
   private readonly picker: HTMLSelectElement;
+  private readonly daily: DailyBanner;
   private screen: Screen = "garage";
   private setupTab: SetupTab = "race";
   private rooms: RoomInfo[] = [];
@@ -211,13 +207,13 @@ export class Lobby {
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
             <div class="car-stage" role="region" aria-roledescription="carousel" aria-label="Cars" tabindex="0">
               <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><span class="stage-watermark" aria-hidden="true"></span><div class="stage-platform"></div>
-              <div class="car-slides">${CAR_VARIANTS.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
+              <div class="car-slides">${CAR_VARIANTS.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${VARIANT_LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${VARIANT_LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
               <div class="showroom-loading">Preparing your garage<span></span></div>
               <button class="carousel-arrow carousel-previous" type="button" data-carousel="previous" aria-label="Previous car"><span>←</span></button>
               <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
             <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
-            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CAR_VARIANTS.map((v, i) => radio("garage-card", `data-variant="${v}"`, `<span class="garage-card-number">${String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${LABELS[v]}</span><span class="garage-card-line"></span>`)).join("")}</div></div>
+            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CAR_VARIANTS.map((v, i) => radio("garage-card", `data-variant="${v}"`, `<span class="garage-card-number">${String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${VARIANT_LABELS[v]}</span><span class="garage-card-line"></span>`)).join("")}</div></div>
           </section>
           <section class="track-screen menu-screen" aria-label="Choose your track" aria-hidden="true" inert>
             <div class="track-heading"><h1>CHOOSE YOUR <span>CIRCUIT.</span></h1><button class="menu-back" type="button" data-change-car aria-label="Change car">← Change car</button></div>
@@ -245,6 +241,13 @@ export class Lobby {
     this.nameInput.value =
       localStorage.getItem("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
     this.nameInput.addEventListener("change", () => this.saveName());
+    this.daily = new DailyBanner(this.find(".garage-heading"), () => {
+      // Keep a generated name, so the standing still finds this driver next visit.
+      this.saveName();
+      callbacks.onDaily();
+    });
+    this.daily.setDriver(this.playerName);
+    this.nameInput.addEventListener("input", () => this.daily.setDriver(this.playerName));
     const form = this.find<HTMLFormElement>(".create-form");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -660,7 +663,7 @@ export class Lobby {
   }
   private paintHero(): void {
     const index = CAR_VARIANTS.indexOf(this.choice);
-    const name = LABELS[this.choice];
+    const name = VARIANT_LABELS[this.choice];
     this.find(".hero-car-name").textContent = name;
     this.find(".selected-car-name").textContent = name;
     this.find(".stage-watermark").textContent = name;
@@ -730,6 +733,10 @@ export class Lobby {
     this.find(".primary-action-label").textContent = this.roomChoice
       ? "Join & Race"
       : "Create & Race";
+  }
+  /** Today's Daily Board; undefined from servers that predate it hides the banner. */
+  setDaily(board: DailyBoard | undefined): void {
+    this.daily.setBoard(board);
   }
   setLeaderboard(entries: LeaderboardEntry[]): void {
     this.entries = entries;
