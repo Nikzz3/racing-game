@@ -8,18 +8,10 @@ import {
   engineLoopLevels,
   hearing,
   roughness,
-  squealLevel,
   type Listener,
 } from "./sound-model";
 import type { SoundSettings } from "./sound-settings";
-import {
-  ENGINE_LOOP_RPMS,
-  engineLoop,
-  gravelLoop,
-  roadLoop,
-  squealLoop,
-  thudShot,
-} from "./sound-synth";
+import { ENGINE_LOOP_RPMS, engineLoop, gravelLoop, roadLoop, thudShot } from "./sound-synth";
 
 /** Events that count as a user gesture under autoplay rules, so they may start the audio. */
 const GESTURES = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
@@ -30,7 +22,6 @@ const RELEASE = 0.05;
 
 // The mix, before the driver's volume.
 const ENGINE_LEVEL = 0.55;
-const SQUEAL_LEVEL = 0.2;
 const ROAD_LEVEL = 0.12;
 const GRAVEL_LEVEL = 0.45;
 const THUD_LEVEL = 0.9;
@@ -48,7 +39,6 @@ const MAX_RECEDING_SPEED = 120;
 
 interface SoundBuffers {
   engine: AudioBuffer[];
-  squeal: AudioBuffer;
   road: AudioBuffer;
   gravel: AudioBuffer;
   thud: AudioBuffer;
@@ -58,8 +48,6 @@ interface SoundBuffers {
 export interface DriverSound {
   speed: number;
   throttle: number;
-  /** The steer the car is turning with, -1..1. */
-  steer: number;
   onTrack: boolean;
   /** How hard the car was hit this frame, 0..1 (`impactLevel`). */
   hit: number;
@@ -192,7 +180,7 @@ function buildMix(
 ): { master: GainNode; buffers: SoundBuffers } {
   const master = context.createGain();
   master.gain.value = gain;
-  // Several cars, a squeal and a thud can stack up; squash the peaks instead of clipping.
+  // Several cars and a thud can stack up; squash the peaks instead of clipping.
   const limiter = context.createDynamicsCompressor();
   limiter.threshold.value = -10;
   limiter.knee.value = 10;
@@ -208,7 +196,6 @@ function buildMix(
     master,
     buffers: {
       engine: ENGINE_LOOP_RPMS.map((rpm, index) => loop(engineLoop(rate, rpm, index + 1))),
-      squeal: loop(squealLoop(rate)),
       road: loop(roadLoop(rate)),
       gravel: loop(gravelLoop(rate)),
       thud: loop(thudShot(rate)),
@@ -217,7 +204,7 @@ function buildMix(
 }
 
 /**
- * Everything one race sounds like: the driver's engine, tyre squeal, the road or grass
+ * Everything one race sounds like: the driver's engine, the road or grass
  * under the car and the thud of a hit, plus a quieter engine placed in the stereo field
  * for each nearby remote car and the Pacer.
  */
@@ -225,7 +212,6 @@ export class RaceSound {
   private readonly output: GainNode;
   private readonly engine: Engine;
   private readonly engineVoice: EngineVoice;
-  private readonly squeal: LoopVoice;
   private readonly road: LoopVoice;
   private readonly gravel: LoopVoice;
   private readonly others = new Map<string, OtherCar>();
@@ -249,7 +235,6 @@ export class RaceSound {
     };
     try {
       this.engineVoice = voice(new EngineVoice(context, buffers.engine, this.output));
-      this.squeal = voice(new LoopVoice(context, buffers.squeal, this.output));
       this.road = voice(new LoopVoice(context, buffers.road, this.output, 600));
       this.gravel = voice(new LoopVoice(context, buffers.gravel, this.output));
     } catch (error) {
@@ -285,8 +270,6 @@ export class RaceSound {
     const speedShare = Math.min(1, speed / Math.max(1, this.topSpeed));
     this.engine.update(dt, driver.speed, driver.throttle);
     this.engineVoice.set(this.engine.rpm, this.engine.load, ENGINE_LEVEL);
-    const squeal = squealLevel(driver.speed, driver.steer, driver.onTrack);
-    this.squeal.set(SQUEAL_LEVEL * squeal, 0.95 + 0.1 * squeal);
     this.road.set(
       ROAD_LEVEL * speedShare * speedShare * (driver.onTrack ? 1 : 0.4),
       0.8 + 0.4 * speedShare,
@@ -304,7 +287,6 @@ export class RaceSound {
 
   private silence(): void {
     this.engineVoice.set(this.engine.rpm, 0, 0);
-    this.squeal.set(0, 1);
     this.road.set(0, 1);
     this.gravel.set(0, 1);
   }
@@ -358,7 +340,6 @@ export class RaceSound {
     if (this.ended) return;
     this.ended = true;
     this.engineVoice.stop();
-    this.squeal.stop();
     this.road.stop();
     this.gravel.stop();
     for (const other of this.others.values()) other.stop();

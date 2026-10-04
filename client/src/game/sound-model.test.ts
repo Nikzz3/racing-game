@@ -9,7 +9,6 @@ import {
   impactLevel,
   REDLINE_RPM,
   roughness,
-  squealLevel,
 } from "./sound-model";
 
 const TOP_SPEED = 80;
@@ -99,25 +98,6 @@ describe("apparentThrottle", () => {
     expect(apparentThrottle(20, 19.5, 1 / 60)).toBe(0);
     expect(apparentThrottle(0, 0, 1 / 60)).toBe(0);
     expect(apparentThrottle(20, 21, 0)).toBe(0);
-  });
-});
-
-describe("squealLevel", () => {
-  it("stays quiet driving straight or cornering gently", () => {
-    expect(squealLevel(60, 0, true)).toBe(0);
-    expect(squealLevel(15, 0.3, true)).toBe(0);
-  });
-
-  it("squeals harder the harder the car corners, either way", () => {
-    const moderate = squealLevel(40, 0.6, true);
-    expect(moderate).toBeGreaterThan(0);
-    expect(squealLevel(40, 1, true)).toBeGreaterThan(moderate);
-    expect(squealLevel(40, -0.6, true)).toBeCloseTo(moderate);
-    expect(squealLevel(80, 1, true)).toBe(1);
-  });
-
-  it("never squeals on grass", () => {
-    expect(squealLevel(40, 1, false)).toBe(0);
   });
 });
 

@@ -55,26 +55,6 @@ export function engineLoop(sampleRate: number, rpm: number, seed = 1): Float32Ar
   return finish(samples, 0.9);
 }
 
-/** A wavering screech near 1.1 kHz with a scrubby band of noise under it. */
-export function squealLoop(sampleRate: number, seed = 2): Float32Array {
-  const random = mulberry32(seed);
-  const length = Math.round(sampleRate * 1.2);
-  const samples = new Float32Array(length);
-  const band = resonator(sampleRate, 1700, 6);
-  let phase = 0;
-  for (let i = 0; i < length; i++) {
-    const t = i / sampleRate;
-    const pitch =
-      1080 * (1 + 0.035 * Math.sin(2 * Math.PI * 5.3 * t) + 0.02 * Math.sin(2 * Math.PI * 0.9 * t));
-    phase += (2 * Math.PI * pitch) / sampleRate;
-    const tone =
-      0.6 * Math.sin(phase) + 0.25 * Math.sin(2 * phase + 0.4) + 0.1 * Math.sin(3 * phase + 1.1);
-    const flutter = 0.75 + 0.25 * Math.sin(2 * Math.PI * 7.7 * t);
-    samples[i] = tone * flutter + 0.6 * band(random() * 2 - 1);
-  }
-  return finish(loopable(samples, Math.round(sampleRate * 0.06)), 0.8);
-}
-
 /** Tyre roar and wind: noise with most of its top end rolled off. */
 export function roadLoop(sampleRate: number, seed = 3): Float32Array {
   const random = mulberry32(seed);

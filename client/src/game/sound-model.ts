@@ -1,5 +1,3 @@
-import { STEER_RATE, steeringGrip } from "@racing/shared";
-
 export const IDLE_RPM = 900;
 export const REDLINE_RPM = 7200;
 /**
@@ -83,21 +81,6 @@ export function apparentThrottle(previousSpeed: number, speed: number, dt: numbe
   return clamp01(0.3 + acceleration / 25);
 }
 
-/** Cornering (m/s²) where the tyres start to squeal, and where they're at their loudest. */
-const SQUEAL_FROM = 18;
-const SQUEAL_FULL = 45;
-
-/**
- * Tyre squeal, 0..1, from how hard the car is cornering: speed times the turn rate the
- * steering gets at that speed. The car has no slip model, so this is the sound of the
- * lateral load rather than of a slide. Grass doesn't squeal.
- */
-export function squealLevel(speed: number, steer: number, onTrack: boolean): number {
-  if (!onTrack) return 0;
-  const cornering = Math.abs(speed * steer * STEER_RATE * steeringGrip(speed));
-  return smoothstep((cornering - SQUEAL_FROM) / (SQUEAL_FULL - SQUEAL_FROM));
-}
-
 /** How rough the ground under the car is, 0..1: nothing on the road, more the faster it crosses grass. */
 export function roughness(speed: number, onTrack: boolean): number {
   return onTrack ? 0 : clamp01((Math.abs(speed) - 1) / 8);
@@ -150,9 +133,4 @@ export function dopplerShift(recedingSpeed: number): number {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
-}
-
-function smoothstep(amount: number): number {
-  const t = clamp01(amount);
-  return t * t * (3 - 2 * t);
 }
