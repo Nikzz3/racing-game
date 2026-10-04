@@ -10,6 +10,7 @@ import {
   type PlayerSnapshot,
   type ReplayFrame,
   type ServerMessage,
+  type Standing,
   type Track,
   type Variant,
 } from "@racing/shared";
@@ -237,7 +238,12 @@ export class Game {
     this.nextCheckpoint = 0;
     this.hud.hidePacerChip();
   }
-  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant): void {
+  /** The driver's Standings (TODO: HUD medal, award, Rival ladder). The first call is the baseline. */
+  setStandings(standings: readonly Standing[]): void {
+    void standings;
+  }
+  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant, name?: string): void {
+    void name;
     // A recorded Variant rebuilds the Pacer, disposing materials the precompile may
     // still be waiting on, so the frames wait for it; the race has not started yet.
     void this.started.then(() => {

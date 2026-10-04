@@ -46,6 +46,16 @@ export interface LeaderboardEntry {
   track: TrackSlug;
 }
 
+/** A driver's place on one (Track, Difficulty) board, from which Medals and the Rival derive. */
+export interface Standing {
+  track: TrackSlug;
+  difficulty: Difficulty;
+  /** The driver's persisted best lap; null before their first Plausible Lap on this board. */
+  bestMs: number | null;
+  /** The next rung of the Rival ladder; null when no other driver's Replay is faster. */
+  rival: { name: string; timeMs: number } | null;
+}
+
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
 export type ReplayFrame = [number, number, number, number, number];
 
@@ -56,6 +66,7 @@ export type ClientMessage =
   | { type: "leaveRoom" }
   | { type: "respawn" }
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
+  | { type: "getStandings"; name: string }
   | {
       type: "state";
       x: number;
@@ -101,6 +112,7 @@ const PARSERS: {
           track: asTrackSlug(v.track),
         }
       : null,
+  getStandings: (v) => (isString(v.name) ? { type: "getStandings", name: v.name } : null),
   state: (v) =>
     isFiniteNumber(v.x) &&
     isFiniteNumber(v.y) &&
@@ -165,4 +177,9 @@ export type ServerMessage =
       /** Variant snapshotted when the lap persisted; absent → name-hash fallback. */
       variant?: Variant;
     }
+  /**
+   * Every board's Standing for one driver name: the answer to getStandings, and
+   * sent unprompted to a driver after each of their Plausible Laps is persisted.
+   */
+  | { type: "standings"; name: string; standings: Standing[] }
   | { type: "error"; message: string };

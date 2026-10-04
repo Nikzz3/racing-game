@@ -12,6 +12,7 @@ import {
   type LeaderboardEntry,
   type ReplayFrame,
   type RoomInfo,
+  type Standing,
   type Track,
   type TrackSlug,
   type Variant,
@@ -35,6 +36,8 @@ export interface LobbyCallbacks {
   /** Replay the recorded Jev Lap (ADR-0009). */
   onJevLap(): void;
   onVariantChange(): void;
+  /** The driver name changed, so its Standings must be fetched again. */
+  onNameChange(): void;
 }
 export type ArmedPacer =
   | {
@@ -176,6 +179,7 @@ export class Lobby {
   private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
   private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
+  private standingsList: Standing[] = [];
   private eligible: LeaderboardEntry[] = [];
   private pacer: ArmedPacer | null = null;
   private updateState: DesktopUpdateState = { status: "unchecked" };
@@ -730,6 +734,13 @@ export class Lobby {
     this.find(".primary-action-label").textContent = this.roomChoice
       ? "Join & Race"
       : "Create & Race";
+  }
+  /** The driver name's Standings on every board (TODO: medals, unlocks, Rival option). */
+  setStandings(standings: Standing[]): void {
+    this.standingsList = standings;
+  }
+  get standings(): Standing[] {
+    return this.standingsList;
   }
   setLeaderboard(entries: LeaderboardEntry[]): void {
     this.entries = entries;

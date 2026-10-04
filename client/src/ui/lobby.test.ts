@@ -66,6 +66,7 @@ function mount(): Lobby {
     onReferenceLap: vi.fn(),
     onJevLap: vi.fn(),
     onVariantChange: vi.fn(),
+    onNameChange: vi.fn(),
   };
   lobby = new Lobby(parent, cbs);
   return lobby;
