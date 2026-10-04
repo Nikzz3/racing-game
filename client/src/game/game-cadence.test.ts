@@ -214,5 +214,21 @@ describe("local lap timer", () => {
     expect(shown.mock.lastCall![0]! - clean).toBeGreaterThanOrEqual(2000);
     expect(shown.mock.lastCall![0]! - clean).toBeLessThan(2100);
     expect(flash).toHaveBeenCalledExactlyOnceWith(2000);
+
+    // Missing the last gate is charged as the lap completes; no snapshot carries it.
+    game.onMessage({
+      type: "lap",
+      playerId: "local",
+      name: "Racer",
+      lapTimeMs: 64_000,
+      penaltyMs: 4000,
+      bestLapMs: 64_000,
+      laps: 1,
+      isPersonalBest: false,
+      isTrackRecord: false,
+    });
+    game.onMessage({ type: "snapshot", t: 0, players: [{ ...me, lapStartT: 1, lapPenaltyMs: 0 }] });
+    expect(flash).toHaveBeenLastCalledWith(2000);
+    expect(flash).toHaveBeenCalledTimes(2);
   });
 });
