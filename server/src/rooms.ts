@@ -8,6 +8,7 @@ import {
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
+  type RaceFormat,
   type ReplayFrame,
   type RoomInfo,
   type ServerMessage,
@@ -15,11 +16,14 @@ import {
   type Variant,
 } from "@racing/shared";
 import { pool } from "./db";
+import { gridPacers, Race, type PacerReplay } from "./race";
 import { SerialQueues } from "./serial";
-import { createTiming, type TimingState } from "./timing";
-import { sendEncoded, sendLatest } from "./transport";
+import { createTiming, gridTiming, type TimingState } from "./timing";
+import { send, sendEncoded, sendLatest } from "./transport";
 
 export const ROOM_TTL_MS = 60 * 60 * 1000;
+
+const NO_RACE = JSON.stringify({ type: "race", race: null } satisfies ServerMessage);
 
 export interface Player {
   id: string;
@@ -63,6 +67,12 @@ export class Room {
   readonly players = new Map<string, Player>();
   readonly maxSpeedMs: number;
   readonly minLapMs: number;
+  /** The race called in this Room, from the call until its results have shown. */
+  race: Race | null = null;
+  /** A race call is loading its Pacers; further calls are ignored until it is in. */
+  raceStarting = false;
+  /** The `race` message last broadcast, also sent to drivers joining mid-race. */
+  private raceData = NO_RACE;
 
   constructor(
     readonly id: string,
@@ -99,6 +109,52 @@ export class Room {
     const message: ServerMessage = { type: "snapshot", t: now, players: this.snapshot() };
     const data = JSON.stringify(message);
     for (const player of this.players.values()) sendLatest(player.ws, data);
+  }
+
+  /** A race may be called when none is counting down or running and no call is loading. */
+  canStartRace(): boolean {
+    return !this.raceStarting && (this.race === null || this.race.phase === "results");
+  }
+
+  /**
+   * Call a race: every driver in the Room takes a grid slot and is sent back to
+   * it, Pacers from `replays` fill the empty slots, and the Room is sent the
+   * Pacers, then the race. Returns false, starting nothing, when a Knockout
+   * would have fewer than two cars.
+   */
+  startRace(format: RaceFormat, replays: PacerReplay[], now: number): boolean {
+    const drivers = [...this.players.values()];
+    const pacers = gridPacers(
+      drivers.map((driver) => driver.name),
+      replays,
+    );
+    if (format === "knockout" && drivers.length + pacers.length < 2) return false;
+    for (const driver of drivers) {
+      gridTiming(driver.timing);
+      driver.lapFrames = [];
+    }
+    this.race = new Race(format, this.track, drivers, pacers, now);
+    this.broadcast({ type: "racePacers", pacers });
+    this.updateRace(now);
+    return true;
+  }
+
+  /** Advance the race, broadcasting its state when it changed; null once its results have shown. */
+  updateRace(now: number): void {
+    if (!this.race) return;
+    const race = this.race.tick(now);
+    if (!race) this.race = null;
+    const data = JSON.stringify({ type: "race", race } satisfies ServerMessage);
+    if (data === this.raceData) return;
+    this.raceData = data;
+    for (const player of this.players.values()) sendEncoded(player.ws, data);
+  }
+
+  /** Bring a driver joining mid-race up to date: the grid's Pacers, then the race. */
+  sendRace(player: Player): void {
+    if (!this.race) return;
+    send(player.ws, { type: "racePacers", pacers: this.race.pacers });
+    sendEncoded(player.ws, this.raceData);
   }
 
   snapshot(): PlayerSnapshot[] {
@@ -178,6 +234,8 @@ export class RoomManager {
     const room = player.room;
     if (!room) return null;
     room.players.delete(player.id);
+    // Leaving mid-race, for another Room or for good, is a DNF.
+    room.race?.leave(player.id, Date.now());
     player.room = null;
     player.lapFrames = [];
     if (room.players.size === 0) this.remove(room);

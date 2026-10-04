@@ -43,6 +43,21 @@ describe("respawn publication", () => {
   });
 });
 
+describe("race start", () => {
+  it("moves the car to its grid slot during the countdown but times nothing until GO", () => {
+    const { player, state } = driver();
+    player.timing.laps = 2;
+    player.room!.startRace("race", [], 0);
+    const goT = player.room!.race!.goT;
+
+    recordState(player, state, goT - 1);
+    expect(player.x).toBe(state.x);
+    expect(player.timing).toMatchObject({ spawns: 1, laps: 0, lapStartT: null });
+    recordState(player, state, goT);
+    expect(player.timing.lapStartT).toBe(goT);
+  });
+});
+
 describe("lap recording boundaries", () => {
   it("detaches completed frames and identity before the next position or room change", () => {
     const { player, state } = driver();

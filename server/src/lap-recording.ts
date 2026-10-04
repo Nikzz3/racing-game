@@ -53,6 +53,8 @@ export function recordState(
 
   const timing = player.timing;
   settleSpawn(timing);
+  // Until GO the car may move on the grid, but its timing waits: nobody jumps the start.
+  if (room.race && now < room.race.goT) return null;
   const wasRunning = timing.lapStartT !== null;
   const lap = updateTiming(
     timing,
@@ -63,6 +65,7 @@ export function recordState(
     room.maxSpeedMs,
     room.minLapMs,
   );
+  room.race?.driverProgress(player.id, timing, now);
 
   if (!lap) {
     if (timing.lapStartT === null) return null;

@@ -159,3 +159,80 @@ describe("connection initialization", () => {
     expect(client.messages).toEqual([]);
   });
 });
+
+async function connect(application: RacingApplication, name: string): Promise<ClientSocket> {
+  const client = new ClientSocket();
+  application.connect(client.socket);
+  client.message({ type: "hello", name });
+  await vi.waitFor(() => expect(client.messages[0]?.type).toBe("welcome"));
+  return client;
+}
+
+/** What a driver was sent besides the lobby's room list and position snapshots. */
+const received = (client: ClientSocket) =>
+  client.messages.filter(({ type }) => !["welcome", "rooms", "snapshot"].includes(String(type)));
+
+describe("races", () => {
+  it("sends the Room the grid's Pacers and then the race, and both to a driver joining mid-race", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    vi.mocked(pool.query).mockImplementation(
+      async (text) =>
+        ({
+          rows: text.includes("FROM replays")
+            ? [
+                {
+                  name: "Pace",
+                  variant: "taxi",
+                  frames: [
+                    [0, 0, 0, 0, 0],
+                    [60_000, 0, 0, 0, 0],
+                  ],
+                },
+              ]
+            : [],
+        }) as never,
+    );
+    const application = new RacingApplication();
+    const ava = await connect(application, "Ava");
+    const ben = await connect(application, "Ben");
+    ava.message({ type: "createRoom", roomName: "Dusk" });
+    const roomId = application.rooms.list()[0].id;
+    ben.message({ type: "joinRoom", roomId });
+
+    ava.message({ type: "startRace", format: "knockout" });
+    await vi.waitFor(() => expect(received(ben).at(-1)?.type).toBe("race"));
+    for (const client of [ava, ben]) {
+      expect(received(client).slice(-2)).toMatchObject([
+        { type: "racePacers", pacers: [{ id: "pacer:1", name: "Pace", variant: "taxi" }] },
+        {
+          type: "race",
+          race: {
+            format: "knockout",
+            phase: "countdown",
+            laps: 2,
+            entrants: [{ name: "Ava" }, { name: "Ben" }, { id: "pacer:1", pacer: true }],
+          },
+        },
+      ]);
+    }
+
+    const cy = await connect(application, "Cy");
+    cy.message({ type: "joinRoom", roomId });
+    expect(received(cy).map(({ type }) => type)).toEqual(["joined", "racePacers", "race"]);
+  });
+
+  it("refuses a Knockout without a rival, telling the driver who called it", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    const application = new RacingApplication();
+    const ava = await connect(application, "Ava");
+    ava.message({ type: "createRoom", roomName: "Dusk" });
+    ava.message({ type: "startRace", format: "knockout" });
+    await vi.waitFor(() =>
+      expect(received(ava).at(-1)).toEqual({
+        type: "error",
+        message: "A Knockout needs at least two cars",
+      }),
+    );
+    expect(application.rooms.rooms.get(application.rooms.list()[0].id)?.race).toBeNull();
+  });
+});

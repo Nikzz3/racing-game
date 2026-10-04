@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
-import { parseClientMessage, type ClientMessage, type ServerMessage } from "@racing/shared";
+import {
+  GRID_SIZE,
+  parseClientMessage,
+  type ClientMessage,
+  type RaceFormat,
+  type ServerMessage,
+} from "@racing/shared";
 import { bestTime, topEntries } from "./leaderboard";
 import { recordState, type CompletedLap } from "./lap-recording";
-import { getReplay, submitLap } from "./replay";
+import { fastestReplays, getReplay, submitLap } from "./replay";
 import { createPlayer, RoomManager, type Player } from "./rooms";
 import { SerialQueues } from "./serial";
 import { respawnTiming } from "./timing";
@@ -83,6 +89,7 @@ export class RacingApplication {
         this.rooms.close(room);
         changed = true;
       } else if (room.players.size) {
+        room.updateRace(now);
         room.broadcastSnapshot(now);
       }
     }
@@ -115,6 +122,11 @@ export class RacingApplication {
           player.lapFrames = [];
         }
         return;
+      case "startRace":
+        void this.startRace(player, message.format).catch((error) =>
+          console.error("Failed to start race:", error),
+        );
+        return;
       case "state": {
         const lap = recordState(player, message, Date.now());
         if (lap) this.completeLap(lap);
@@ -142,7 +154,30 @@ export class RacingApplication {
       difficulty: room.difficulty,
       track: room.track.id,
     });
+    room.sendRace(player);
     this.broadcastRooms();
+  }
+
+  private async startRace(player: Player, format: RaceFormat): Promise<void> {
+    const room = player.room;
+    if (!room?.canStartRace()) return;
+    room.raceStarting = true;
+    try {
+      // Names are unique per board, so GRID_SIZE rows cover every driver's own Replay skipped.
+      const replays = await fastestReplays(room.track.id, room.difficulty, GRID_SIZE).catch(
+        (error) => {
+          console.error("Failed to load grid Pacers:", error);
+          return [];
+        },
+      );
+      // The Room may have emptied or expired while the Pacers loaded.
+      if (this.rooms.rooms.get(room.id) !== room) return;
+      if (!room.startRace(format, replays, Date.now())) {
+        send(player.ws, { type: "error", message: "A Knockout needs at least two cars" });
+      }
+    } finally {
+      room.raceStarting = false;
+    }
   }
 
   private async replay(
