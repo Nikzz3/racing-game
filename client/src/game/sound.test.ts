@@ -212,22 +212,30 @@ describe("Sound", () => {
     await vi.waitFor(() => expect(context.state).toBe("running"));
   });
 
-  it("leaves nothing of a half-built race sound plugged into the mix", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const output = sound();
-    // Build the shared mix with a first race, then fail the next one partway through.
-    output.race(TOP_SPEED)!.dispose();
-    const gainsBefore = context.gains.length;
-    let sources = 0;
-    const create = context.createBufferSource.bind(context);
-    context.createBufferSource = () => {
-      if (++sources > 5) throw new DOMException("Out of memory", "NotSupportedError");
-      return create();
-    };
-    expect(output.race(TOP_SPEED)).toBeNull();
-    // The failed race's own output, its first new gain node, is unplugged.
-    expect(context.gains[gainsBefore].outputs.size).toBe(0);
-  });
+  // Two failure points: partway through the engine's loops, and after the engine and squeal.
+  it.each([2, 5])(
+    "stops and unplugs everything a race sound started before failing (%i loops in)",
+    (started) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const output = sound();
+      // Build the shared mix with a first race, then fail the next one partway through.
+      output.race(TOP_SPEED)!.dispose();
+      const gainsBefore = context.gains.length;
+      const sourcesBefore = context.sources.length;
+      let sources = 0;
+      const create = context.createBufferSource.bind(context);
+      context.createBufferSource = () => {
+        if (++sources > started) throw new DOMException("Out of memory", "NotSupportedError");
+        return create();
+      };
+      expect(output.race(TOP_SPEED)).toBeNull();
+      const begun = context.sources.slice(sourcesBefore);
+      expect(begun).toHaveLength(started);
+      for (const source of begun) expect(source.stoppedAt).not.toBeNull();
+      // The failed race's own output, its first new gain node, is unplugged.
+      expect(context.gains[gainsBefore].outputs.size).toBe(0);
+    },
+  );
 
   it("races on in silence when the sound can't be built", () => {
     vi.useFakeTimers();

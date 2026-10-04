@@ -242,13 +242,20 @@ export class RaceSound {
     this.output = context.createGain();
     this.output.connect(destination);
     this.engine = new Engine(topSpeed);
+    const started: { stop(): void }[] = [];
+    const voice = <T extends { stop(): void }>(built: T): T => {
+      started.push(built);
+      return built;
+    };
     try {
-      this.engineVoice = new EngineVoice(context, buffers.engine, this.output);
-      this.squeal = new LoopVoice(context, buffers.squeal, this.output);
-      this.road = new LoopVoice(context, buffers.road, this.output, 600);
-      this.gravel = new LoopVoice(context, buffers.gravel, this.output);
+      this.engineVoice = voice(new EngineVoice(context, buffers.engine, this.output));
+      this.squeal = voice(new LoopVoice(context, buffers.squeal, this.output));
+      this.road = voice(new LoopVoice(context, buffers.road, this.output, 600));
+      this.gravel = voice(new LoopVoice(context, buffers.gravel, this.output));
     } catch (error) {
-      // Every voice plays into the output: unplugged, whatever did start leaves the mix.
+      // A failed start leaves nothing behind: the voices built so far stop, and the output
+      // they play into leaves the mix. (A voice stops its own loops if it fails halfway.)
+      for (const built of started) built.stop();
       this.output.disconnect();
       throw error;
     }
@@ -349,7 +356,7 @@ export class RaceSound {
  * them are faded in. Load opens a low-pass filter and raises the level.
  */
 class EngineVoice {
-  private readonly sources: AudioBufferSourceNode[];
+  private readonly sources: AudioBufferSourceNode[] = [];
   private readonly levels: GainNode[];
   private readonly tone: BiquadFilterNode;
   readonly output: GainNode;
@@ -370,7 +377,14 @@ class EngineVoice {
       level.connect(this.tone);
       return level;
     });
-    this.sources = buffers.map((buffer, index) => startLoop(context, buffer, this.levels[index]));
+    try {
+      for (const [index, buffer] of buffers.entries())
+        this.sources.push(startLoop(context, buffer, this.levels[index]));
+    } catch (error) {
+      // Don't leave the loops that did start running with nothing to stop them.
+      for (const source of this.sources) source.stop();
+      throw error;
+    }
   }
 
   /** `pitch` bends the whole note, for Doppler. */
