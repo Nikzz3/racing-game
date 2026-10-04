@@ -389,6 +389,7 @@ export class Game {
         }),
         pacerVariant: () => this.pacer?.resolvedVariant() ?? null,
         pacerState: () => this.pacer?.state() ?? null,
+        soundState: () => null,
       },
       SEND_MS,
     );
