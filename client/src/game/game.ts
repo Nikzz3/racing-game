@@ -4,12 +4,14 @@ import {
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   MAX_SPEED_MS,
+  medalTimes,
   nearestCenterline,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
   type ReplayFrame,
   type ServerMessage,
+  type Standing,
   type Track,
   type Variant,
 } from "@racing/shared";
@@ -24,6 +26,7 @@ import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { ServerClock } from "./server-clock";
 import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
+import { ladderStep, standingOn, type Board, type Rival } from "./ladder";
 import {
   createScene,
   disposeWorld,
@@ -79,6 +82,8 @@ export class Game {
   private readonly resolution: AdaptiveResolution | null;
   private pacer: PacerOverlay | null = null;
   private pacerTimes: (number | null)[] = [];
+  private readonly board: Board;
+  private standings: readonly Standing[] = [];
   private nextCheckpoint = 0;
   private localLapStart: number | null = null;
   private progress: PlayerSnapshot | null = null;
@@ -112,6 +117,7 @@ export class Game {
     this.checkpoints = this.track.checkpoints.map(
       (cp) => nearestCenterline(cp.x, cp.z, this.track.samples).index,
     );
+    this.board = { track: this.track.id, difficulty };
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container.className = "race-viewport";
     parent.append(this.container);
@@ -131,6 +137,7 @@ export class Game {
     this.touch = new TouchControls(parent, steering);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.respawn();
+    this.input.onRaceRival = () => this.hud.acceptRivalPrompt();
     this.input.attach();
     if (armedPacer) {
       this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
@@ -237,11 +244,55 @@ export class Game {
     this.nextCheckpoint = 0;
     this.hud.hidePacerChip();
   }
-  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant): void {
+  /** Swap the Pacer for a Rival in place; like any Pacer it starts at the next start-line crossing. */
+  private raceRival({ name }: Rival): void {
+    this.dismissPacer();
+    this.hud.hideRivalPrompt();
+    this.pacer = new PacerOverlay(this.bundle.scene, name);
+    this.hud.showPacerChip(() => this.dismissPacer(), name);
+    this.net.send({ type: "getReplay", name, ...this.board });
+  }
+  /**
+   * The driver's Standings feed the HUD's Medal chip. Those answering one of the
+   * driver's laps may also award a better Medal and climb the Rival ladder; the
+   * baseline, or a reply to the Lobby's request, only refreshes the chip.
+   */
+  setStandings(standings: readonly Standing[], afterLap = false): void {
+    const before = this.standings;
+    this.standings = standings;
+    this.hud.setMedal(
+      medalTimes(this.board.track, this.board.difficulty),
+      standingOn(standings, this.board)?.bestMs ?? null,
+    );
+    if (!afterLap) return;
+    const { award, rival } = ladderStep(
+      before,
+      standings,
+      this.board,
+      this.pacer?.driverName ?? null,
+    );
+    if (award) this.hud.awardMedal(award.medal, award.lapMs, award.unlocked);
+    if (rival?.kind === "offer") {
+      const offered = rival.rival;
+      this.hud.showRivalPrompt(offered.name, offered.timeMs, () => this.raceRival(offered));
+    } else if (rival?.kind === "beaten") {
+      const { next } = rival;
+      if (next) this.raceRival(next);
+      this.hud.toast(
+        next
+          ? `Rival beaten! Next up: ${next.name} ${formatMs(next.timeMs)}`
+          : "Rival beaten! Top of the ladder — no faster replay on this board",
+        true,
+      );
+    }
+  }
+  receiveReplayFrames(frames: ReplayFrame[], variant?: Variant, name?: string): void {
     // A recorded Variant rebuilds the Pacer, disposing materials the precompile may
     // still be waiting on, so the frames wait for it; the race has not started yet.
     void this.started.then(() => {
-      if (!this.pacer || this.disposed) return;
+      // A human Replay asked for before the Rival ladder swapped its Pacer is stale.
+      if (!this.pacer || this.disposed || (name !== undefined && name !== this.pacer.driverName))
+        return;
       this.pacer.setFrames(frames, variant);
       this.pacerTimes = pacerCheckpointTimes(frames, this.track.checkpoints);
       // Link a rebuilt Pacer now, not when it first appears mid-lap.

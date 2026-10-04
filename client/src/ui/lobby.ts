@@ -1,17 +1,26 @@
 import {
   asVariant,
+  bestMedal,
+  driverName,
   CAR_VARIANTS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   DIFFICULTIES,
   DIFFICULTY_LABELS,
   TRACKS,
+  VARIANT_LABELS,
+  VARIANT_UNLOCKS,
+  medalFor,
+  medalTimes,
   resolveTrack,
   trackPath,
+  variantUnlocked,
   type Difficulty,
   type LeaderboardEntry,
+  type Medal,
   type ReplayFrame,
   type RoomInfo,
+  type Standing,
   type Track,
   type TrackSlug,
   type Variant,
@@ -26,6 +35,8 @@ import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } f
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
 import { escapeHtml as html, formatMs, whenIdle } from "../util";
+import { medalBadge } from "./medal-art";
+import { LOCK_ICON, medalSummary, medalTargets, unlockCopy } from "./lobby-medals";
 
 export interface LobbyCallbacks {
   onCreate(roomName: string, track: TrackSlug, difficulty: Difficulty): void;
@@ -35,6 +46,8 @@ export interface LobbyCallbacks {
   /** Replay the recorded Jev Lap (ADR-0009). */
   onJevLap(): void;
   onVariantChange(): void;
+  /** The driver name changed, so its Standings must be fetched again. */
+  onNameChange(): void;
 }
 export type ArmedPacer =
   | {
@@ -42,7 +55,6 @@ export type ArmedPacer =
       name: string;
       track: TrackSlug;
       difficulty: Difficulty;
-      entry: LeaderboardEntry;
     }
   | {
       kind: "ai";
@@ -57,16 +69,8 @@ type SetupTab = "race" | "records";
 const TRACK_IDS = TRACKS.map((t) => t.id);
 const SETUP_TABS: readonly SetupTab[] = ["race", "records"];
 const CAR_COUNT = String(CAR_VARIANTS.length).padStart(2, "0");
-const LABELS: Record<Variant, string> = {
-  race: "Race",
-  "race-future": "Hyper",
-  "sedan-sports": "Coupe S",
-  "hatchback-sports": "Hatch S",
-  suv: "SUV",
-  taxi: "Taxi",
-  police: "Police",
-  van: "Van",
-};
+/** Where first-time visitors start, and what a locked browsed car races as instead. */
+const FREE_VARIANT = CAR_VARIANTS.find((variant) => variantUnlocked(variant, null))!;
 const STEERING_LABELS: Record<SteeringMode, string> = {
   slider: "Slider",
   buttons: "Buttons",
@@ -130,15 +134,6 @@ function outline(track: Track, className: string): string {
     z = Math.min(...zs) - 20;
   return `<svg class="${className}" viewBox="${x} ${z} ${Math.max(...xs) + 20 - x} ${Math.max(...zs) + 20 - z}" aria-hidden="true"><path d="${trackPath(track)}" fill="none" stroke="currentColor" stroke-width="9" stroke-linejoin="round"/></svg>`;
 }
-function replayPacer(entry: LeaderboardEntry): ArmedPacer {
-  return {
-    kind: "replay",
-    name: entry.name,
-    track: entry.track,
-    difficulty: entry.difficulty,
-    entry,
-  };
-}
 const ARROWS: Record<string, number> = {
   ArrowLeft: -1,
   ArrowUp: -1,
@@ -149,6 +144,13 @@ const ARROWS: Record<string, number> = {
 /** A roving-tabindex radio (or tab) button; see `check()` for the checked-state sync. */
 function radio(className: string, attrs: string, body: string, aria = "aria-checked"): string {
   return `<button type="button" role="${aria === "aria-selected" ? "tab" : "radio"}" ${aria}="false" tabindex="-1" class="${className}" ${attrs}>${body}</button>`;
+}
+/** A Garage card's lock, shown while its Variant is locked. */
+function cardLock(variant: Variant): string {
+  const medal = VARIANT_UNLOCKS[variant];
+  return medal
+    ? `<span class="garage-card-lock" hidden>${LOCK_ICON}${medalBadge(medal, "garage-card-badge", { decorative: true })}<span class="lobby-sr">Locked. ${unlockCopy(medal)}</span></span>`
+    : "";
 }
 /** One entry in the room list; an empty value stands for "open a new room". */
 function row(value: string, body: string): string {
@@ -165,7 +167,12 @@ function step(key: string, index: number, length: number, wrap = true): number {
 
 export class Lobby {
   private readonly root = document.createElement("div");
-  private choice: Variant;
+  /**
+   * The car the Garage shows, saved as `racer-variant` even while locked: a saved
+   * car stays the driver's preference until they browse away, and races again as
+   * soon as Standings unlock it. `selectedVariant` derives the car actually driven.
+   */
+  private browsed: Variant;
   private track: TrackSlug = DEFAULT_TRACK_SLUG;
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
   /** Touch steering preference; the picker only shows on touch screens (CSS). */
@@ -176,6 +183,11 @@ export class Lobby {
   private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
   private boardDifficulty: Difficulty = DEFAULT_DIFFICULTY;
   private entries: LeaderboardEntry[] = [];
+  private standingsList: Standing[] = [];
+  /** The best Medal on any board, which unlocks Variants; none until Standings arrive. */
+  private medal: Medal | null = null;
+  /** The driver name the Standings were requested for. */
+  private standingsName: string;
   private eligible: LeaderboardEntry[] = [];
   private pacer: ArmedPacer | null = null;
   private updateState: DesktopUpdateState = { status: "unchecked" };
@@ -199,8 +211,9 @@ export class Lobby {
     private readonly callbacks: LobbyCallbacks,
   ) {
     const saved = localStorage.getItem("racer-variant");
-    this.choice = asVariant(saved) ?? CAR_VARIANTS[0];
-    if (saved !== null && saved !== this.choice) localStorage.setItem("racer-variant", this.choice);
+    this.browsed = asVariant(saved) ?? FREE_VARIANT;
+    if (saved !== null && saved !== this.browsed)
+      localStorage.setItem("racer-variant", this.browsed);
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
@@ -211,13 +224,14 @@ export class Lobby {
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
             <div class="car-stage" role="region" aria-roledescription="carousel" aria-label="Cars" tabindex="0">
               <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><span class="stage-watermark" aria-hidden="true"></span><div class="stage-platform"></div>
-              <div class="car-slides">${CAR_VARIANTS.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
+              <div class="car-slides">${CAR_VARIANTS.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${VARIANT_LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${VARIANT_LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
+              <div class="car-lock" aria-hidden="true" hidden>${LOCK_ICON}</div>
               <div class="showroom-loading">Preparing your garage<span></span></div>
               <button class="carousel-arrow carousel-previous" type="button" data-carousel="previous" aria-label="Previous car"><span>←</span></button>
               <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
-            <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
-            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CAR_VARIANTS.map((v, i) => radio("garage-card", `data-variant="${v}"`, `<span class="garage-card-number">${String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${LABELS[v]}</span><span class="garage-card-line"></span>`)).join("")}</div></div>
+            <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2><p class="car-lock-note" hidden></p></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
+            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CAR_VARIANTS.map((v, i) => radio("garage-card", `data-variant="${v}"`, `<span class="garage-card-number">${String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${VARIANT_LABELS[v]}</span>${cardLock(v)}<span class="garage-card-line"></span>`)).join("")}</div></div>
           </section>
           <section class="track-screen menu-screen" aria-label="Choose your track" aria-hidden="true" inert>
             <div class="track-heading"><h1>CHOOSE YOUR <span>CIRCUIT.</span></h1><button class="menu-back" type="button" data-change-car aria-label="Change car">← Change car</button></div>
@@ -233,8 +247,8 @@ export class Lobby {
             <div class="settings-inner"><div class="settings-heading"><h1>RACE <span>SETUP.</span></h1><div class="setup-selections"><button class="change-selection change-car" type="button" data-change-car aria-label="Change car"><img class="selected-car-thumb" alt="" hidden><span class="selected-car-name"></span><span class="change-label">Change car</span></button><button class="change-selection change-track" type="button" data-change-track aria-label="Change track"><span class="selected-track-name"></span><span class="change-label">Change track</span></button></div></div>
             <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist">${SETUP_TABS.map((tab, i) => radio("setup-menu-item", `aria-controls="setup-${tab}-panel" id="setup-${tab}-tab" data-setup-tab="${tab}"`, `<span>0${i + 1}</span>${tab === "race" ? "Race" : "Records"}<span class="setup-menu-arrow">→</span>`, "aria-selected")).join("")}</nav>
             <div class="setup-workspace">
-              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
-              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button><button class="lb-ai-record-btn lb-jev-lap-btn" data-jev-lap="1">▶ Watch Jev Lap</button></div></section>
+              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, `${DIFFICULTY_LABELS[d]}<span class="diff-medal" aria-hidden="true"></span>`)).join("")}</div></div><div class="medal-field setup-field"><span class="section-label">Medals</span><div class="medal-panel"><p class="medal-best"></p><ol class="medal-targets" aria-label="Medal targets"></ol></div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
+              <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="medal-targets board-medals" aria-label="Medal targets"></ol><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button><button class="lb-ai-record-btn lb-jev-lap-btn" data-jev-lap="1">▶ Watch Jev Lap</button></div></section>
             </div></div></div>
           </section>
         </div>
@@ -244,6 +258,7 @@ export class Lobby {
     this.picker = this.find<HTMLSelectElement>(".pacer-select");
     this.nameInput.value =
       localStorage.getItem("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
+    this.standingsName = this.playerName;
     this.nameInput.addEventListener("change", () => this.saveName());
     const form = this.find<HTMLFormElement>(".create-form");
     form.addEventListener("submit", (event) => {
@@ -288,12 +303,13 @@ export class Lobby {
     stage.addEventListener("pointercancel", () => {
       this.pointerStart = null;
     });
-    this.check(".garage-card", "variant", this.choice);
+    this.check(".garage-card", "variant", this.browsed);
     this.check(".track-card", "track", this.track);
     this.check(".diff-opt", "diff", this.difficulty);
     this.check(".steering-opt", "steering", this.steeringMode);
     this.check("[data-setup-tab]", "setupTab", this.setupTab, "aria-selected");
-    this.paintHero();
+    this.paintLocks();
+    this.paintMedals();
     this.paintTrack();
     this.setRooms([]);
     this.paintJevLap();
@@ -346,13 +362,24 @@ export class Lobby {
     }
   }
   private saveName(): void {
-    localStorage.setItem("racer-name", this.playerName);
+    const name = this.playerName;
+    localStorage.setItem("racer-name", name);
+    if (name === this.standingsName) return;
+    this.standingsName = name;
+    // Medals belong to a name: the new one has none until its own Standings arrive.
+    this.setStandings([]);
+    this.callbacks.onNameChange();
   }
   get playerName(): string {
-    return this.nameInput.value.trim().slice(0, 16) || "Racer";
+    return driverName(this.nameInput.value);
   }
+  /** The car the driver races (and hello carries): never a locked Variant. */
   get selectedVariant(): Variant {
-    return this.choice;
+    return this.lockedBy(this.browsed) ? FREE_VARIANT : this.browsed;
+  }
+  /** The Medal a Variant still needs; null once it is unlocked. */
+  private lockedBy(variant: Variant): Medal | null {
+    return variantUnlocked(variant, this.medal) ? null : (VARIANT_UNLOCKS[variant] ?? null);
   }
   /** How the on-screen touch controls steer in the next race. */
   get steering(): SteeringMode {
@@ -364,7 +391,7 @@ export class Lobby {
   private click(event: MouseEvent): void {
     const button =
       event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button") : null;
-    if (!button) return;
+    if (!button || button.getAttribute("aria-disabled") === "true") return;
     const data = button.dataset;
     // Progress steps are disabled unless they lead somewhere, so a click is always valid.
     if (data.progressScreen) this.setScreen(data.progressScreen as Screen);
@@ -400,19 +427,21 @@ export class Lobby {
     this.difficulty = difficulty;
     this.boardDifficulty = difficulty;
     this.check(".diff-opt", "diff", difficulty);
+    this.paintMedals();
     this.reconcileRoomChoice();
     this.renderBoard();
   }
   private chooseCar(choice: Variant): void {
-    if (choice === this.choice) return;
-    this.choice = choice;
+    if (choice === this.browsed) return;
+    const selected = this.selectedVariant;
+    this.browsed = choice;
     localStorage.setItem("racer-variant", choice);
     this.check(".garage-card", "variant", choice);
     this.paintHero();
-    this.callbacks.onVariantChange();
+    if (this.selectedVariant !== selected) this.callbacks.onVariantChange();
   }
   private cycle(direction: number): void {
-    const index = CAR_VARIANTS.indexOf(this.choice);
+    const index = CAR_VARIANTS.indexOf(this.browsed);
     this.chooseCar(CAR_VARIANTS[(index + direction + CAR_VARIANTS.length) % CAR_VARIANTS.length]);
   }
   private chooseTrack(track: TrackSlug, direction = 1): void {
@@ -421,6 +450,7 @@ export class Lobby {
     this.boardTrack = track;
     this.check(".track-card", "track", track);
     this.paintTrack(direction);
+    this.paintMedals();
     this.reconcileRoomChoice();
     this.renderBoard();
   }
@@ -548,12 +578,12 @@ export class Lobby {
       if (target?.closest(".track-selector"))
         this.find(`.track-card[data-track="${this.track}"]`).focus();
     } else {
-      const next = step(event.key, CAR_VARIANTS.indexOf(this.choice), CAR_VARIANTS.length);
+      const next = step(event.key, CAR_VARIANTS.indexOf(this.browsed), CAR_VARIANTS.length);
       if (next === -1) return;
       event.preventDefault();
       this.chooseCar(CAR_VARIANTS[next]);
       if (target?.closest(".garage"))
-        this.find(`.garage-card[data-variant="${this.choice}"]`).focus();
+        this.find(`.garage-card[data-variant="${this.browsed}"]`).focus();
     }
   }
   private setScreen(screen: Screen): void {
@@ -624,11 +654,11 @@ export class Lobby {
       }
     }
     // The live garage hides the still previews until Race Setup, so they render one
-    // car per idle callback, selected car first, after the garage's first frame.
+    // car per idle callback, browsed car first, after the garage's first frame.
     // Without the live garage they are the carousel and render right away.
-    const selected = this.selectedVariant;
+    const browsed = this.browsed;
     renderVariantThumbnails(
-      [selected, ...CAR_VARIANTS.filter((variant) => variant !== selected)],
+      [browsed, ...CAR_VARIANTS.filter((variant) => variant !== browsed)],
       (variant, url) => this.paintThumbnail(variant, url),
       this.stage ? whenIdle : (task) => task(),
     );
@@ -659,14 +689,24 @@ export class Lobby {
     }
   }
   private paintHero(): void {
-    const index = CAR_VARIANTS.indexOf(this.choice);
-    const name = LABELS[this.choice];
+    const index = CAR_VARIANTS.indexOf(this.browsed);
+    const name = VARIANT_LABELS[this.browsed];
     this.find(".hero-car-name").textContent = name;
-    this.find(".selected-car-name").textContent = name;
+    this.find(".selected-car-name").textContent = VARIANT_LABELS[this.selectedVariant];
     this.find(".stage-watermark").textContent = name;
     this.find(".showroom-number").textContent =
       `${String(index + 1).padStart(2, "0")} / ${CAR_COUNT}`;
-    this.stage?.setVariant(this.selectedVariant);
+    this.stage?.setVariant(this.browsed);
+    // A locked car can be browsed, but never selected.
+    const lock = this.lockedBy(this.browsed);
+    this.find(".lobby-deck").classList.toggle("car-locked", lock !== null);
+    this.find(".car-lock").hidden = lock === null;
+    this.find("[data-select-car]").setAttribute("aria-disabled", String(lock !== null));
+    const note = this.find(".car-lock-note");
+    note.hidden = lock === null;
+    note.innerHTML = lock
+      ? `${LOCK_ICON}${medalBadge(lock, "car-lock-badge", { decorative: true })}${unlockCopy(lock)}`
+      : "";
     this.root.querySelectorAll<HTMLElement>(".car-slide").forEach((slide, i) => {
       let offset = (i - index + CAR_VARIANTS.length) % CAR_VARIANTS.length;
       if (offset > CAR_VARIANTS.length / 2) offset -= CAR_VARIANTS.length;
@@ -731,6 +771,46 @@ export class Lobby {
       ? "Join & Race"
       : "Create & Race";
   }
+  /** The driver name's Standings on every board: Medals, car unlocks and the Rival. */
+  setStandings(standings: Standing[]): void {
+    this.standingsList = standings;
+    this.medal = bestMedal(standings);
+    this.paintLocks();
+    this.paintMedals();
+    this.renderBoard();
+  }
+  get standings(): Standing[] {
+    return this.standingsList;
+  }
+  private standing(track: TrackSlug, difficulty: Difficulty): Standing | undefined {
+    return this.standingsList.find((s) => s.track === track && s.difficulty === difficulty);
+  }
+  private paintLocks(): void {
+    for (const card of this.root.querySelectorAll<HTMLElement>(".garage-card")) {
+      const locked = this.lockedBy(card.dataset.variant as Variant) !== null;
+      card.classList.toggle("locked", locked);
+      const lock = card.querySelector<HTMLElement>(".garage-card-lock");
+      if (lock) lock.hidden = !locked;
+    }
+    this.paintHero();
+  }
+  /** The race board's Medals, and the Medal each Difficulty earned on the race Track. */
+  private paintMedals(): void {
+    const times = medalTimes(this.track, this.difficulty);
+    const bestMs = this.standing(this.track, this.difficulty)?.bestMs ?? null;
+    this.find(".medal-field").hidden = times === null;
+    this.find(".medal-best").innerHTML = times ? medalSummary(times, bestMs) : "";
+    this.find(".medal-field .medal-targets").innerHTML = times ? medalTargets(times, bestMs) : "";
+    for (const option of this.root.querySelectorAll<HTMLElement>(".diff-opt")) {
+      const difficulty = option.dataset.diff as Difficulty;
+      const boardTimes = medalTimes(this.track, difficulty);
+      const medal =
+        boardTimes && medalFor(boardTimes, this.standing(this.track, difficulty)?.bestMs ?? null);
+      const slot = option.querySelector<HTMLElement>(".diff-medal")!;
+      slot.dataset.medal = medal ?? "";
+      slot.innerHTML = medal ? medalBadge(medal, "diff-medal-badge") : "";
+    }
+  }
   setLeaderboard(entries: LeaderboardEntry[]): void {
     this.entries = entries;
     this.renderBoard();
@@ -747,6 +827,10 @@ export class Lobby {
     this.reconcilePacer();
     this.paintBoard();
   }
+  /** The next rung of the Rival ladder on the race board; it may sit outside the top 10. */
+  private rival(): Standing["rival"] {
+    return this.standing(this.track, this.difficulty)?.rival ?? null;
+  }
   /**
    * Pacer eligibility is about the RACE the player is setting up, so it keys
    * off this.track / this.difficulty regardless of what the Records panel is
@@ -760,11 +844,11 @@ export class Lobby {
     if (pacer?.kind === "ai") {
       if (!this.aiEligible()) this.pacer = null;
     } else if (pacer) {
-      const entry = this.eligible.find(
-        (e) =>
-          e.name === pacer.name && e.track === pacer.track && e.difficulty === pacer.difficulty,
-      );
-      this.pacer = entry ? replayPacer(entry) : null;
+      const offered =
+        pacer.track === this.track &&
+        pacer.difficulty === this.difficulty &&
+        (this.rival()?.name === pacer.name || this.eligible.some((e) => e.name === pacer.name));
+      if (!offered) this.pacer = null;
     }
     // Painting the picker bakes the AI Record, which is too slow for startup.
     if (this.screen === "settings") this.paintPicker();
@@ -773,29 +857,33 @@ export class Lobby {
   private paintPicker(): void {
     this.pickerStale = false;
     const ai = this.aiEligible() ? this.getReferenceLap() : null;
-    const choices = this.eligible.map((e, i) => ({
-      time: e.timeMs,
-      value: String(i),
-      name: e.name,
-    }));
+    const rival = this.rival();
+    // Values index this.eligible; the Rival is listed once, as the Rival.
+    const choices = this.eligible
+      .map((e, i) => ({ time: e.timeMs, value: String(i), name: e.name }))
+      .filter((c) => c.name !== rival?.name);
     if (ai) choices.push({ time: ai.timeMs, value: "ai", name: "AI Record" });
     choices.sort((a, b) => a.time - b.time);
     this.picker.innerHTML =
       '<option value="-1">No Pacer — race alone</option>' +
+      (rival
+        ? `<option value="rival" class="pacer-opt-rival">⚑ Next rival: ${html(rival.name)} — ${formatMs(rival.timeMs)}</option>`
+        : "") +
       choices
         .map(
           (c) =>
             `<option value="${c.value}"${c.value === "ai" ? ' class="pacer-opt-ai"' : ""}>⚑ ${html(c.name)} — ${formatMs(c.time)}</option>`,
         )
         .join("");
-    this.picker.disabled = choices.length === 0;
+    this.picker.disabled = choices.length === 0 && !rival;
     const armed = this.pacer;
-    this.picker.value =
-      armed?.kind === "ai"
+    this.picker.value = !armed
+      ? "-1"
+      : armed.kind === "ai"
         ? "ai"
-        : armed
-          ? String(this.eligible.findIndex((e) => e.name === armed.name))
-          : "-1";
+        : armed.name === rival?.name
+          ? "rival"
+          : String(this.eligible.findIndex((e) => e.name === armed.name));
   }
   /** The visible Records list follows the board filters, not the race setup. */
   private paintBoard(): void {
@@ -817,10 +905,20 @@ export class Lobby {
     this.find(".lb-empty-copy").textContent =
       `No laps yet on ${resolveTrack(boardTrack).name}, ${DIFFICULTY_LABELS[boardDifficulty]}.`;
     this.find(".lb-empty").hidden = entries.length > 0;
+    const times = medalTimes(boardTrack, boardDifficulty);
+    const targets = this.find(".board-medals");
+    targets.hidden = times === null;
+    targets.innerHTML = times ? medalTargets(times) : "";
+    const badge = (timeMs: number): string => {
+      const medal = times && medalFor(times, timeMs);
+      return medal
+        ? `<span class="lb-medal" data-medal="${medal}">${medalBadge(medal, "lb-medal-badge")}</span>`
+        : '<span class="lb-medal"></span>';
+    };
     this.find(".lb-list").innerHTML = entries
       .map(
         (e) =>
-          `<li><span class="lb-name">${html(e.name)}</span><span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${e.track}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
+          `<li><span class="lb-name">${html(e.name)}</span>${badge(e.timeMs)}<span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${e.track}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
       )
       .join("");
     // The AI Record button plays the Sunset Ridge / Medium reference lap, so
@@ -844,8 +942,13 @@ export class Lobby {
             }
           : null;
     } else {
-      const entry = this.eligible[Number(this.picker.value)];
-      this.pacer = entry ? replayPacer(entry) : null;
+      const name =
+        this.picker.value === "rival"
+          ? this.rival()?.name
+          : this.eligible[Number(this.picker.value)]?.name;
+      this.pacer = name
+        ? { kind: "replay", name, track: this.track, difficulty: this.difficulty }
+        : null;
     }
   }
   show(): void {

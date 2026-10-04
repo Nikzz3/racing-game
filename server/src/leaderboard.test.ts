@@ -38,3 +38,71 @@ describe.skipIf(!testDatabaseUrl)("leaderboard boards", () => {
     });
   }, 15_000);
 });
+
+// The Rival ladder rules live in the standings SQL, so only a real Postgres can prove them.
+describe.skipIf(!testDatabaseUrl)("standings", () => {
+  it("offers the slowest replay-bearing lap by another driver that beats their best", async () => {
+    await withTestSchema(async ({ initDb }) => {
+      await initDb();
+      const { makeFrame, submitLap } = await import("./replay");
+      const { standings } = await import("./leaderboard");
+      const frames = [makeFrame(0, 0, 0, 0, 0), makeFrame(1000, 5, 5, 0, 10)];
+      const lap = (name: string, timeMs: number, replay: boolean) =>
+        submitLap(name, "sunset-ridge", "medium", timeMs, replay ? frames : null);
+      await lap("Ace", 50_000, true);
+      await lap("Bolt", 55_000, true);
+      await lap("No Replay", 58_000, false);
+      await lap("Ava", 60_000, true);
+      await lap("Dawdle", 70_000, true);
+      await lap("Crawl", 90_000, false);
+      const rival = async (name: string) =>
+        (await standings(name)).find(
+          (standing) => standing.track === "sunset-ridge" && standing.difficulty === "medium",
+        )?.rival;
+
+      expect(await rival("Ava")).toEqual({ name: "Bolt", timeMs: 55_000 });
+      expect(await rival("Bolt")).toEqual({ name: "Ace", timeMs: 50_000 });
+      expect(await rival("Ace")).toBeNull();
+      // A newcomer starts on the slowest lap a Pacer can drive.
+      expect(await rival("Newcomer")).toEqual({ name: "Dawdle", timeMs: 70_000 });
+    });
+  }, 15_000);
+
+  it("reports every board, each laddered only by its own Track and Difficulty", async () => {
+    await withTestSchema(async ({ initDb }) => {
+      await initDb();
+      const { makeFrame, submitLap } = await import("./replay");
+      const { standings } = await import("./leaderboard");
+      const frames = [makeFrame(0, 0, 0, 0, 0), makeFrame(1000, 5, 5, 0, 10)];
+      await submitLap("Ava", "sunset-ridge", "medium", 60_000, frames);
+      await submitLap("Bolt", "sunset-ridge", "medium", 55_000, frames);
+      // Nearer to Ava's 60 s than Bolt, but on other boards.
+      await submitLap("Hardy", "sunset-ridge", "hard", 59_000, frames);
+      await submitLap("Storm", "stormhaven", "medium", 59_500, frames);
+
+      expect(await standings("Ava")).toEqual([
+        { track: "stormhaven", difficulty: "easy", bestMs: null, rival: null },
+        { track: "stormhaven", difficulty: "hard", bestMs: null, rival: null },
+        {
+          track: "stormhaven",
+          difficulty: "medium",
+          bestMs: null,
+          rival: { name: "Storm", timeMs: 59_500 },
+        },
+        { track: "sunset-ridge", difficulty: "easy", bestMs: null, rival: null },
+        {
+          track: "sunset-ridge",
+          difficulty: "hard",
+          bestMs: null,
+          rival: { name: "Hardy", timeMs: 59_000 },
+        },
+        {
+          track: "sunset-ridge",
+          difficulty: "medium",
+          bestMs: 60_000,
+          rival: { name: "Bolt", timeMs: 55_000 },
+        },
+      ]);
+    });
+  }, 15_000);
+});
