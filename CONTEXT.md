@@ -93,7 +93,7 @@ The Race format where the last car to complete each lap is out, until the one ca
 _Avoid_: elimination race, last man standing
 
 **Grid**:
-A Race's starting slots, two abreast behind the starting position. Every driver in the Room when the Race is called takes a slot; the server fills the empty ones, up to six cars, with Pacers from the fastest human Replays on the Room's `(Track, Difficulty)` board.
+A Race's starting slots, two abreast behind the start line, the front row on it. Every driver in the Room when the Race is called takes a slot; the server fills the empty ones, up to six cars, with Pacers from the fastest human Replays on the Room's `(Track, Difficulty)` board.
 _Avoid_: lineup, starting line
 
 **Spectator**:
