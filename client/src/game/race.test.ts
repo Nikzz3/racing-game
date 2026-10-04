@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  GRID_SIZE,
   gridSlot,
   reachedCheckpoint,
   TRACKS,
   type RaceEntrant,
   type RaceState,
   type ReplayFrame,
+  type Track,
 } from "@racing/shared";
 import {
   cycleTarget,
@@ -78,14 +80,31 @@ describe("the car a Spectator watches", () => {
   });
 });
 
+/** Where a car spawned into grid slot `slot` stands, as `CarPhysics.spawnAtSample` puts it. */
+function gridPosition(track: Track, slot: number): { x: number; z: number } {
+  const { sample, offset } = gridSlot(track, slot);
+  const { x, z, dirX, dirZ } = track.samples[sample];
+  return { x: x - dirZ * offset, z: z + dirX * offset };
+}
+
 describe("gridSlot", () => {
   it.each(TRACKS)("puts the front row in $name's start gate, so its lap starts at GO", (track) => {
     for (const slot of [0, 1]) {
-      const { sample, offset } = gridSlot(track, slot);
-      const { x, z, dirX, dirZ } = track.samples[sample];
-      expect(reachedCheckpoint(track.checkpoints, 0, x - dirZ * offset, z + dirX * offset)).toBe(0);
+      const { x, z } = gridPosition(track, slot);
+      expect(reachedCheckpoint(track.checkpoints, 0, x, z)).toBe(0);
     }
   });
+
+  it.each(TRACKS)(
+    "puts every slot behind $name's start line, never ahead of the Pacers",
+    (track) => {
+      const line = track.checkpoints[0];
+      for (let slot = 0; slot < GRID_SIZE; slot++) {
+        const { x, z } = gridPosition(track, slot);
+        expect((x - line.x) * line.dirX + (z - line.z) * line.dirZ).toBeLessThan(0);
+      }
+    },
+  );
 });
 
 describe("gridPacerPose", () => {
