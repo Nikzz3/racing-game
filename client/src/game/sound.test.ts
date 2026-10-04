@@ -123,7 +123,7 @@ class FakeContext {
 
 const TOP_SPEED = 80;
 const LISTENER: Listener = { x: 0, z: 0, forwardX: 0, forwardZ: 1 };
-const PARKED: DriverSound = { speed: 0, throttle: 0, steer: 0, onTrack: true, hit: 0 };
+const PARKED: DriverSound = { speed: 0, throttle: 0, onTrack: true, hit: 0 };
 
 let context: FakeContext;
 let hidden = false;
@@ -212,7 +212,7 @@ describe("Sound", () => {
     await vi.waitFor(() => expect(context.state).toBe("running"));
   });
 
-  // Two failure points: partway through the engine's loops, and after the engine and squeal.
+  // Two failure points: partway through the engine's loops, and after the engine and road.
   it.each([2, 5])(
     "stops and unplugs everything a race sound started before failing (%i loops in)",
     (started) => {

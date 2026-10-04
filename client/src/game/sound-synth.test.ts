@@ -5,7 +5,6 @@ import {
   gravelLoop,
   loopable,
   roadLoop,
-  squealLoop,
   thudShot,
 } from "./sound-synth";
 
@@ -42,7 +41,6 @@ const LOOPS: [string, Float32Array][] = [
     `engine at ${rpm} rpm`,
     engineLoop(RATE, rpm),
   ]),
-  ["squeal", squealLoop(RATE)],
   ["road", roadLoop(RATE)],
   ["gravel", gravelLoop(RATE)],
 ];

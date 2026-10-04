@@ -578,7 +578,6 @@ export class Game {
         : {
             speed: this.car.speed,
             throttle: input.throttle,
-            steer: input.steer,
             onTrack: this.car.onTrack,
             hit,
           };
