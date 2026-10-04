@@ -239,8 +239,53 @@ describe("daily challenge", () => {
       daily: challenge,
     });
     expect(ben.joined).toEqual(ava.joined);
-    expect(application.rooms.list()).toEqual([
-      expect.objectContaining({ id: ava.room.id, players: 2 }),
+    expect(ben.room).toBe(ava.room);
+  });
+
+  it("admits only joinDaily to the Daily Room, which older clients would race in their own car", async () => {
+    const application = new RacingApplication();
+    const { room } = await joinedDriver(application, { type: "joinDaily" });
+    expect(application.rooms.list()).toEqual([]);
+
+    const old = new ClientSocket();
+    application.connect(old.socket);
+    old.message({ type: "joinRoom", roomId: room.id });
+    await vi.waitFor(() =>
+      expect(old.messages).toContainEqual({ type: "error", message: "Room no longer exists" }),
+    );
+    expect(room.players.size).toBe(1);
+  });
+
+  it("welcomes drivers with the board as last written, even across a rollover", async () => {
+    const persisted = { challenge, entries: [{ name: "Ava", timeMs: 61_000 }] };
+    vi.mocked(dailyBoard).mockResolvedValueOnce(persisted);
+    const application = new RacingApplication();
+    await application.load();
+    const early = new ClientSocket();
+    application.connect(early.socket);
+    await vi.waitFor(() =>
+      expect(early.messages).toEqual([expect.objectContaining({ daily: persisted })]),
+    );
+
+    let finishWelcome!: (value: []) => void;
+    vi.mocked(topEntries).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishWelcome = resolve;
+        }),
+    );
+    const late = new ClientSocket();
+    application.connect(late.socket);
+    // Midnight passes while this welcome still waits on the all-time leaderboard.
+    const midnight = dailyEndsAt(challenge);
+    application.tick(midnight);
+    finishWelcome([]);
+
+    const tomorrow = { challenge: dailyChallenge(midnight), entries: [] };
+    await vi.waitFor(() => expect(late.messages).toHaveLength(2));
+    expect(late.messages).toEqual([
+      { type: "daily", board: tomorrow },
+      expect.objectContaining({ type: "welcome", daily: tomorrow }),
     ]);
   });
 
@@ -339,8 +384,8 @@ describe("daily challenge", () => {
     await vi.waitFor(() =>
       expect(submitDailyLap).toHaveBeenCalledWith(challenge.date, "Ava", lapMs),
     );
-    // The welcome read the board once; the write reads it again.
-    await vi.waitFor(() => expect(dailyBoard).toHaveBeenCalledTimes(2));
+    // The write reads its board back, but never broadcasts it.
+    await vi.waitFor(() => expect(dailyBoard).toHaveBeenCalledTimes(1));
     const boards = driver.client.messages.filter((message) => message.type === "daily");
     expect(boards).toEqual([
       { type: "daily", board: { challenge: dailyChallenge(midnight), entries: [] } },

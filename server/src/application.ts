@@ -5,6 +5,7 @@ import {
   dailyEndsAt,
   parseClientMessage,
   type ClientMessage,
+  type DailyBoard,
   type DailyChallenge,
   type ServerMessage,
 } from "@racing/shared";
@@ -34,11 +35,15 @@ export class RacingApplication {
   private readonly boardWrites = new SerialQueues("Failed to persist completed lap");
   // Keyed by day, so each write's board is broadcast in write order.
   private readonly dailyWrites = new SerialQueues("Failed to persist daily lap");
-  /** The challenge open Lobbies show; tick() rolls it over at UTC midnight. */
-  private today = dailyChallenge(Date.now());
+  /**
+   * Today's board as last written, so a welcome never shows an older one than
+   * the broadcasts around it; tick() rolls it over at UTC midnight.
+   */
+  private daily: DailyBoard = { challenge: dailyChallenge(Date.now()), entries: [] };
 
   async load(): Promise<void> {
     await this.rooms.load();
+    this.daily = await dailyBoard(this.daily.challenge);
   }
 
   connect(socket: WebSocket): void {
@@ -68,25 +73,19 @@ export class RacingApplication {
       if (room) this.broadcastRooms();
     });
 
-    const challenge = dailyChallenge(Date.now());
-    void Promise.all([
-      topEntries().catch((error) => {
+    void topEntries()
+      .catch((error) => {
         console.error("Failed to load welcome leaderboard:", error);
         return [];
-      }),
-      dailyBoard(challenge).catch((error) => {
-        console.error("Failed to load welcome daily board:", error);
-        return { challenge, entries: [] };
-      }),
-    ])
-      .then(([leaderboard, daily]) => {
+      })
+      .then((leaderboard) => {
         if (socket.readyState !== WebSocket.OPEN) return;
         send(socket, {
           type: "welcome",
           playerId: player.id,
           rooms: this.rooms.list(),
           leaderboard,
-          daily,
+          daily: this.daily,
         });
         ready = true;
         for (const message of pending.splice(0)) this.receive(player, message);
@@ -95,10 +94,10 @@ export class RacingApplication {
   }
 
   tick(now = Date.now()): void {
-    if (now >= dailyEndsAt(this.today)) {
+    if (now >= dailyEndsAt(this.daily.challenge)) {
       // Open Lobbies roll over; no lap of the new day can have finished yet.
-      this.today = dailyChallenge(now);
-      this.broadcast({ type: "daily", board: { challenge: this.today, entries: [] } });
+      this.daily = { challenge: dailyChallenge(now), entries: [] };
+      this.broadcast({ type: "daily", board: this.daily });
     }
     let changed = false;
     for (const room of this.rooms.rooms.values()) {
@@ -129,7 +128,7 @@ export class RacingApplication {
         this.join(player, message.roomId);
         return;
       case "joinDaily":
-        this.join(player, this.rooms.dailyRoom(dailyChallenge(Date.now())).id);
+        this.join(player, this.rooms.dailyRoom(dailyChallenge(Date.now())).id, true);
         return;
       case "leaveRoom":
         this.rooms.leave(player);
@@ -156,8 +155,13 @@ export class RacingApplication {
     }
   }
 
-  private join(player: Player, id: string): void {
-    const room = this.rooms.join(player, id);
+  /**
+   * Only joinDaily enters a Daily Room: a client predating it would race there
+   * in its own car and scene, which on a foggy day means seeing further.
+   */
+  private join(player: Player, id: string, daily = false): void {
+    const room =
+      Boolean(this.rooms.rooms.get(id)?.daily) === daily ? this.rooms.join(player, id) : null;
     if (!room) {
       send(player.ws, { type: "error", message: "Room no longer exists" });
       return;
@@ -229,7 +233,9 @@ export class RacingApplication {
       if (!(await submitDailyLap(challenge.date, name, timeMs))) return;
       const board = await dailyBoard(challenge);
       // Lobbies that already rolled over must not fall back to the closed day.
-      if (challenge.date === this.today.date) this.broadcast({ type: "daily", board });
+      if (challenge.date !== this.daily.challenge.date) return;
+      this.daily = board;
+      this.broadcast({ type: "daily", board });
     });
   }
 

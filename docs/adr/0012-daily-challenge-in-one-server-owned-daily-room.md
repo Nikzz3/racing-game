@@ -14,6 +14,9 @@ a function in `shared/` that the client and server both import.
   - Only laps driven in that Room count toward the Daily Board, so the forced Variant can
     be enforced.
   - Daily Rooms are not persisted. They are recreated on demand.
+  - Only `joinDaily` enters a Daily Room. It is left out of the room list and refused to
+    `joinRoom`, so a client predating it cannot race the Daily in its own car and scene,
+    which on a foggy day would mean seeing further.
   - We rejected two alternatives. Counting any lap on today's Track and Difficulty could
     not enforce the Variant. A private Daily Room per driver would have given up racing
     each other.

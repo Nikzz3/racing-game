@@ -218,8 +218,11 @@ export class RoomManager {
     this.remove(room);
   }
 
+  /** Ordinary Rooms only: the Daily Room is entered from its Lobby banner. */
   list(): RoomInfo[] {
-    return Array.from(this.rooms.values(), (room) => room.info());
+    return Array.from(this.rooms.values())
+      .filter((room) => !room.daily)
+      .map((room) => room.info());
   }
 
   private remove(room: Room): void {
