@@ -209,8 +209,9 @@ export class RacingApplication {
         room.broadcast(message);
       }
       // Improved or not, the client offers the Rival after every lap. Sent to the
-      // driver's socket rather than the room, which they may have left by now.
-      void this.sendStandings(player, message.name);
+      // driver's socket rather than the room, which they may have left by now, and
+      // awaited so a board's laps answer in the order they finished.
+      await this.sendStandings(player, message.name);
     });
   }
 

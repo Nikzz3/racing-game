@@ -28,6 +28,8 @@ export class RacingApp {
   private reconnectDelay = 1000;
   private joining = false;
   private notice: HTMLElement | null = null;
+  /** The Variant the server holds for this driver, which their own car must match. */
+  private variant: Variant | undefined;
 
   constructor(private readonly root: HTMLElement) {
     this.lobby = new Lobby(root, {
@@ -110,11 +112,8 @@ export class RacingApp {
     this.reconnectTimer = setTimeout(() => void this.start(), delay);
   }
   private hello(): void {
-    this.net.send({
-      type: "hello",
-      name: this.lobby.playerName,
-      variant: this.lobby.selectedVariant,
-    });
+    this.variant = this.lobby.selectedVariant;
+    this.net.send({ type: "hello", name: this.lobby.playerName, variant: this.variant });
   }
   /** Medals, unlocks and the Rival all derive from the driver name's Standings. */
   private requestStandings(): void {
@@ -187,7 +186,7 @@ export class RacingApp {
             message.difficulty,
             message.track,
             pacer,
-            this.lobby.selectedVariant,
+            this.variant,
             this.lobby.steering,
           );
           this.view = game;
