@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TRACKS } from "@racing/shared";
+import { TRACKS, medalTimes } from "@racing/shared";
 import { Hud } from "./hud";
 
 function makeParent(): HTMLElement {
@@ -237,5 +237,130 @@ describe("Hud mute toggle", () => {
     expect(parent.querySelector(".hud-mute")).toBeNull();
     expect(() => hud.setMuted(true)).not.toThrow();
     hud.dispose();
+  });
+});
+
+describe("Hud medal chip", () => {
+  // Sunset Ridge at Medium: Bronze 0:35.700, Silver 0:28.560, Gold 0:25.230, Author 0:23.800.
+  const TIMES = medalTimes("sunset-ridge", "medium")!;
+  let parent: HTMLElement;
+  let hud: Hud;
+  const chip = () => parent.querySelector<HTMLElement>(".hud-medal")!;
+
+  beforeEach(() => {
+    parent = makeParent();
+    hud = new Hud(parent, "Test Room", vi.fn(), 3);
+  });
+  afterEach(() => parent.remove());
+
+  it("stays hidden on a board without Medal targets", () => {
+    expect(chip().hidden).toBe(true);
+    hud.setMedal(null, 30_000);
+    expect(chip().hidden).toBe(true);
+  });
+
+  it("shows an empty slot and the Bronze target before a best lap", () => {
+    hud.setMedal(TIMES, null);
+    expect(chip().hidden).toBe(false);
+    expect(chip().querySelector(".medal-bronze.medal-empty")).not.toBeNull();
+    expect(chip().textContent).toBe("NEXT · BRONZE 0:35.700");
+  });
+
+  it("shows the Medal the best lap earned and the next target", () => {
+    hud.setMedal(TIMES, 27_000);
+    expect(chip().querySelector(".medal-silver:not(.medal-empty)")).not.toBeNull();
+    expect(chip().textContent).toBe("NEXT · GOLD 0:25.230");
+  });
+
+  it("says so once Author is earned, with the best lap", () => {
+    hud.setMedal(TIMES, 23_512);
+    expect(chip().querySelector(".medal-author")).not.toBeNull();
+    expect(chip().textContent).toBe("AUTHOR EARNED 0:23.512");
+  });
+});
+
+describe("Hud medal award", () => {
+  let parent: HTMLElement;
+  let hud: Hud;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    parent = makeParent();
+    hud = new Hud(parent, "Test Room", vi.fn(), 3);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    parent.remove();
+  });
+
+  it("celebrates the tier with the lap time and the cars it unlocked", () => {
+    hud.awardMedal("gold", 25_120, ["race", "police"]);
+    const award = parent.querySelector(".medal-award")!;
+    expect(award.classList).toContain("medal-award-gold");
+    expect(award.querySelector(".medal-badge.medal-gold")).not.toBeNull();
+    expect(award.querySelector(".medal-award-title")!.textContent).toBe("Gold medal");
+    expect(award.querySelector(".medal-award-time")!.textContent).toBe("0:25.120");
+    expect(award.querySelector(".medal-award-unlock")!.textContent).toBe(
+      "New cars unlocked: Race, Police",
+    );
+  });
+
+  it("leaves the unlock line out when no car unlocked", () => {
+    hud.awardMedal("author", 23_700, []);
+    expect(parent.querySelector(".medal-award-author .medal-award-unlock")).toBeNull();
+  });
+
+  it("replaces an earlier award and clears itself after about four seconds", () => {
+    hud.awardMedal("silver", 28_000, []);
+    vi.advanceTimersByTime(2000);
+    hud.awardMedal("gold", 25_000, ["police"]);
+    expect([...parent.querySelectorAll(".medal-award")].map((a) => a.className)).toEqual([
+      "medal-award medal-award-gold",
+    ]);
+    // The first award's timer must not take the second one down with it.
+    vi.advanceTimersByTime(2500);
+    expect(parent.querySelector(".medal-award-gold")).not.toBeNull();
+    vi.advanceTimersByTime(2000);
+    expect(parent.querySelector(".medal-award")).toBeNull();
+  });
+});
+
+describe("Hud rival prompt", () => {
+  let parent: HTMLElement;
+  let hud: Hud;
+  const prompt = () => parent.querySelector(".rival-prompt");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    parent = makeParent();
+    hud = new Hud(parent, "Test Room", vi.fn(), 3);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    parent.remove();
+  });
+
+  it("offers the Rival with a button that races them once", () => {
+    const onRace = vi.fn();
+    hud.showRivalPrompt("Ana <3", 24_440, onRace);
+    expect(prompt()!.textContent).toContain("NEXT RIVAL · Ana <3 · 0:24.440");
+    prompt()!.querySelector("button")!.click();
+    hud.acceptRivalPrompt();
+    expect(onRace).toHaveBeenCalledOnce();
+    expect(prompt()).toBeNull();
+  });
+
+  it("keeps only the newest offer, and withdraws it after a while", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    hud.showRivalPrompt("Ana", 24_440, first);
+    hud.showRivalPrompt("Ben", 24_100, second);
+    expect(parent.querySelectorAll(".rival-prompt")).toHaveLength(1);
+    expect(prompt()!.textContent).toContain("Ben");
+    vi.advanceTimersByTime(10_000);
+    expect(prompt()).toBeNull();
+    hud.acceptRivalPrompt();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
   });
 });

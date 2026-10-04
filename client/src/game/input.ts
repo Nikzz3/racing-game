@@ -17,6 +17,7 @@ const DRIVING_KEYS = new Set([
   "ArrowDown",
   "ArrowRight",
   "KeyR",
+  "KeyN",
 ]);
 const STEER_CHANGE_PER_SECOND = 3;
 
@@ -30,6 +31,8 @@ export class Input {
   /** Whether the pads' respawn button was down on the last read: it respawns once per press. */
   private padRespawn = false;
   onRespawn: (() => void) | null = null;
+  /** N races the Rival the HUD is offering as the Pacer. */
+  onRaceRival: (() => void) | null = null;
   onToggleMute: (() => void) | null = null;
 
   constructor(
@@ -51,6 +54,8 @@ export class Input {
     event.preventDefault();
     if (event.code === "KeyR") {
       if (!event.repeat) this.onRespawn?.();
+    } else if (event.code === "KeyN") {
+      if (!event.repeat) this.onRaceRival?.();
     } else {
       this.keys.add(event.code);
     }

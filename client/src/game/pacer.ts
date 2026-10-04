@@ -78,7 +78,7 @@ export class PacerOverlay {
 
   constructor(
     private readonly scene: THREE.Scene,
-    private readonly driverName: string,
+    readonly driverName: string,
   ) {
     this.variant = resolveVariant(driverName);
     this.mesh = this.buildMesh();

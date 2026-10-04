@@ -42,6 +42,7 @@ describe("persistent lobby garage", () => {
         onReferenceLap: vi.fn(),
         onJevLap: vi.fn(),
         onVariantChange: vi.fn(),
+        onNameChange: vi.fn(),
       },
       new SoundSettings(),
     );
@@ -76,6 +77,7 @@ describe("persistent lobby garage", () => {
         onReferenceLap: vi.fn(),
         onJevLap: vi.fn(),
         onVariantChange: vi.fn(),
+        onNameChange: vi.fn(),
       },
       new SoundSettings(),
     );
