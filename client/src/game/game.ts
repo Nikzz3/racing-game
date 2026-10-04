@@ -1,10 +1,9 @@
 import * as THREE from "three";
 import {
-  CHECKPOINT_RADIUS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
   MAX_SPEED_MS,
-  nearestCenterline,
+  reachedCheckpoint,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
@@ -34,7 +33,6 @@ import {
 } from "./scene";
 import { buildTrack } from "./trackMesh";
 import { AdaptiveResolution, CHEAP_RENDER, downgradeQuality, renderQuality } from "./quality";
-import { checkpointMissed } from "./checkpoint-miss";
 import { E2eSeam } from "./e2e-seam";
 import { autopilotInput } from "./harness";
 
@@ -72,7 +70,6 @@ export class Game {
   private readonly touch: TouchControls;
   private readonly input: Input;
   private readonly container = document.createElement("div");
-  private readonly checkpoints: number[];
   private readonly sendTimer: ReturnType<typeof setInterval>;
   private seam: E2eSeam | null = null;
   private readonly started: Promise<void>;
@@ -85,6 +82,8 @@ export class Game {
   private readonly serverClock = new ServerClock();
   /** Server time the lap in progress started; null before the line is crossed. */
   private lapStartT: number | null = null;
+  /** Checkpoint Penalties the lap in progress has collected, per the server. */
+  private lapPenaltyMs = 0;
   private previous = performance.now();
   /**
    * When the car's physical state was current, on the local clock. Sent with
@@ -109,9 +108,6 @@ export class Game {
     steering?: SteeringMode,
   ) {
     this.track = resolveTrack(trackSlug);
-    this.checkpoints = this.track.checkpoints.map(
-      (cp) => nearestCenterline(cp.x, cp.z, this.track.samples).index,
-    );
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container.className = "race-viewport";
     parent.append(this.container);
@@ -258,6 +254,10 @@ export class Game {
         this.progress = me;
         this.hud.setMyProgress(me);
         this.lapStartT = me.lapStartT;
+        const penaltyMs = me.lapPenaltyMs ?? 0;
+        if (penaltyMs > this.lapPenaltyMs)
+          this.hud.flashCheckpointPenalty(penaltyMs - this.lapPenaltyMs);
+        this.lapPenaltyMs = penaltyMs;
       }
     } else if (message.type === "lap") {
       if (message.playerId === this.myId) {
@@ -267,8 +267,9 @@ export class Game {
           : message.isPersonalBest
             ? "  Personal best!"
             : "";
+        const penalty = message.penaltyMs ? ` (+${message.penaltyMs / 1000}s)` : "";
         this.hud.toast(
-          `Lap ${message.laps} / ${formatMs(message.lapTimeMs)}${suffix}`,
+          `Lap ${message.laps} / ${formatMs(message.lapTimeMs)}${penalty}${suffix}`,
           message.isTrackRecord,
         );
       } else if (message.isTrackRecord)
@@ -288,9 +289,13 @@ export class Game {
   }
   private checkCrossing(now: number): void {
     if (!this.pacer) return;
-    const cp = this.track.checkpoints[this.nextCheckpoint];
-    if (Math.hypot(this.car.x - cp.x, this.car.z - cp.z) > CHECKPOINT_RADIUS) return;
-    const crossed = this.nextCheckpoint;
+    const crossed = reachedCheckpoint(
+      this.track.checkpoints,
+      this.nextCheckpoint,
+      this.car.x,
+      this.car.z,
+    );
+    if (crossed === null) return;
     this.nextCheckpoint = (crossed + 1) % this.track.checkpoints.length;
     if (crossed === 0) {
       this.localLapStart = now;
@@ -336,20 +341,8 @@ export class Game {
     this.hud.setPosition(this.car.x, this.car.z);
     this.hud.setRemotePositions(this.remote.positions());
     this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
-    this.hud.setCheckpointMissed(
-      Boolean(
-        this.lapStartT !== null &&
-        this.progress &&
-        checkpointMissed(
-          this.car.centerIndex,
-          this.checkpoints[this.progress.nextCheckpoint],
-          this.track.samples.length,
-          8,
-        ),
-      ),
-    );
     this.hud.setCurrentLap(
-      this.lapStartT === null ? null : Math.max(serverNow - this.lapStartT, 0),
+      this.lapStartT === null ? null : Math.max(serverNow - this.lapStartT, 0) + this.lapPenaltyMs,
     );
     // While the e2e seam replays inputs, skip the draw: under software WebGL a
     // frame costs 100ms+, and the seam's per-frame step cap (which keeps state

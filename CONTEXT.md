@@ -25,8 +25,12 @@ A named set of physics rules (Easy, Medium, Hard) that governs how a car acceler
 _Avoid_: Mode, level, setting
 
 **Checkpoint**:
-One of a Track's ordered gates that a lap must pass through in sequence for the lap to count. Checkpoints enforce _order_ (you cannot skip a gate) but not, by themselves, the racing _line_ — the straight path between two consecutive gates is always legal. A Track that folds back on itself places gates densely enough (on Stormhaven, one per control point) that the required apex-to-apex path _is_ the racing line, so cutting the grass can no longer save time. Checkpoints are invisible gameplay gates, not rendered geometry.
+One of a Track's ordered gates that a lap passes through in sequence. Missing one costs a Checkpoint Penalty; the lap carries on (ADR-0012). Checkpoints enforce _order_ but not, by themselves, the racing _line_ — the straight path between two consecutive gates is always legal. A Track that folds back on itself places gates densely enough (on Stormhaven, one per control point) that the apex-to-apex path _is_ the racing line, so a cut that skips gates pays for each. The start/finish gate cannot be missed: it also counts once the car is past its line anywhere out to the barriers. Checkpoints are invisible gameplay gates, not rendered geometry.
 _Avoid_: Gate (informal), waypoint, marker
+
+**Checkpoint Penalty**:
+The flat 2 seconds added to the lap in progress for each Checkpoint the car skips. Detected by the server when the car reaches a later gate, so it lands then, not the instant the gate is passed. A penalized lap is otherwise an ordinary lap — lap time is driven time plus penalties, and it counts toward session best and the leaderboard with the penalty baked in. Cleared by Respawn along with the lap.
+_Avoid_: time penalty (unqualified — collides with the off-road grass penalty), DNF, invalid lap
 
 **Respawn**:
 A driver-initiated action that teleports the driver's own car back to the starting position and abandons the lap in progress. Scoped to the requesting driver only — never affects other players in the Room. Preserves the driver's completed lap count and session best lap; persisted leaderboard records are untouched.
@@ -38,7 +42,7 @@ _Avoid_: Record (unqualified — collides with the AI Reference Lap), best time
 
 **Plausible Lap**:
 A completed lap whose reported trajectory stays within the physical limits of its Room's Difficulty — bounded speed, no teleports. Only Plausible Laps are persisted: an implausible lap still counts within its Room session (HUD, session best), but never becomes a Track Record, Replay, or Pacer. Rejection is silent — the driver is not told (ADR-0005).
-_Avoid_: valid lap (collides with checkpoint-order validity, which is a separate, in-Room concept), legal lap, verified lap
+_Avoid_: valid lap (suggests a missed Checkpoint invalidates a lap; it only costs a Checkpoint Penalty), legal lap, verified lap
 
 **Replay**:
 A playback of a recorded, persisted human leaderboard lap for a `(driver, Track, Difficulty)`, fetched from the server and rendered as a single car following a chase camera. The playback interpolates stored poses by timestamp — it does not re-simulate physics.

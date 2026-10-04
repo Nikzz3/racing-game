@@ -6,3 +6,4 @@ export * from "./clock";
 export * from "./handling";
 export * from "./racing-line";
 export * from "./jev";
+export * from "./checkpoint";

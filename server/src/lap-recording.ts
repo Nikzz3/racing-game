@@ -75,7 +75,8 @@ export function recordState(
 
   const recording = player.lapFrames;
   const complete = recording !== null && recording.length < MAX_REPLAY_FRAMES;
-  if (complete) recording.push(makeFrame(lap.lapTimeMs, x, z, rot, speed));
+  // Frames are the drive itself: the penalty is in the lap time, not the playback.
+  if (complete) recording.push(makeFrame(lap.lapTimeMs - lap.penaltyMs, x, z, rot, speed));
   player.lapFrames = [makeFrame(0, x, z, rot, speed)];
 
   return {
@@ -88,6 +89,7 @@ export function recordState(
       playerId: player.id,
       name: player.name,
       lapTimeMs: lap.lapTimeMs,
+      penaltyMs: lap.penaltyMs,
       bestLapMs: timing.bestLapMs ?? lap.lapTimeMs,
       laps: timing.laps,
       isPersonalBest: lap.isPersonalBest,

@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { createTiming, respawnTiming, updateTiming, type TimingState } from "./timing";
-import { MAX_SPEED_MS, minPlausibleLapMs, SUNSET_RIDGE } from "@racing/shared";
+import {
+  CHECKPOINT_PENALTY_MS,
+  MAX_SPEED_MS,
+  minPlausibleLapMs,
+  SUNSET_RIDGE,
+} from "@racing/shared";
 
 const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
 const MAX_SPEED = MAX_SPEED_MS.medium;
@@ -145,5 +150,50 @@ describe("updateTiming — LapResult fields", () => {
     expect(lap?.isPlausible).toBe(false);
     expect(lap?.isPersonalBest).toBe(false);
     expect(t.bestLapMs).toBeNull();
+  });
+});
+
+describe("updateTiming — Checkpoint Penalties", () => {
+  /** Start a lap, then drive to every gate except `missed` and back to the line, `stepMs` apart. */
+  function lapMissing(t: TimingState, missed: number[], stepMs = 5000, now = 0) {
+    at(t, 0, now);
+    for (let k = 1; k < CHECKPOINTS.length; k++) if (!missed.includes(k)) at(t, k, (now += stepMs));
+    return { result: at(t, 0, (now += stepMs)), now };
+  }
+
+  it("adds two seconds per missed gate to the lap and carries on", () => {
+    const t = createTiming();
+    at(t, 0, 0);
+    at(t, 1, 5000);
+    at(t, 4, 10_000);
+    expect(t.penaltyMs).toBe(2 * CHECKPOINT_PENALTY_MS);
+    expect(t.next).toBe(5);
+
+    const { result } = lapMissing(createTiming(), [2, 3]);
+    const drivenMs = (CHECKPOINTS.length - 2) * 5000;
+    expect(result).toMatchObject({
+      lapTimeMs: drivenMs + 2 * CHECKPOINT_PENALTY_MS,
+      penaltyMs: 2 * CHECKPOINT_PENALTY_MS,
+      isPlausible: true,
+    });
+  });
+
+  it("starts the next lap, and a respawned one, without penalties", () => {
+    const t = createTiming();
+    const first = lapMissing(t, [5]);
+    expect(t.penaltyMs).toBe(0);
+    expect(finishLap(t, first.now, 5000).result?.penaltyMs).toBe(0);
+
+    at(t, 2, first.now + 70_000);
+    expect(t.penaltyMs).toBe(CHECKPOINT_PENALTY_MS);
+    respawnTiming(t);
+    expect(t.penaltyMs).toBe(0);
+  });
+
+  it("judges the lap-time floor on driven time, not the penalized time", () => {
+    const stepMs = Math.floor(MIN_LAP_MS / (CHECKPOINTS.length - 1)) - 1;
+    const { result } = lapMissing(createTiming(), [6], stepMs, 0);
+    expect(result!.lapTimeMs).toBeGreaterThan(MIN_LAP_MS);
+    expect(result!.isPlausible).toBe(false);
   });
 });

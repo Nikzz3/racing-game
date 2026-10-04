@@ -65,6 +65,16 @@ describe("lap recording boundaries", () => {
     expect(lap.variant).toBe("taxi");
   });
 
+  it("records a penalized lap's drive, with the penalty only in its time", () => {
+    const { player, state } = driver();
+    recordState(player, state, 1_000);
+    player.timing.next = 0;
+    player.timing.penaltyMs = 4_000;
+    const lap = recordState(player, state, 301_000)!;
+    expect(lap.message).toMatchObject({ lapTimeMs: 304_000, penaltyMs: 4_000 });
+    expect(lap.frames?.map((frame) => frame[0])).toEqual([0, 300_000]);
+  });
+
   it("discards an over-cap replay and starts a fresh recording at the boundary", () => {
     const { player, state } = driver();
     recordState(player, state, 1_000);

@@ -214,3 +214,20 @@ describe("Hud lap timer", () => {
     expect(lap.textContent).toBe("0:00.020");
   });
 });
+
+describe("Hud checkpoint penalty", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("flashes the penalty, then hides it", () => {
+    vi.useFakeTimers();
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 3);
+    const warning = parent.querySelector(".cp-miss-warn")!;
+    hud.flashCheckpointPenalty(4000);
+    expect(warning.classList.contains("visible")).toBe(true);
+    expect(warning.textContent).toContain("+4s penalty");
+    vi.advanceTimersByTime(2500);
+    expect(warning.classList.contains("visible")).toBe(false);
+    parent.remove();
+  });
+});
