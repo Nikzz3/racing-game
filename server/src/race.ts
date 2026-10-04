@@ -177,8 +177,6 @@ export class Race {
     driver.missedAtGo ??= timing.missedCheckpoints;
     const servedT = this.t + (timing.missedCheckpoints - driver.missedAtGo) * CHECKPOINT_PENALTY_MS;
     while (driver.lapT.length + driver.servingT.length < timing.laps) driver.servingT.push(servedT);
-    while (driver.servingT.length && driver.servingT[0] <= this.t)
-      driver.lapT.push(driver.servingT.shift()!);
     const n = this.checkpoints;
     const inLap = timing.lapStartT === null ? 0 : timing.next === 0 ? n : timing.next;
     const progress = timing.laps * n + inLap;
@@ -240,7 +238,7 @@ export class Race {
     }
   }
 
-  /** When GO, a Pacer's lap or the deadline next changes the race; Infinity if nothing will. */
+  /** When GO, a lap counting or the deadline next changes the race; Infinity if nothing will. */
   private nextEventT(): number {
     if (this.currentPhase === "countdown") return this.goT;
     const racing = this.racing();
@@ -250,6 +248,7 @@ export class Race {
       if (lap && lapT.length < this.laps)
         next = Math.min(next, this.pacerLapT(lap, lapT.length + 1));
     }
+    for (const { servingT } of racing) if (servingT.length) next = Math.min(next, servingT[0]);
     return next;
   }
 
@@ -257,7 +256,12 @@ export class Race {
     this.t = t;
     if (this.currentPhase === "countdown" && t >= this.goT) this.currentPhase = "racing";
     if (this.currentPhase !== "racing") return;
-    for (const entrant of this.racing()) if (entrant.lap) this.drivePacer(entrant, entrant.lap, t);
+    for (const entrant of this.racing()) {
+      if (entrant.lap) this.drivePacer(entrant, entrant.lap, t);
+      // A served lap counts at its own time, not at the driver's next state.
+      while (entrant.servingT.length && entrant.servingT[0] <= t)
+        entrant.lapT.push(entrant.servingT.shift()!);
+    }
     if (this.format === "race") this.raceRules(t);
     else this.knockoutRules(t);
   }

@@ -69,7 +69,8 @@ plus penalties.
   for each; a cut that skips a single gate pays off only if it saves more than 2 s.
   Accepted, and a risk to revisit if such cuts turn out profitable.
 - **A penalized Replay or Pacer finishes early.** Its frames are the raw drive, so the
-  playback crosses the line ahead of its listed time by the penalty.
+  playback crosses the line ahead of its listed time by the penalty. A Race's grid races a Pacer by its
+  recording, so only clean laps are seated as grid Pacers (`fastestReplays`).
 - **Respawn is unchanged** — still a driver-initiated action that abandons the lap and
   clears its penalty — but it is no longer the remedy for a missed gate.
 - **The headless AI harness stays strict** (`client/src/game/harness.ts`

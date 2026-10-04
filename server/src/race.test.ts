@@ -259,4 +259,14 @@ describe("Checkpoint Penalties", () => {
     drive(knockout, "cy", lap(1), GO + 41_500);
     expect(positions(knockout, GO + 41_500)).toEqual(["ben racing", "cy racing", "ava out"]);
   });
+
+  it("counts a served lap at its own time, even before the driver's next state", () => {
+    const knockout = callRace("knockout", ["ava", "ben", "cy"]);
+    knockout.tick(GO);
+    for (const id of ["ava", "ben", "cy"]) drive(knockout, id, 1, GO + 50);
+    drive(knockout, "ava", lap(1), GO + 40_000, 1);
+    drive(knockout, "ben", lap(1), GO + 41_000);
+    drive(knockout, "cy", lap(1), GO + 40_000 + CHECKPOINT_PENALTY_MS + 10);
+    expect(positions(knockout, GO + 42_010)).toEqual(["ben racing", "ava racing", "cy out"]);
+  });
 });

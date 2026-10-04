@@ -1,4 +1,5 @@
 import {
+  CHECKPOINT_PENALTY_MS,
   asVariant,
   type Difficulty,
   type ReplayFrame,
@@ -88,9 +89,12 @@ export async function fastestReplays(
   limit: number,
 ): Promise<PacerReplay[]> {
   const { rows } = await pool.query(
+    // A penalized lap's time runs past its recording, which a grid Pacer races
+    // by: only clean laps are seated, so a Pacer laps at its listed time.
     `SELECT name, frames, variant FROM replays WHERE track = $1 AND difficulty = $2
+       AND time_ms < (frames -> -1 ->> 0)::float8 + $4
      ORDER BY time_ms ASC, name ASC LIMIT $3`,
-    [track, difficulty, limit],
+    [track, difficulty, limit, CHECKPOINT_PENALTY_MS],
   );
   return rows.map((row) => ({
     name: row.name,
