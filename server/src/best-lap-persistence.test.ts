@@ -54,3 +54,19 @@ describe.skipIf(!testDatabaseUrl)("best lap persistence", () => {
     });
   }, 15_000);
 });
+
+// The clean-lap rule for grid Pacers is a SQL filter on the stored frames.
+describe.skipIf(!testDatabaseUrl)("grid Pacer replays", () => {
+  it("seats only laps whose recording runs their full time, never a penalized one", async () => {
+    await withTestSchema(async ({ initDb }) => {
+      await initDb();
+      const { fastestReplays, makeFrame, submitLap } = await import("./replay");
+      const drive = (ms: number) => [makeFrame(0, 0, 0, 0, 0), makeFrame(ms, 5, 5, 0, 10)];
+      await submitLap("Cutter", "sunset-ridge", "medium", 58_000, drive(56_000));
+      await submitLap("Clean", "sunset-ridge", "medium", 60_000, drive(60_000));
+
+      const replays = await fastestReplays("sunset-ridge", "medium", 8);
+      expect(replays.map((replay) => replay.name)).toEqual(["Clean"]);
+    });
+  }, 15_000);
+});

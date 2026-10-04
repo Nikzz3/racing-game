@@ -48,11 +48,16 @@ derivation. The change is physics-neutral and confined to `shared/src/track.ts`.
 - **Gross cuts become invalid, minor ones merely slower.** A line that skips an apex no
   longer completes a lap at all; a line that clips grass but stays within a gate's radius of
   every apex still counts and is simply slower. Honest racing lines always validate.
+  _Superseded by ADR-0012:_ a skipped gate now costs a 2 s Checkpoint Penalty instead of
+  voiding the lap, so a gross cut is heavily penalized rather than invalid.
 - **The void is surfaced, not silent.** Because a skipped gate would otherwise fail a lap
   with no feedback, the client shows a persistent "checkpoint missed" warning, detected from
   the invariant that a driver can never legitimately be arc-length past the checkpoint they
   still owe (`nextCheckpoint` from the server vs. the car's centerline index) — no server or
   protocol change. The HUD's `CP x/N` counter also becomes per-Track (Stormhaven has 29
   gates, not the global twelve).
+  _Superseded by ADR-0012:_ the persistent warning and its client-side detection are gone;
+  misses are detected server-side, penalized, and flashed briefly. The per-Track counter
+  stands.
 - **Persisted Stormhaven leaderboard times are untouched** as historical records; only
   future laps are validated under the denser gates.

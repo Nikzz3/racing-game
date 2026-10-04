@@ -25,7 +25,8 @@ export interface Track {
   name: string;
   controlPoints: readonly [number, number][];
   samples: TrackSample[];
-  checkpoints: { x: number; z: number }[];
+  /** Gates in lap order, each a centerline sample; gate 0 is the start/finish. */
+  checkpoints: TrackSample[];
 }
 
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
@@ -137,10 +138,10 @@ export const SUNSET_RIDGE: Track = {
   name: "Sunset Ridge Circuit",
   controlPoints: SUNSET_RIDGE_CONTROL_POINTS,
   samples: sunsetRidgeSamples,
-  checkpoints: Array.from({ length: NUM_CHECKPOINTS }, (_, k) => {
-    const s = sunsetRidgeSamples[Math.floor((k * TRACK_DIVISIONS) / NUM_CHECKPOINTS)];
-    return { x: s.x, z: s.z };
-  }),
+  checkpoints: Array.from(
+    { length: NUM_CHECKPOINTS },
+    (_, k) => sunsetRidgeSamples[Math.floor((k * TRACK_DIVISIONS) / NUM_CHECKPOINTS)],
+  ),
 };
 
 /**
@@ -195,10 +196,9 @@ export const STORMHAVEN: Track = {
   name: "Stormhaven Circuit",
   controlPoints: STORMHAVEN_CONTROL_POINTS,
   samples: stormhavenSamples,
-  checkpoints: STORMHAVEN_CONTROL_POINTS.map(([cx, cz]) => {
-    const s = stormhavenSamples[nearestCenterline(cx, cz, stormhavenSamples).index];
-    return { x: s.x, z: s.z };
-  }),
+  checkpoints: STORMHAVEN_CONTROL_POINTS.map(
+    ([cx, cz]) => stormhavenSamples[nearestCenterline(cx, cz, stormhavenSamples).index],
+  ),
 };
 
 export const TRACKS: Track[] = [SUNSET_RIDGE, STORMHAVEN];

@@ -25,6 +25,10 @@ export interface PlayerSnapshot {
   bestLapMs: number | null;
   /** Server timestamp when the current lap started, null if not yet crossed the line. */
   lapStartT: number | null;
+  /** Checkpoint Penalties the lap in progress has collected; absent from servers predating them. */
+  lapPenaltyMs?: number;
+  /** Checkpoints missed this session; only grows. Absent from servers predating penalties. */
+  missedCheckpoints?: number;
   nextCheckpoint: number;
   /** Respawns so far, advanced together with the spawn position. A change between snapshots is a teleport, not movement. */
   spawns: number;
@@ -198,7 +202,10 @@ export type ServerMessage =
       type: "lap";
       playerId: string;
       name: string;
+      /** Includes `penaltyMs`. */
       lapTimeMs: number;
+      /** The lap's Checkpoint Penalties; absent from servers predating them. */
+      penaltyMs?: number;
       bestLapMs: number;
       laps: number;
       isPersonalBest: boolean;

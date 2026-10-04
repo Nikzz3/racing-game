@@ -1,4 +1,4 @@
-import { CHECKPOINT_RADIUS } from "@racing/shared";
+import { CHECKPOINT_PENALTY_MS, reachedCheckpoint, type TrackSample } from "@racing/shared";
 
 /** Server wall-clock time (ms) plus world x/z. */
 interface WindowSample {
@@ -11,6 +11,13 @@ export interface TimingState {
   /** Index of the next checkpoint the player must pass. */
   next: number;
   lapStartT: number | null;
+  /** Checkpoint Penalties the lap in progress has collected (ADR-0012). */
+  penaltyMs: number;
+  /**
+   * Checkpoints missed this session. Only grows, so a client can flash each miss
+   * however its snapshots and lap messages interleave, even one charged as a lap completes.
+   */
+  missedCheckpoints: number;
   laps: number;
   lastLapMs: number | null;
   bestLapMs: number | null;
@@ -28,6 +35,8 @@ export function createTiming(): TimingState {
   return {
     next: 0,
     lapStartT: null,
+    penaltyMs: 0,
+    missedCheckpoints: 0,
     laps: 0,
     lastLapMs: null,
     bestLapMs: null,
@@ -45,6 +54,7 @@ export function createTiming(): TimingState {
 export function respawnTiming(t: TimingState): void {
   t.next = 0;
   t.lapStartT = null;
+  t.penaltyMs = 0;
   t.windowSamples = [];
   t.lapImplausible = false;
   t.spawnPending = true;
@@ -68,13 +78,14 @@ export function settleSpawn(t: TimingState): void {
 }
 
 export interface LapResult {
+  /** Driven time plus the lap's Checkpoint Penalties. */
   lapTimeMs: number;
+  penaltyMs: number;
   isPersonalBest: boolean;
   /** False when the speed bound or the lap-time floor was violated. */
   isPlausible: boolean;
 }
 
-const R2 = CHECKPOINT_RADIUS * CHECKPOINT_RADIUS;
 const PLAUSIBILITY_WINDOW_MS = 1000;
 /** Headroom over maxSpeedMs for network burst jitter. */
 const SPEED_TOLERANCE = 1.1;
@@ -103,16 +114,17 @@ function exceedsSpeedBound(samples: WindowSample[], now: number, maxSpeedMs: num
 /**
  * Advance checkpoint progress from a reported position and judge plausibility
  * (ADR-0005): the lap is flagged if the path covered in any ~1 s window exceeds
- * `maxSpeedMs × 1.1`, or if it finishes under `minLapMs`. Both are silent to
- * the client. Checkpoints must be hit in order, so cutting the track never
- * completes a lap. Returns a result when a lap completes at the start line.
+ * `maxSpeedMs × 1.1`, or if its driven time is under `minLapMs`. Both are silent
+ * to the client. Reaching a gate past the owed one costs a Checkpoint Penalty
+ * for each gate missed on the way (ADR-0012). Returns a result when a lap
+ * completes at the start line.
  */
 export function updateTiming(
   t: TimingState,
   x: number,
   z: number,
   now: number,
-  checkpoints: { x: number; z: number }[],
+  checkpoints: readonly TrackSample[],
   maxSpeedMs: number,
   minLapMs: number,
 ): LapResult | null {
@@ -129,28 +141,32 @@ export function updateTiming(
     }
   }
 
-  const cp = checkpoints[t.next];
-  const dx = x - cp.x;
-  const dz = z - cp.z;
-  if (dx * dx + dz * dz > R2) return null;
+  const reached = reachedCheckpoint(checkpoints, t.next, x, z);
+  if (reached === null) return null;
+  const missed = (reached - t.next + checkpoints.length) % checkpoints.length;
+  t.missedCheckpoints += missed;
+  t.penaltyMs += missed * CHECKPOINT_PENALTY_MS;
 
   let result: LapResult | null = null;
-  if (t.next === 0) {
+  if (reached === 0) {
     if (t.lapStartT !== null) {
-      const lapTimeMs = now - t.lapStartT;
+      const drivenMs = now - t.lapStartT;
+      const lapTimeMs = drivenMs + t.penaltyMs;
       t.laps += 1;
       t.lastLapMs = lapTimeMs;
-      const isPlausible = !t.lapImplausible && lapTimeMs >= minLapMs;
+      // Judged on driven time, so penalties cannot pad a fabricated lap over the floor.
+      const isPlausible = !t.lapImplausible && drivenMs >= minLapMs;
       // An implausible lap is still broadcast to the room but must never become
       // the session best or be advertised as a PB.
       const isPersonalBest = isPlausible && (t.bestLapMs === null || lapTimeMs < t.bestLapMs);
       if (isPersonalBest) t.bestLapMs = lapTimeMs;
-      result = { lapTimeMs, isPersonalBest, isPlausible };
+      result = { lapTimeMs, penaltyMs: t.penaltyMs, isPersonalBest, isPlausible };
     }
     t.lapStartT = now;
+    t.penaltyMs = 0;
     t.lapImplausible = false;
     t.windowSamples = [{ t: now, x, z }];
   }
-  t.next = (t.next + 1) % checkpoints.length;
+  t.next = (reached + 1) % checkpoints.length;
   return result;
 }
