@@ -34,6 +34,7 @@ export class PacerOverlay {
   private frames: ReplayFrame[] = [];
   private startMs: number | null = null;
   private variant: Variant;
+  private drawn: Pose | null = null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -98,13 +99,20 @@ export class PacerOverlay {
     };
   }
 
+  /** Where the Pacer is drawn this frame; null while it is hidden. */
+  get pose(): Readonly<Pose> | null {
+    return this.drawn;
+  }
+
   onRespawn(): void {
     this.startMs = null;
     this.mesh.visible = false;
+    this.drawn = null;
   }
 
   update(nowMs: number, dt: number): void {
     const pose = pacerPoseAt(this.frames, this.startMs, nowMs);
+    this.drawn = pose;
     this.mesh.visible = pose !== null;
     if (!pose) return;
     this.mesh.position.set(pose.x, 0, pose.z);

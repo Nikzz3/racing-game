@@ -1079,6 +1079,50 @@ a {
   border-color: var(--accent);
   color: var(--accent);
 }
+.sound-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sound-mute {
+  flex: none;
+  padding: 14px 18px;
+  background: #24262dcc;
+  border: 1px solid #ffffff19;
+  border-radius: 2px;
+  font-size: 12px;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.sound-mute:hover {
+  border-color: #efad6570;
+}
+.sound-mute[aria-pressed="true"] {
+  background: #efad6518;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setup-field input.sound-volume {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  accent-color: var(--accent);
+}
+/* The slider has no border to light up like the other fields, so it takes the buttons' ring. */
+.setup-field input.sound-volume:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.sound-volume-value {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+  font: 12px var(--mono);
+}
 .pacer-opt-ai {
   color: var(--pacer);
 }
@@ -2276,6 +2320,7 @@ a {
 .hud-respawn,
 .hud-start-race,
 .hud-start-knockout,
+.hud-mute,
 .replay-exit {
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
   background: #151720d9;
@@ -2291,6 +2336,7 @@ a {
 .hud-respawn:hover,
 .hud-start-race:hover,
 .hud-start-knockout:hover,
+.hud-mute:hover,
 .replay-exit:hover {
   background: #ac713f99;
   border-color: #ffcc89;
@@ -2304,6 +2350,20 @@ a {
   background: #151720d9;
   border-color: #ffffff2a;
   opacity: 0.4;
+}
+/* A speaker icon, so the actions keep to two lines beside the touch controls. */
+.hud-mute svg {
+  display: block;
+  width: 1.2em;
+  height: 1.2em;
+}
+.hud-mute[aria-pressed="true"] {
+  border-color: #ffcc89;
+  color: #ffcc89;
+}
+.hud-mute[aria-pressed="true"] .hud-mute-waves,
+.hud-mute:not([aria-pressed="true"]) .hud-mute-cross {
+  display: none;
 }
 .offtrack-warn,
 .cp-miss-warn {
@@ -3070,7 +3130,8 @@ a {
   .hud-leave,
   .hud-respawn,
   .hud-start-race,
-  .hud-start-knockout {
+  .hud-start-knockout,
+  .hud-mute {
     font-size: 8px;
     padding: 9px;
   }
@@ -3294,7 +3355,8 @@ a {
   .hud-leave,
   .hud-respawn,
   .hud-start-race,
-  .hud-start-knockout {
+  .hud-start-knockout,
+  .hud-mute {
     font-size: 8px;
     padding: 9px;
   }
@@ -3351,6 +3413,20 @@ a {
 @media (pointer: coarse) and (max-height: 500px) and (max-width: 539px) {
   .hud-map {
     display: none;
+  }
+}
+/* The narrowest portrait phones: the race actions tighten to wrap onto as few lines as they can. */
+@media (pointer: coarse) and (max-width: 359px) {
+  .hud-actions {
+    gap: 5px;
+  }
+  .hud-leave,
+  .hud-respawn,
+  .hud-start-race,
+  .hud-start-knockout,
+  .hud-mute {
+    padding: 9px 5px;
+    letter-spacing: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -32,6 +32,7 @@ function createBindings(): E2eGameBindings {
     }),
     pacerVariant: () => "taxi",
     pacerState: () => null,
+    soundState: () => null,
   };
 }
 

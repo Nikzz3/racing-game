@@ -375,7 +375,7 @@ describe("RemotePlayers variants", () => {
 });
 
 describe("RemotePlayers positions", () => {
-  it("reports each remote car where its mesh is drawn, and forgets leavers", () => {
+  it("reports each remote car where and how fast it is drawn, and forgets leavers", () => {
     vi.mocked(createCarMesh)
       .mockReset()
       .mockImplementation(() => new THREE.Group());
@@ -384,17 +384,17 @@ describe("RemotePlayers positions", () => {
       [
         { ...makeSnapshot("me"), x: 99, z: 99 },
         { ...makeSnapshot("p1"), x: 10, z: -20 },
-        { ...makeSnapshot("p2"), x: 30, z: 40 },
+        { ...makeSnapshot("p2"), x: 30, z: 40, speed: 12 },
       ],
       0,
     );
     expect(rp.positions()).toEqual([
-      { id: "p1", x: 10, z: -20 },
-      { id: "p2", x: 30, z: 40 },
+      { id: "p1", x: 10, z: -20, speed: 0 },
+      { id: "p2", x: 30, z: 40, speed: 12 },
     ]);
-    rp.onSnapshot([{ ...makeSnapshot("p2"), x: 31, z: 41 }], 100);
+    rp.onSnapshot([{ ...makeSnapshot("p2"), x: 31, z: 41, speed: 20 }], 100);
     drawAt(rp, 100); // render time lands exactly on the newest state
-    expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41 }]);
+    expect(rp.positions()).toEqual([{ id: "p2", x: 31, z: 41, speed: 20 }]);
   });
 });
 

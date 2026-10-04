@@ -55,6 +55,9 @@ import { buildTrack } from "./trackMesh";
 import { AdaptiveResolution, CHEAP_RENDER, downgradeQuality, renderQuality } from "./quality";
 import { E2eSeam } from "./e2e-seam";
 import { autopilotInput } from "./harness";
+import { Rumble } from "./gamepad";
+import type { HeardCar, RaceSound, Sound } from "./sound";
+import { impactLevel, roughness, type Listener } from "./sound-model";
 
 const SEND_MS = 50;
 /** Start anyway if the driver never reports the shaders ready, e.g. after a context loss. */
@@ -95,6 +98,12 @@ export class Game {
   private readonly started: Promise<void>;
   private readonly resolution: AdaptiveResolution | null;
   private pacer: PacerOverlay | null = null;
+  private sound: RaceSound | null;
+  private readonly rumble = new Rumble();
+  /** Where the camera hears from; refreshed every frame. */
+  private readonly listener: Listener = { x: 0, z: 0, forwardX: 0, forwardZ: 1 };
+  private readonly view = new THREE.Vector3();
+  private readonly unsubscribeSound: () => void;
   private pacerTimes: (number | null)[] = [];
   private readonly gridPacers: GridPacers;
   /** The Room's race, as the server last published it; null while free driving. */
@@ -139,6 +148,7 @@ export class Game {
     private readonly variant?: Variant,
     steering?: SteeringMode,
     scene: ScenePreset = "sunset",
+    private readonly audio: Sound | null = null,
   ) {
     this.track = resolveTrack(trackSlug);
     this.board = { track: this.track.id, difficulty };
@@ -151,6 +161,8 @@ export class Game {
     this.gridPacers = new GridPacers(this.bundle.scene);
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
+    const settings = audio?.settings;
+    const toggleMute = settings && (() => settings.toggleMuted());
     this.hud = new Hud(
       parent,
       roomName,
@@ -162,12 +174,18 @@ export class Game {
         start: (format) => this.net.send({ type: "startRace", format }),
         cycle: (step) => this.cycle(step),
       },
+      toggleMute,
     );
+    this.unsubscribeSound = settings
+      ? settings.subscribe(() => this.hud.setMuted(settings.muted))
+      : () => undefined;
+    if (settings) this.hud.setMuted(settings.muted);
     this.touch = new TouchControls(parent, steering);
     this.input = new Input(this.touch);
     this.input.onRespawn = () => this.requestRespawn();
     this.input.onCycle = (step) => this.cycle(step);
     this.input.onRaceRival = () => this.hud.acceptRivalPrompt();
+    this.input.onToggleMute = toggleMute ?? null;
     this.input.attach();
     if (armedPacer) {
       this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
@@ -190,6 +208,8 @@ export class Game {
     this.resolution = CHEAP_RENDER
       ? null
       : new AdaptiveResolution(this.bundle.renderer.getPixelRatio(), renderQuality().minPixelRatio);
+    // Last, so a race view that failed to start leaves no voices playing.
+    this.sound = audio?.race(this.car.topSpeed) ?? null;
     this.started = this.start();
   }
   /**
@@ -500,13 +520,16 @@ export class Game {
       followCar(this.bundle.camera, view.x, view.z, view.heading, dt);
       updateSun(this.bundle, view.x, view.z);
     }
+    const remotes = this.remote.positions();
+    const gridPacers = this.gridPacers.positions();
+    this.feedback(now, dt, input, spectating, remotes, gridPacers);
     this.touch.setHidden(spectating);
     this.hud.setRespawnEnabled(this.mode === "drive");
     this.hud.setRaceClock(serverNow);
     this.hud.setSpeed(spectating ? (view?.speed ?? 0) : this.car.speed);
     this.hud.setPosition(this.car.x, this.car.z);
     this.hud.setDriverShown(!spectating);
-    this.hud.setRemotePositions(this.remote.positions(), this.gridPacers.positions());
+    this.hud.setRemotePositions(remotes, gridPacers);
     this.hud.setOffTrack(!spectating && !this.car.onTrack && Math.abs(this.car.speed) > 1);
     this.hud.setCurrentLap(
       spectating || this.lapStartT === null
@@ -521,6 +544,52 @@ export class Game {
     if (!injecting) this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animation = requestAnimationFrame(this.frame);
   };
+  /**
+   * What the driver hears and, on a gamepad, feels this frame. A Spectator's car is put
+   * away, so it neither sounds nor rumbles; the cars they watch still do.
+   */
+  private feedback(
+    now: number,
+    dt: number,
+    input: CarInput,
+    spectating: boolean,
+    remotes: HeardCar[],
+    gridPacers: HeardCar[],
+  ): void {
+    const impact = this.car.takeImpact();
+    const hit = spectating ? 0 : impactLevel(impact);
+    this.rumble.impact(hit, now);
+    this.rumble.surface(spectating ? 0 : roughness(this.car.speed, this.car.onTrack), now);
+    if (!this.sound) return;
+    const { camera } = this.bundle;
+    camera.getWorldDirection(this.view);
+    const flat = Math.hypot(this.view.x, this.view.z) || 1;
+    this.listener.x = camera.position.x;
+    this.listener.z = camera.position.z;
+    this.listener.forwardX = this.view.x / flat;
+    this.listener.forwardZ = this.view.z / flat;
+    // The armed Pacer is put away during a race, when the grid's Pacers drive instead.
+    const pacer = this.pacer?.pose;
+    const cars: HeardCar[] = [...remotes, ...gridPacers.map((car) => ({ ...car, pacer: true }))];
+    if (pacer) cars.push({ id: "pacer", x: pacer.x, z: pacer.z, speed: pacer.speed, pacer: true });
+    try {
+      const driver = spectating
+        ? null
+        : {
+            speed: this.car.speed,
+            throttle: input.throttle,
+            steer: input.steer,
+            onTrack: this.car.onTrack,
+            hit,
+          };
+      this.sound.update(dt, driver, this.listener, cars);
+    } catch (error) {
+      // The browser's audio API throws where the frame loop must not: lose the sound, not the race.
+      console.warn("Race sound stopped", error);
+      this.sound.dispose();
+      this.sound = null;
+    }
+  }
   private adaptResolution(now: number): void {
     const step = this.resolution?.frame(now) ?? null;
     if (step === "downgrade") downgradeQuality();
@@ -551,6 +620,10 @@ export class Game {
         }),
         pacerVariant: () => this.pacer?.resolvedVariant() ?? null,
         pacerState: () => this.pacer?.state() ?? null,
+        soundState: () => {
+          const output = this.audio?.state();
+          return output && this.sound ? { ...output, engines: this.sound.engines } : null;
+        },
       },
       SEND_MS,
     );
@@ -565,6 +638,8 @@ export class Game {
     document.removeEventListener("visibilitychange", this.visibility);
     this.input.detach();
     this.touch.dispose();
+    this.sound?.dispose();
+    this.unsubscribeSound();
     this.remote.dispose();
     this.pacer?.dispose();
     this.gridPacers.clear();

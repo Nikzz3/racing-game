@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GamepadList } from "./gamepad";
 import { Input } from "./input";
 import { TouchControls } from "./touch";
 
 const controls: Input[] = [];
 const touches: TouchControls[] = [];
-function input(touch: TouchControls | null = null): Input {
-  const control = new Input(touch);
+function input(touch: TouchControls | null = null, pads: () => GamepadList = () => []): Input {
+  const control = new Input(touch, pads);
   control.attach();
   controls.push(control);
   return control;
@@ -152,5 +153,110 @@ describe("touch steering through Input", () => {
     expect(control.read(0.05).steer).toBeCloseTo(0.15);
     expect(control.read(1).steer).toBeCloseTo(partial);
     expect(control.read(1).steer).toBeCloseTo(partial);
+  });
+});
+
+/** A keydown carrying both the key's label and its position, unlike `key()`. */
+function press(init: KeyboardEventInit, target: EventTarget = window): void {
+  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+}
+
+describe("mute key", () => {
+  it("toggles mute once per M press, never from a text field", () => {
+    const control = input();
+    control.onToggleMute = vi.fn();
+    press({ key: "m", code: "KeyM" });
+    press({ key: "m", code: "KeyM", repeat: true });
+    const textarea = document.createElement("textarea");
+    document.body.append(textarea);
+    press({ key: "m", code: "KeyM" }, textarea);
+    expect(control.onToggleMute).toHaveBeenCalledOnce();
+    expect(control.read(1)).toEqual({ throttle: 0, brake: 0, steer: 0 });
+  });
+
+  it("follows the key labelled M, wherever the layout puts it", () => {
+    const control = input();
+    control.onToggleMute = vi.fn();
+    // AZERTY: M sits where QWERTY has the semicolon, and Caps Lock makes it "M".
+    press({ key: "M", code: "Semicolon" });
+    press({ key: ",", code: "KeyM" });
+    expect(control.onToggleMute).toHaveBeenCalledOnce();
+  });
+
+  it("leaves M with a modifier to the browser and the OS", () => {
+    const control = input();
+    control.onToggleMute = vi.fn();
+    for (const modifier of ["ctrlKey", "metaKey", "altKey"])
+      press({ key: "m", code: "KeyM", [modifier]: true });
+    expect(control.onToggleMute).not.toHaveBeenCalled();
+  });
+});
+
+function button(value: number): GamepadButton {
+  return { pressed: value >= 0.5, touched: value > 0, value };
+}
+
+describe("gamepad driving through Input", () => {
+  /** One standard pad whose stick, triggers and Y a test sets. */
+  function padInput() {
+    const state = { stick: 0, throttle: 0, brake: 0, respawn: false };
+    const pads = () => [
+      {
+        connected: true,
+        mapping: "standard",
+        axes: [state.stick, 0, 0, 0],
+        buttons: Array.from({ length: 17 }, (_, index) =>
+          button(
+            index === 7
+              ? state.throttle
+              : index === 6
+                ? state.brake
+                : index === 3 && state.respawn
+                  ? 1
+                  : 0,
+          ),
+        ),
+      } as unknown as Gamepad,
+    ];
+    return { control: input(null, pads), state };
+  }
+
+  it("passes analog pedals straight through", () => {
+    const { control, state } = padInput();
+    state.throttle = 0.525;
+    state.brake = 0.335;
+    const { throttle, brake } = control.read(0.016);
+    expect(throttle).toBeCloseTo(0.5);
+    expect(brake).toBeCloseTo(0.3);
+  });
+
+  it("eases the stick's steering in at the same rate as the keys", () => {
+    const { control, state } = padInput();
+    state.stick = -1;
+    expect(control.read(0.1).steer).toBeCloseTo(0.3);
+    expect(control.read(1).steer).toBe(1);
+    state.stick = 0;
+    expect(control.read(0.1).steer).toBeCloseTo(0.7);
+  });
+
+  it("keeps the strongest pedal of keyboard and pad", () => {
+    const { control, state } = padInput();
+    state.throttle = 0.3;
+    key("KeyW");
+    expect(control.read(0).throttle).toBe(1);
+  });
+
+  it("respawns once per press of Y", () => {
+    const { control, state } = padInput();
+    control.onRespawn = vi.fn();
+    state.respawn = true;
+    control.read(0.016);
+    control.read(0.016);
+    expect(control.onRespawn).toHaveBeenCalledOnce();
+    state.respawn = false;
+    control.read(0.016);
+    state.respawn = true;
+    control.read(0.016);
+    expect(control.onRespawn).toHaveBeenCalledTimes(2);
   });
 });

@@ -32,6 +32,16 @@ export interface E2ePacerState {
   opacity: number;
 }
 
+/** The race's audio output, as the sound journey observes it. */
+export interface E2eSoundState {
+  /** The AudioContext's state; autoplay rules keep it suspended until a user gesture. */
+  context: AudioContextState;
+  /** Master gain the volume and mute settings put on the mix (0 while muted). */
+  gain: number;
+  /** Engine voices playing: the driver's own car, every remote car and the Pacer. */
+  engines: number;
+}
+
 export interface E2eGameBindings {
   step(dt: number, input: CarInput): void;
   localState(): E2eLocalState;
@@ -45,6 +55,8 @@ export interface E2eGameBindings {
   pacerVariant(): Variant | null;
   /** Current Pacer overlay state, or null when no Pacer is armed (or it was dismissed). */
   pacerState(): E2ePacerState | null;
+  /** The race's audio output, or null while it has none. */
+  soundState(): E2eSoundState | null;
 }
 
 export interface E2eState extends E2eLocalState {
@@ -53,6 +65,7 @@ export interface E2eState extends E2eLocalState {
   variants: Record<string, Variant>;
   pacerVariant: Variant | null;
   pacer: E2ePacerState | null;
+  sound: E2eSoundState | null;
   injectionFinished: boolean;
   lapSubmitted: boolean;
   serverLaps: number;
@@ -176,6 +189,7 @@ export class E2eSeam {
       variants: this.game.playerVariants(),
       pacerVariant: this.game.pacerVariant(),
       pacer: this.game.pacerState(),
+      sound: this.game.soundState(),
       injectionFinished: !this.driving,
       lapSubmitted: this.serverLaps > 0,
       serverLaps: this.serverLaps,

@@ -221,6 +221,34 @@ describe("Hud lap timer", () => {
   });
 });
 
+describe("Hud mute toggle", () => {
+  it("offers a Mute toggle that reports whether sound is muted", () => {
+    const toggle = vi.fn();
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 3, vi.fn(), undefined, undefined, toggle);
+    const mute = parent.querySelector<HTMLButtonElement>(".hud-actions .hud-mute")!;
+    // A speaker icon, named for screen readers.
+    expect(mute.getAttribute("aria-label")).toBe("Mute");
+    expect(mute.textContent).toBe("");
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    mute.click();
+    expect(toggle).toHaveBeenCalledOnce();
+    hud.setMuted(true);
+    expect(mute.getAttribute("aria-pressed")).toBe("true");
+    hud.setMuted(false);
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    hud.dispose();
+  });
+
+  it("has no Mute toggle without sound", () => {
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 3);
+    expect(parent.querySelector(".hud-mute")).toBeNull();
+    expect(() => hud.setMuted(true)).not.toThrow();
+    hud.dispose();
+  });
+});
+
 describe("Hud checkpoint penalty", () => {
   afterEach(() => vi.useRealTimers());
 

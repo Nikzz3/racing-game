@@ -61,6 +61,12 @@ function entrantClass(entrant: RaceEntrant, myId: string): string {
     .join(" ");
 }
 
+/** A car as the circuit map needs it: where it is. */
+type MapCar = Pick<RemotePosition, "id" | "x" | "z">;
+
+/** A speaker that loses its sound waves for a cross while muted (CSS swaps them on aria-pressed). */
+const MUTE_BUTTON = `<button class="hud-mute" aria-pressed="false" aria-label="Mute" title="Mute (M)"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor"/><path class="hud-mute-waves" d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6 6 0 0 1 0 9"/><path class="hud-mute-cross" d="M10.5 6l4 4M14.5 6l-4 4"/></svg></button>`;
+
 /**
  * Places a circuit-map marker, in whole circuit units (a third of a pixel on the
  * full-size map). The marker is its own compositor layer and CSS turns the two
@@ -103,6 +109,7 @@ export class Hud {
     onRespawn?: () => void,
     track?: Track,
     race?: RaceControls,
+    onToggleMute?: () => void,
   ) {
     this.root.className = "hud";
     this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="race-position" hidden></div><div class="hud-medal" hidden><span class="hud-medal-badge"></span><span class="hud-medal-text"><span class="hud-medal-label"></span> <b class="hud-medal-time"></b></span></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
@@ -111,7 +118,7 @@ export class Hud {
     <div class="hud-panel race-standings" hidden><h3>RACE</h3><table><tbody></tbody></table></div>
     <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-shadow" d="M 36 155 A 84 84 0 1 1 164 155"/><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
     ${track ? `<div class="hud-map"><div class="hud-map-plot"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path class="hud-map-shadow" d="${trackPath(track)}"/><path d="${trackPath(track)}"/></svg><div class="hud-map-remotes"></div><i class="hud-map-dot hud-map-driver"></i></div><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
-    <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}<button class="hud-start-race">Start race</button><button class="hud-start-knockout">Start knockout</button></div>
+    <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}<button class="hud-start-race">Start race</button><button class="hud-start-knockout">Start knockout</button>${onToggleMute ? MUTE_BUTTON : ""}</div>
     <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>${penaltyText(CHECKPOINT_PENALTY_MS)}</span></div><div class="medal-award-slot" aria-live="polite"></div>
     <div class="race-countdown"></div>
     <div class="spectator-banner"><button class="spectator-prev" aria-label="Previous car">‹</button><div class="spectator-info"><span class="spectator-label">SPECTATING</span><span class="spectator-target"></span></div><button class="spectator-next" aria-label="Next car">›</button></div>
@@ -120,6 +127,7 @@ export class Hud {
     parent.append(this.root);
     this.el(".hud-leave").onclick = onLeave;
     if (onRespawn) this.el(".hud-respawn").onclick = onRespawn;
+    if (onToggleMute) this.el(".hud-mute").onclick = onToggleMute;
     if (race) {
       this.el(".hud-start-race").onclick = () => race.start("race");
       this.el(".hud-start-knockout").onclick = () => race.start("knockout");
@@ -158,7 +166,7 @@ export class Hud {
     if (dot && dot.hidden === shown) dot.hidden = !shown;
   }
   /** Mirror the other drivers in the room, and a race's grid Pacers, onto the circuit map. */
-  setRemotePositions(positions: RemotePosition[], pacers: RemotePosition[] = []): void {
+  setRemotePositions(positions: readonly MapCar[], pacers: readonly MapCar[] = []): void {
     const group = this.el(".hud-map-remotes");
     if (!group) return;
     const seen = new Set<string>();
@@ -191,6 +199,10 @@ export class Hud {
       return;
     this.lapShown = time;
     this.text(".hud-cur-lap", formatMs(time));
+  }
+  /** Shows whether sound is muted on the Mute toggle, when the HUD has one. */
+  setMuted(muted: boolean): void {
+    this.root.querySelector(".hud-mute")?.setAttribute("aria-pressed", String(muted));
   }
   setOffTrack(off: boolean): void {
     this.el(".offtrack-warn").classList.toggle("visible", off);

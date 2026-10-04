@@ -107,6 +107,13 @@ test.describe("touch controls", () => {
       await expectTouchHudFits(page);
       await page.screenshot({ path: testInfo.outputPath(name) });
     }
+    // The narrowest portrait phone, where the three race actions only just clear the pedals.
+    await page.setViewportSize({ width: 320, height: 568 });
+    const actions = await boxOf(page.locator(".hud-actions"));
+    const pedals = await boxOf(page.locator(".touch-pedals"));
+    expectApart(actions, pedals, "race actions and pedals", 20);
+    expectApart(actions, await boxOf(page.locator(".touch-steer")), "race actions and slider", 20);
+    await page.screenshot({ path: testInfo.outputPath("race-hud-portrait-320x568.png") });
   });
 });
 

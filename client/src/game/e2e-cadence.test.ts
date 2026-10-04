@@ -27,6 +27,7 @@ describe("browser replay cadence with slow, uneven render frames", () => {
         playerVariants: () => ({}),
         pacerVariant: () => null,
         pacerState: () => null,
+        soundState: () => null,
         sendState: () => {
           const previousCheckpoint = timing.next;
           const lap = updateTiming(
