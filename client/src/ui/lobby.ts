@@ -52,10 +52,8 @@ export type ArmedPacer =
       variant: "police";
       frames: ReplayFrame[];
     };
-type Choice = Variant | "random";
 type Screen = "garage" | "track" | "settings";
 type SetupTab = "race" | "records";
-const CHOICES: readonly Choice[] = [...CAR_VARIANTS, "random"];
 const TRACK_IDS = TRACKS.map((t) => t.id);
 const SETUP_TABS: readonly SetupTab[] = ["race", "records"];
 const CAR_COUNT = String(CAR_VARIANTS.length).padStart(2, "0");
@@ -76,9 +74,6 @@ const STEERING_LABELS: Record<SteeringMode, string> = {
 /** GitHub releases page where the desktop installers (`v*` tags) are published. */
 export const DESKTOP_DOWNLOAD_URL = "https://github.com/Nikzz3/racing-game/releases";
 
-function label(choice: Choice): string {
-  return choice === "random" ? "Random" : LABELS[choice];
-}
 /**
  * Link to the desktop installers, shown only in the browser build: inside the Electron
  * app `window.desktop` is present and the notice would be noise.
@@ -170,8 +165,7 @@ function step(key: string, index: number, length: number, wrap = true): number {
 
 export class Lobby {
   private readonly root = document.createElement("div");
-  private readonly randomRoll = CAR_VARIANTS[Math.floor(Math.random() * CAR_VARIANTS.length)];
-  private choice: Choice;
+  private choice: Variant;
   private track: TrackSlug = DEFAULT_TRACK_SLUG;
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
   /** Touch steering preference; the picker only shows on touch screens (CSS). */
@@ -205,7 +199,7 @@ export class Lobby {
     private readonly callbacks: LobbyCallbacks,
   ) {
     const saved = localStorage.getItem("racer-variant");
-    this.choice = asVariant(saved) ?? "random";
+    this.choice = asVariant(saved) ?? CAR_VARIANTS[0];
     if (saved !== null && saved !== this.choice) localStorage.setItem("racer-variant", this.choice);
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
@@ -217,13 +211,13 @@ export class Lobby {
             <div class="garage-heading"><h1>CHOOSE YOUR <span>CAR.</span></h1></div>
             <div class="car-stage" role="region" aria-roledescription="carousel" aria-label="Cars" tabindex="0">
               <div class="stage-sun"></div><div class="stage-horizon"></div><div class="stage-grid"></div><span class="stage-watermark" aria-hidden="true"></span><div class="stage-platform"></div>
-              <div class="car-slides">${CHOICES.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${label(v)}" aria-hidden="true"><img class="stage-car" alt="${v === "random" ? "Random car" : LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
+              <div class="car-slides">${CAR_VARIANTS.map((v) => `<div class="car-slide" data-slide="${v}" role="group" aria-roledescription="slide" aria-label="${LABELS[v]}" aria-hidden="true"><img class="stage-car" alt="${LABELS[v]}" draggable="false" hidden></div>`).join("")}</div>
               <div class="showroom-loading">Preparing your garage<span></span></div>
               <button class="carousel-arrow carousel-previous" type="button" data-carousel="previous" aria-label="Previous car"><span>←</span></button>
               <button class="carousel-arrow carousel-next" type="button" data-carousel="next" aria-label="Next car"><span>→</span></button>
             </div>
             <div class="garage-selection"><div class="selected-car-copy" aria-live="polite" aria-atomic="true"><span class="showroom-number"></span><div><h2 class="hero-car-name"></h2></div></div><button class="select-car primary-action" type="button" data-select-car aria-label="Select car">Select car <span>→</span></button></div>
-            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CHOICES.map((v, i) => radio(`garage-card${v === "random" ? " garage-card-random" : ""}`, `data-variant="${v}"`, `<span class="garage-card-number">${v === "random" ? "↝" : String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${label(v)}</span><span class="garage-card-line"></span>`)).join("")}</div></div>
+            <div class="garage-navigation"><div class="garage" role="radiogroup" aria-label="Car models">${CAR_VARIANTS.map((v, i) => radio("garage-card", `data-variant="${v}"`, `<span class="garage-card-number">${String(i + 1).padStart(2, "0")}</span><span class="garage-card-name">${LABELS[v]}</span><span class="garage-card-line"></span>`)).join("")}</div></div>
           </section>
           <section class="track-screen menu-screen" aria-label="Choose your track" aria-hidden="true" inert>
             <div class="track-heading"><h1>CHOOSE YOUR <span>CIRCUIT.</span></h1><button class="menu-back" type="button" data-change-car aria-label="Change car">← Change car</button></div>
@@ -358,7 +352,7 @@ export class Lobby {
     return this.nameInput.value.trim().slice(0, 16) || "Racer";
   }
   get selectedVariant(): Variant {
-    return this.choice === "random" ? this.randomRoll : this.choice;
+    return this.choice;
   }
   /** How the on-screen touch controls steer in the next race. */
   get steering(): SteeringMode {
@@ -375,7 +369,7 @@ export class Lobby {
     // Progress steps are disabled unless they lead somewhere, so a click is always valid.
     if (data.progressScreen) this.setScreen(data.progressScreen as Screen);
     else if (data.carousel) this.cycle(data.carousel === "next" ? 1 : -1);
-    else if (data.variant) this.chooseCar(data.variant as Choice);
+    else if (data.variant) this.chooseCar(data.variant as Variant);
     else if (data.selectCar !== undefined || data.changeTrack !== undefined)
       this.setScreen("track");
     else if (data.changeCar !== undefined) this.setScreen("garage");
@@ -409,7 +403,7 @@ export class Lobby {
     this.reconcileRoomChoice();
     this.renderBoard();
   }
-  private chooseCar(choice: Choice): void {
+  private chooseCar(choice: Variant): void {
     if (choice === this.choice) return;
     this.choice = choice;
     localStorage.setItem("racer-variant", choice);
@@ -418,8 +412,8 @@ export class Lobby {
     this.callbacks.onVariantChange();
   }
   private cycle(direction: number): void {
-    const index = CHOICES.indexOf(this.choice);
-    this.chooseCar(CHOICES[(index + direction + CHOICES.length) % CHOICES.length]);
+    const index = CAR_VARIANTS.indexOf(this.choice);
+    this.chooseCar(CAR_VARIANTS[(index + direction + CAR_VARIANTS.length) % CAR_VARIANTS.length]);
   }
   private chooseTrack(track: TrackSlug, direction = 1): void {
     if (track === this.track) return;
@@ -554,10 +548,10 @@ export class Lobby {
       if (target?.closest(".track-selector"))
         this.find(`.track-card[data-track="${this.track}"]`).focus();
     } else {
-      const next = step(event.key, CHOICES.indexOf(this.choice), CHOICES.length);
+      const next = step(event.key, CAR_VARIANTS.indexOf(this.choice), CAR_VARIANTS.length);
       if (next === -1) return;
       event.preventDefault();
-      this.chooseCar(CHOICES[next]);
+      this.chooseCar(CAR_VARIANTS[next]);
       if (target?.closest(".garage"))
         this.find(`.garage-card[data-variant="${this.choice}"]`).focus();
     }
@@ -649,12 +643,9 @@ export class Lobby {
   }
   private paintThumbnail(variant: Variant, url: string): void {
     this.images.set(variant, url);
-    for (const choice of CHOICES) {
-      if ((choice === "random" ? this.randomRoll : choice) !== variant) continue;
-      const img = this.find<HTMLImageElement>(`[data-slide="${choice}"] img`);
-      img.src = url;
-      img.hidden = false;
-    }
+    const img = this.find<HTMLImageElement>(`[data-slide="${variant}"] img`);
+    img.src = url;
+    img.hidden = false;
     if (variant === this.selectedVariant) this.paintSelectedThumbnail();
   }
   private paintSelectedThumbnail(): void {
@@ -668,18 +659,17 @@ export class Lobby {
     }
   }
   private paintHero(): void {
-    const index = CHOICES.indexOf(this.choice);
-    const name = label(this.choice);
+    const index = CAR_VARIANTS.indexOf(this.choice);
+    const name = LABELS[this.choice];
     this.find(".hero-car-name").textContent = name;
-    this.find(".selected-car-name").textContent =
-      this.choice === "random" ? `Random · ${LABELS[this.selectedVariant]}` : name;
+    this.find(".selected-car-name").textContent = name;
     this.find(".stage-watermark").textContent = name;
     this.find(".showroom-number").textContent =
-      `${this.choice === "random" ? "↝" : String(index + 1).padStart(2, "0")} / ${CAR_COUNT}`;
+      `${String(index + 1).padStart(2, "0")} / ${CAR_COUNT}`;
     this.stage?.setVariant(this.selectedVariant);
     this.root.querySelectorAll<HTMLElement>(".car-slide").forEach((slide, i) => {
-      let offset = (i - index + CHOICES.length) % CHOICES.length;
-      if (offset > CHOICES.length / 2) offset -= CHOICES.length;
+      let offset = (i - index + CAR_VARIANTS.length) % CAR_VARIANTS.length;
+      if (offset > CAR_VARIANTS.length / 2) offset -= CAR_VARIANTS.length;
       slide.dataset.position =
         offset === 0 ? "current" : offset === -1 ? "previous" : offset === 1 ? "next" : "offstage";
       slide.setAttribute("aria-hidden", String(offset !== 0));

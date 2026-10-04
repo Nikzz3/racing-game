@@ -541,11 +541,11 @@ describe("Lobby Garage picker", () => {
     throw new Error(`Could not select ${variant}`);
   }
 
-  it("renders a card for each of the 8 Variants plus a Random tile", () => {
+  it("renders a card for each of the 8 Variants and no Random tile", () => {
     mount();
-    expect(parent.querySelectorAll(".garage-card").length).toBe(CAR_VARIANTS.length + 1);
+    expect(parent.querySelectorAll(".garage-card").length).toBe(CAR_VARIANTS.length);
     for (const v of CAR_VARIANTS) expect(q(card(v))).not.toBeNull();
-    expect(q(card("random"))).not.toBeNull();
+    expect(parent.querySelector(card("random"))).toBeNull();
   });
 
   it("car choices are on the garage screen and settings start inaccessible", () => {
@@ -559,13 +559,13 @@ describe("Lobby Garage picker", () => {
   it("cards carry the Variant display name, with no separate selected-state line", () => {
     mount();
     expect(q(card("suv")).textContent).toContain("SUV");
-    expect(q(card("random")).textContent).toContain("Random");
     expect(parent.querySelector(".garage-selected")).toBeNull();
   });
 
-  it("pre-selects Random on first visit", () => {
+  it("pre-selects the first car on first visit", () => {
     mount();
-    expect(active(card("random"))).toBe(true);
+    expect(active(card(CAR_VARIANTS[0]))).toBe(true);
+    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
@@ -575,8 +575,8 @@ describe("Lobby Garage picker", () => {
     expect(active(card("police"))).toBe(true);
     expect(checked(card("police"))).toBe("true");
     expect(q(card("police")).tabIndex).toBe(0);
-    expect(checked(card("random"))).toBe("false");
-    expect(q(card("random")).tabIndex).toBe(-1);
+    expect(checked(card(CAR_VARIANTS[0]))).toBe("false");
+    expect(q(card(CAR_VARIANTS[0])).tabIndex).toBe(-1);
     expect(lobby.selectedVariant).toBe("police");
     expect(localStorage.getItem("racer-variant")).toBe("police");
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
@@ -587,7 +587,7 @@ describe("Lobby Garage picker", () => {
     selectCar("suv");
     expect(localStorage.getItem("racer-variant")).toBe("suv");
     expect(active(card("suv"))).toBe(true);
-    expect(active(card("random"))).toBe(false);
+    expect(active(card(CAR_VARIANTS[0]))).toBe(false);
     expect(lobby.selectedVariant).toBe("suv");
   });
 
@@ -598,32 +598,16 @@ describe("Lobby Garage picker", () => {
     expect(lobby.selectedVariant).toBe("taxi");
   });
 
-  it("a stored Random choice stays Random", () => {
-    localStorage.setItem("racer-variant", "random");
-    mount();
-    expect(active(card("random"))).toBe(true);
-    expect(localStorage.getItem("racer-variant")).toBe("random");
-  });
-
-  it("an invalid stored value falls back to Random and overwrites the stored value", () => {
-    localStorage.setItem("racer-variant", "batmobile");
-    mount();
-    expect(active(card("random"))).toBe(true);
-    expect(localStorage.getItem("racer-variant")).toBe("random");
-  });
-
-  it('Random resolves to a concrete member of CAR_VARIANTS, never the wire string "random"', () => {
-    mount();
-    expect(CAR_VARIANTS).toContain(lobby.selectedVariant);
-  });
-
-  it("Random keeps a single roll for the connection", () => {
-    mount();
-    const first = lobby.selectedVariant;
-    selectCar("suv");
-    selectCar("random");
-    expect(lobby.selectedVariant).toBe(first);
-  });
+  it.each(["random", "batmobile"])(
+    "a stored %s falls back to the first car and overwrites the stored value",
+    (stored) => {
+      localStorage.setItem("racer-variant", stored);
+      mount();
+      expect(active(card(CAR_VARIANTS[0]))).toBe(true);
+      expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
+      expect(localStorage.getItem("racer-variant")).toBe(CAR_VARIANTS[0]);
+    },
+  );
 
   it("a choice change triggers a hello re-send", () => {
     mount();
@@ -639,8 +623,8 @@ describe("Lobby Garage picker", () => {
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
     click(card("suv"));
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(1);
-    click(card("random"));
-    expect(active(card("random"))).toBe(true);
+    click(card("taxi"));
+    expect(active(card("taxi"))).toBe(true);
     expect(cbs.onVariantChange).toHaveBeenCalledTimes(2);
   });
 
@@ -665,15 +649,13 @@ describe("Lobby Garage picker", () => {
     expect(q<HTMLImageElement>(".setup-car-image").hidden).toBe(false);
   });
 
-  it("cycles across every car and Random, wrapping in both directions", () => {
+  it("cycles across every car, wrapping in both directions", () => {
     mount();
-    for (const variant of CAR_VARIANTS) {
+    for (const variant of [...CAR_VARIANTS.slice(1), CAR_VARIANTS[0]]) {
       click('[data-carousel="next"]');
       expect(checked(card(variant))).toBe("true");
       expect(q('.car-slide[data-position="current"]').getAttribute("data-slide")).toBe(variant);
     }
-    click('[data-carousel="next"]');
-    expect(checked(card("random"))).toBe("true");
     click('[data-carousel="previous"]');
     expect(checked(card(CAR_VARIANTS.at(-1)!))).toBe("true");
   });
@@ -718,11 +700,11 @@ describe("Lobby Garage picker", () => {
     stage.focus();
     press(stage, "ArrowRight");
     expect(document.activeElement).toBe(stage);
-    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
+    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[1]);
     expect(parent.querySelectorAll('.garage-card[tabindex="0"]')).toHaveLength(1);
     enterSettings();
     press(q("#driver-name"), "ArrowRight");
-    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
+    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[1]);
   });
 
   it("dragging never changes the selected car", () => {
@@ -733,9 +715,9 @@ describe("Lobby Garage picker", () => {
       stage.dispatchEvent(new MouseEvent("pointerup", { clientX: to[0], clientY: to[1] }));
     };
     drag([220, 120], [90, 130]);
-    expect(checked(card("random"))).toBe("true");
+    expect(checked(card(CAR_VARIANTS[0]))).toBe("true");
     drag([220, 120], [190, 280]);
-    expect(checked(card("random"))).toBe("true");
+    expect(checked(card(CAR_VARIANTS[0]))).toBe("true");
     expect(cbs.onVariantChange).not.toHaveBeenCalled();
   });
 

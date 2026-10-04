@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { CAR_VARIANTS } from "@racing/shared";
 import { expect, test } from "../fixtures/db";
 import { selectCar } from "../fixtures/lobby";
 
@@ -19,11 +20,11 @@ test("selects a car through the carousel before configuring a race", async ({ pa
   await expect(selectedCar).toHaveAttribute("data-variant", startingVariant!);
 
   const variants = new Set<string | null>();
-  for (let index = 0; index < 9; index++) {
+  for (let index = 0; index < CAR_VARIANTS.length; index++) {
     variants.add(await selectedCar.getAttribute("data-variant"));
     await next.click();
   }
-  expect(variants.size).toBe(9);
+  expect(variants.size).toBe(CAR_VARIANTS.length);
   await expect(selectedCar).toHaveAttribute("data-variant", startingVariant!);
 
   await next.focus();

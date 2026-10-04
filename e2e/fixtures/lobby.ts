@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import type { Variant } from "@racing/shared";
 
 /** Select a car by clicking its garage card, the same control available to players. */
-export async function selectCar(page: Page, variant: Variant | "random"): Promise<void> {
+export async function selectCar(page: Page, variant: Variant): Promise<void> {
   const card = page.locator(`.garage-card[data-variant="${variant}"]`);
   await card.click();
   await expect(card).toHaveAttribute("aria-checked", "true");
