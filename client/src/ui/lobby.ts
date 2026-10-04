@@ -60,7 +60,7 @@ const CAR_COUNT = String(CAR_VARIANTS.length).padStart(2, "0");
 const LABELS: Record<Variant, string> = {
   race: "Race",
   "race-future": "Hyper",
-  "sedan-sports": "Sedan S",
+  "sedan-sports": "Coupe S",
   "hatchback-sports": "Hatch S",
   suv: "SUV",
   taxi: "Taxi",
@@ -204,7 +204,7 @@ export class Lobby {
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
-        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside"><a class="asset-credits" href="${import.meta.env.BASE_URL}credits.html" target="_blank" rel="noopener">Credits</a>${desktopNotice()}${updateNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
+        <header class="lobby-nav"><a class="brand" href="#" aria-label="Sunset Ridge home"><img class="brand-mark" src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="40" height="40" /><span>SUNSET RIDGE</span></a><nav class="menu-progress" aria-label="Race setup progress"><button type="button" class="progress-car active" data-progress-screen="garage" aria-current="step" disabled>01 <b>GARAGE</b></button><i aria-hidden="true"></i><button type="button" class="progress-track" data-progress-screen="track" disabled>02 <b>CIRCUIT</b></button><i aria-hidden="true"></i><button type="button" class="progress-settings" data-progress-screen="settings" disabled>03 <b>RACE SETUP</b></button></nav><div class="lobby-nav-aside"><a class="asset-credits" href="${import.meta.env.BASE_URL}credits.html">Credits</a>${desktopNotice()}${updateNotice()}<span class="connection-status" role="status">CONNECTING</span></div></header>
         <div class="lobby-deck" data-screen="garage">
           <div class="live-car-stage" aria-hidden="true"></div>
           <section class="garage-screen menu-screen" aria-label="Choose your car">
