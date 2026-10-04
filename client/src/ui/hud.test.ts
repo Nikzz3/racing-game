@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TRACKS, medalTimes } from "@racing/shared";
+import {
+  medalTimes,
+  TRACKS,
+  type PlayerSnapshot,
+  type RaceEntrant,
+  type RaceState,
+} from "@racing/shared";
 import { Hud } from "./hud";
 
 function makeParent(): HTMLElement {
@@ -212,6 +218,175 @@ describe("Hud lap timer", () => {
     expect(lap.textContent).toBe("--:--.---");
     hud.setCurrentLap(20);
     expect(lap.textContent).toBe("0:00.020");
+  });
+});
+
+function entrant(id: string, extra: Partial<RaceEntrant> = {}): RaceEntrant {
+  return { id, name: id.toUpperCase(), slot: 0, laps: 1, status: "racing", ...extra };
+}
+
+describe("Hud race", () => {
+  let parent: HTMLElement;
+  let hud: Hud;
+  const controls = { start: vi.fn(), cycle: vi.fn() };
+
+  const field = (overrides: Partial<RaceState> = {}): RaceState => ({
+    format: "race",
+    phase: "racing",
+    laps: 3,
+    goT: 10_000,
+    entrants: [
+      entrant("a", { laps: 3, status: "finished", finishMs: 95_250 }),
+      entrant("me"),
+      entrant("pacer:0", { name: "Pete", pacer: true }),
+      entrant("b", { status: "out" }),
+    ],
+    ...overrides,
+  });
+  const $ = (selector: string) => parent.querySelector<HTMLElement>(selector)!;
+  const texts = (selector: string) =>
+    [...parent.querySelectorAll(selector)].map((element) => element.textContent);
+  const visible = (selector: string) => $(selector).classList.contains("visible");
+
+  beforeEach(() => {
+    controls.start.mockReset();
+    controls.cycle.mockReset();
+    parent = makeParent();
+    hud = new Hud(parent, "Test Room", vi.fn(), 3, vi.fn(), undefined, controls);
+  });
+  afterEach(() => parent.remove());
+
+  it("offers to start a race or a knockout only while the Room has no race running", () => {
+    $(".hud-start-race").click();
+    $(".hud-start-knockout").click();
+    expect(controls.start.mock.calls).toEqual([["race"], ["knockout"]]);
+    for (const [phase, offered] of [
+      ["countdown", false],
+      ["racing", false],
+      ["results", true],
+    ] as const) {
+      hud.setRace(field({ phase }), "me");
+      expect([$(".hud-start-race").hidden, $(".hud-start-knockout").hidden]).toEqual([
+        !offered,
+        !offered,
+      ]);
+    }
+    hud.setRace(null, "me");
+    expect($(".hud-start-race").hidden).toBe(false);
+  });
+
+  it("swaps the best laps for the race order: position, name and status per entrant", () => {
+    hud.setRace(field(), "me");
+    expect($(".hud-standings").hidden).toBe(true);
+    expect($(".race-standings").hidden).toBe(false);
+    expect($(".race-standings h3").textContent).toBe("RACE");
+    expect(texts(".race-standings td.rs-pos")).toEqual(["1", "2", "3", "4"]);
+    expect(texts(".race-standings td.rs-name")).toEqual(["A", "ME", "Pete", "B"]);
+    expect(texts(".race-standings td.rs-status")).toEqual(["1:35.250", "L1/3", "L1/3", "DNF"]);
+    expect([...parent.querySelectorAll(".race-standings tr")].map((tr) => tr.className)).toEqual([
+      "finished",
+      "racing me",
+      "racing pacer",
+      "out",
+    ]);
+    hud.setRace(field({ format: "knockout" }), "me");
+    expect($(".race-standings h3").textContent).toBe("KNOCKOUT");
+    expect(texts(".race-standings td.rs-status").at(-1)).toBe("OUT");
+    hud.setRace(field({ phase: "results" }), "me");
+    expect([$(".hud-standings").hidden, $(".race-standings").hidden]).toEqual([true, true]);
+    hud.setRace(null, "me");
+    expect([$(".hud-standings").hidden, $(".race-standings").hidden]).toEqual([false, true]);
+  });
+
+  it("shows the driver's position and race lap while racing, and the session's laps again after", () => {
+    const me: PlayerSnapshot = {
+      id: "me",
+      name: "Me",
+      x: 0,
+      y: 0,
+      z: 0,
+      rot: 0,
+      speed: 0,
+      laps: 7,
+      lastLapMs: null,
+      bestLapMs: null,
+      lapStartT: null,
+      nextCheckpoint: 0,
+      spawns: 0,
+    };
+    hud.setRace(field(), "me");
+    expect($(".race-position").hidden).toBe(false);
+    expect($(".race-position").textContent).toBe("P2/4");
+    hud.setMyProgress(me);
+    expect($(".hud-lap").textContent).toBe("LAP 2/3");
+    hud.setRace(field(), "a");
+    expect($(".race-position").hidden).toBe(true);
+    expect($(".hud-lap").textContent).toBe("LAP 3/3");
+    hud.setRace(null, "me");
+    hud.setMyProgress(me);
+    expect($(".hud-lap").textContent).toBe("LAP 7");
+  });
+
+  it("counts down to GO in whole seconds, then shows GO! for a second", () => {
+    hud.setRace(field({ phase: "countdown" }), "me");
+    const shown = (serverNow: number) => {
+      hud.setRaceClock(serverNow);
+      return visible(".race-countdown") ? $(".race-countdown").textContent : null;
+    };
+    expect([6_900, 7_000, 8_000, 9_999, 10_000, 10_999, 11_000].map(shown)).toEqual([
+      "3",
+      "3",
+      "2",
+      "1",
+      "GO!",
+      "GO!",
+      null,
+    ]);
+    hud.setRace(null, "me");
+    expect(shown(10_000)).toBeNull();
+  });
+
+  it("puts up the results with the final order and the wait for free driving", () => {
+    hud.setRace(field({ format: "knockout", phase: "results", deadlineT: 30_000 }), "me");
+    hud.setRaceClock(20_001);
+    expect(visible(".race-results")).toBe(true);
+    expect($(".race-results h2").textContent).toBe("KNOCKOUT RESULTS");
+    expect(texts(".race-results-list .rr-name")).toEqual(["A", "ME", "Pete", "B"]);
+    expect(texts(".race-results-list .rr-time")).toEqual(["1:35.250", "L1/3", "L1/3", "OUT"]);
+    expect(parent.querySelector(".race-results-list li.me .rr-pos")!.textContent).toBe("2");
+    expect($(".race-results-return").textContent).toBe("Free driving in 10s");
+    hud.setRace(null, "me");
+    expect(visible(".race-results")).toBe(false);
+  });
+
+  it("names the watched car while spectating and steps through the cars from the banner", () => {
+    hud.setSpectating("Pete");
+    expect(visible(".spectator-banner")).toBe(true);
+    expect($(".spectator-banner").textContent).toContain("SPECTATING");
+    expect($(".spectator-target").textContent).toBe("Pete");
+    parent.querySelector<HTMLElement>("[aria-label='Previous car']")!.click();
+    parent.querySelector<HTMLElement>("[aria-label='Next car']")!.click();
+    expect(controls.cycle.mock.calls).toEqual([[-1], [1]]);
+    hud.setSpectating(null);
+    expect(visible(".spectator-banner")).toBe(false);
+  });
+
+  it("turns Respawn off and on", () => {
+    const respawn = parent.querySelector<HTMLButtonElement>(".hud-respawn")!;
+    hud.setRespawnEnabled(false);
+    expect(respawn.disabled).toBe(true);
+    hud.setRespawnEnabled(true);
+    expect(respawn.disabled).toBe(false);
+  });
+
+  it("marks grid Pacers on the circuit map apart from drivers, and hides a Spectator's own marker", () => {
+    const mapped = new Hud(makeParent(), "Map", vi.fn(), 3, undefined, TRACKS[0]);
+    mapped.setRemotePositions([{ id: "p1", x: 0, z: 0 }], [{ id: "pacer:0", x: 5, z: 5 }]);
+    expect(document.querySelectorAll(".hud-map-remote")).toHaveLength(2);
+    expect(document.querySelectorAll(".hud-map-pacer")).toHaveLength(1);
+    mapped.setDriverShown(false);
+    expect(document.querySelector<HTMLElement>(".hud-map-driver")!.hidden).toBe(true);
+    mapped.dispose();
   });
 });
 

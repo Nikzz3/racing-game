@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CHECKPOINT_RADIUS, type ReplayFrame, type Variant } from "@racing/shared";
+import type { ReplayFrame, Variant } from "@racing/shared";
 import { animateCar, createCarMesh, disposeMaterials, labelSprite, resolveVariant } from "./car";
 import type { E2ePacerState } from "./e2e-seam";
 import { interpolatePose, type Pose } from "./pose-interpolation";
@@ -16,46 +16,6 @@ export function pacerPoseAt(
   const elapsed = nowMs - startMs;
   if (elapsed < 0 || elapsed > frames[frames.length - 1][0]) return null;
   return interpolatePose(frames, elapsed);
-}
-
-/**
- * Lap-relative time (ms) the Pacer first enters each checkpoint's radius, or
- * null for any it never reaches. Frames are scanned forward from the previous
- * hit, so the times are non-decreasing in checkpoint order.
- */
-export function pacerCheckpointTimes(
-  frames: ReplayFrame[],
-  checkpoints: { x: number; z: number }[],
-  radius = CHECKPOINT_RADIUS,
-): (number | null)[] {
-  const r2 = radius * radius;
-  let scanFrom = 0;
-  return checkpoints.map((cp) => {
-    for (let i = scanFrom; i < frames.length; i++) {
-      const [t, fx, fz] = frames[i];
-      const dx = fx - cp.x,
-        dz = fz - cp.z;
-      if (dx * dx + dz * dz >= r2) continue;
-      const enteredBeforeScan = i === scanFrom;
-      scanFrom = i;
-      if (enteredBeforeScan) return t;
-      // frames[i-1] is outside the radius, so solve |p0 + f*d - cp|² = r² for
-      // the fraction f of the segment at which the Pacer crossed the boundary.
-      const [t0, x0, z0] = frames[i - 1];
-      const ddx = fx - x0,
-        ddz = fz - z0,
-        ex = x0 - cp.x,
-        ez = z0 - cp.z;
-      const A = ddx * ddx + ddz * ddz;
-      if (A === 0) return t0;
-      const B = 2 * (ex * ddx + ez * ddz);
-      const C = ex * ex + ez * ez - r2;
-      const disc = B * B - 4 * A * C;
-      const frac = disc >= 0 ? Math.max(0, Math.min(1, (-B - Math.sqrt(disc)) / (2 * A))) : 0;
-      return t0 + (t - t0) * frac;
-    }
-    return null;
-  });
 }
 
 /** Negative when the driver reached the checkpoint before the Pacer. */
@@ -84,7 +44,7 @@ export class PacerOverlay {
   }
 
   private buildMesh(): THREE.Group {
-    const mesh = createPacerMesh(this.driverName, this.variant);
+    const mesh = createPacerMesh(this.driverName, this.variant, "REPLAY");
     mesh.visible = false;
     this.scene.add(mesh);
     return mesh;
@@ -152,17 +112,9 @@ export class PacerOverlay {
     animateCar(this.mesh, pose.speed, 0, dt);
   }
 
-  // Every material on the Pacer is a per-instance clone, unlike a plain car's
-  // shared Blender materials, so dispose them all along with the badge.
   private removeMesh(): void {
     this.scene.remove(this.mesh);
-    this.mesh.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) disposeMaterials(obj.material);
-      else if (obj instanceof THREE.Sprite) {
-        obj.material.map?.dispose();
-        obj.material.dispose();
-      }
-    });
+    disposePacerMesh(this.mesh);
   }
 
   dispose(): void {
@@ -182,7 +134,8 @@ function ghosted(m: THREE.Material): THREE.Material {
   return cloned;
 }
 
-function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
+/** A Pacer's translucent car with `badge` floating above it; release it with disposePacerMesh. */
+export function createPacerMesh(driverName: string, variant: Variant, badge: string): THREE.Group {
   const group = createCarMesh(driverName, undefined, variant);
   group.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
@@ -191,7 +144,7 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
     obj.receiveShadow = false;
   });
   group.add(
-    labelSprite("REPLAY", {
+    labelSprite(badge.slice(0, 14), {
       background: "rgba(20, 20, 30, 0.6)",
       radius: 12,
       font: "bold 28px sans-serif",
@@ -200,4 +153,19 @@ function createPacerMesh(driverName: string, variant: Variant): THREE.Group {
     }),
   );
   return group;
+}
+
+// Every material on a Pacer is a per-instance clone, unlike a plain car's
+// shared Blender materials, so dispose them all along with the badge and the
+// fallback car's own geometry.
+export function disposePacerMesh(mesh: THREE.Group): void {
+  mesh.traverse((obj) => {
+    if (obj instanceof THREE.Mesh) {
+      if (obj.userData.owned) obj.geometry.dispose();
+      disposeMaterials(obj.material);
+    } else if (obj instanceof THREE.Sprite) {
+      obj.material.map?.dispose();
+      obj.material.dispose();
+    }
+  });
 }

@@ -6,6 +6,7 @@ import {
   type Variant,
 } from "@racing/shared";
 import { pool } from "./db";
+import type { PacerReplay } from "./race";
 
 /** 20 Hz × 5 minutes; longer laps drop their replay. */
 export const MAX_REPLAY_FRAMES = 6000;
@@ -78,6 +79,24 @@ export async function submitLap(
   } finally {
     client.release();
   }
+}
+
+/** A board's fastest Replays, fastest first: the laps grid Pacers drive. */
+export async function fastestReplays(
+  track: TrackSlug,
+  difficulty: Difficulty,
+  limit: number,
+): Promise<PacerReplay[]> {
+  const { rows } = await pool.query(
+    `SELECT name, frames, variant FROM replays WHERE track = $1 AND difficulty = $2
+     ORDER BY time_ms ASC, name ASC LIMIT $3`,
+    [track, difficulty, limit],
+  );
+  return rows.map((row) => ({
+    name: row.name,
+    frames: row.frames as ReplayFrame[],
+    variant: asVariant(row.variant),
+  }));
 }
 
 export async function getReplay(

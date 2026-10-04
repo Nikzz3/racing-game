@@ -3,12 +3,16 @@ import {
   CHECKPOINT_RADIUS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
+  gridSlot,
   MAX_SPEED_MS,
   medalTimes,
   nearestCenterline,
+  pacerCheckpointTimes,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
+  type RacePacer,
+  type RaceState,
   type ReplayFrame,
   type ScenePreset,
   type ServerMessage,
@@ -26,8 +30,19 @@ import { TouchControls, type SteeringMode } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { ServerClock } from "./server-clock";
-import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
+import { PacerOverlay, pacerDelta } from "./pacer";
+import { GridPacers } from "./grid-pacers";
 import { ladderStep, standingOn, type Board, type Rival } from "./ladder";
+import type { Pose } from "./pose-interpolation";
+import {
+  cycleTarget,
+  driveMode,
+  raceEvents,
+  raceRole,
+  racingIds,
+  spectatorTarget,
+  type DriveMode,
+} from "./race";
 import {
   createScene,
   disposeWorld,
@@ -83,6 +98,15 @@ export class Game {
   private readonly resolution: AdaptiveResolution | null;
   private pacer: PacerOverlay | null = null;
   private pacerTimes: (number | null)[] = [];
+  private readonly gridPacers: GridPacers;
+  /** The Room's race, as the server last published it; null while free driving. */
+  private race: RaceState | null = null;
+  /** As of the last frame, or the last race update. */
+  private mode: DriveMode = "drive";
+  /** GO time of the race this car was last put on the grid for. */
+  private gridFor: number | null = null;
+  /** The car a Spectator chose to watch; unset follows whoever leads. */
+  private following: string | null = null;
   private readonly board: Board;
   private standings: readonly Standing[] = [];
   private nextCheckpoint = 0;
@@ -126,6 +150,7 @@ export class Game {
     this.bundle = createScene(this.container, this.track.samples, scene);
     buildTrack(this.bundle.scene, this.track);
     this.remote = new RemotePlayers(this.bundle.scene, myId, MAX_SPEED_MS[difficulty]);
+    this.gridPacers = new GridPacers(this.bundle.scene);
     this.carMesh = createCarMesh(myId, undefined, variant);
     this.bundle.scene.add(this.carMesh);
     this.hud = new Hud(
@@ -133,12 +158,17 @@ export class Game {
       roomName,
       onLeave,
       this.track.checkpoints.length,
-      () => this.respawn(),
+      () => this.requestRespawn(),
       this.track,
+      {
+        start: (format) => this.net.send({ type: "startRace", format }),
+        cycle: (step) => this.cycle(step),
+      },
     );
     this.touch = new TouchControls(parent, steering);
     this.input = new Input(this.touch);
-    this.input.onRespawn = () => this.respawn();
+    this.input.onRespawn = () => this.requestRespawn();
+    this.input.onCycle = (step) => this.cycle(step);
     this.input.onRaceRival = () => this.hud.acceptRivalPrompt();
     this.input.attach();
     if (armedPacer) {
@@ -148,7 +178,9 @@ export class Game {
     this.installSeam();
     this.spawn();
     this.sendTimer = setInterval(() => {
-      if (!this.seam?.driving) this.sendState();
+      // A Spectator has no car, and the e2e seam sends its own states while it drives.
+      if (this.mode === "spectate" || (this.mode === "drive" && this.seam?.driving)) return;
+      this.sendState();
     }, SEND_MS);
     window.addEventListener("resize", this.resize);
     document.addEventListener("visibilitychange", this.visibility);
@@ -219,19 +251,28 @@ export class Game {
     this.previous = performance.now();
     this.stateTime = this.previous;
   }
-  private spawn(): void {
+  private spawn(spot: { sample: number; offset: number } | null = null): void {
     this.car.spawnAtSample(
-      this.track.samples.length - 14,
-      this.seam ? 0 : (Math.random() - 0.5) * 7,
+      spot?.sample ?? this.track.samples.length - 14,
+      spot?.offset ?? (this.seam ? 0 : (Math.random() - 0.5) * 7),
     );
     this.carMesh.position.set(this.car.x, 0, this.car.z);
     this.carMesh.rotation.y = this.car.heading;
     snapBehindCar(this.bundle.camera, this.car.x, this.car.z, this.car.heading);
     this.restartFrameClock();
   }
+  /** The driver's Respawn: not while the car waits on the grid for GO, nor for a Spectator. */
+  private requestRespawn(): void {
+    if (this.mode === "drive") this.respawn();
+  }
   private respawn(): void {
     this.net.send({ type: "respawn" });
-    this.spawn();
+    this.resetCar();
+  }
+  /** Back to the spawn, or to the car's own grid slot while it races, abandoning the lap in progress. */
+  private resetCar(): void {
+    const slot = this.race?.entrants.find((e) => e.id === this.myId && e.status === "racing")?.slot;
+    this.spawn(slot === undefined ? null : gridSlot(this.track, slot));
     this.lapStartT = null;
     this.hud.setCurrentLap(null);
     this.nextCheckpoint = 0;
@@ -245,6 +286,55 @@ export class Game {
     this.localLapStart = null;
     this.nextCheckpoint = 0;
     this.hud.hidePacerChip();
+  }
+  /** Seat a race's grid Pacers, linked now rather than when they appear at GO. */
+  private seatGridPacers(pacers: RacePacer[]): void {
+    // Like a rebuilt armed Pacer, they wait for the precompile; the race has not started yet.
+    void this.started.then(() => {
+      if (this.disposed) return;
+      for (const model of this.gridPacers.set(pacers))
+        this.bundle.renderer.compile(model, this.bundle.camera, this.bundle.scene);
+    });
+  }
+  private setRace(race: RaceState | null): void {
+    for (const event of raceEvents(this.race, race, this.myId)) this.hud.toast(event);
+    const previous = this.race;
+    this.race = race;
+    this.updateMode(performance.now());
+    this.remote.setRacing(racingIds(race));
+    this.hud.setRace(race, this.myId);
+    if (!race) {
+      this.gridPacers.clear();
+      this.following = null;
+      // The Room is back to free driving: every car starts again from the spawn.
+      if (previous) this.respawn();
+      return;
+    }
+    // The armed Pacer sits races out.
+    if (!previous) this.pacer?.onRespawn();
+    const onGrid = race.phase === "countdown" && raceRole(race, this.myId) === "racing";
+    if (onGrid && this.gridFor !== race.goT) {
+      // The server has already reset this car's lap, so this is no Respawn of the driver's.
+      this.gridFor = race.goT;
+      this.resetCar();
+    }
+  }
+  /** Re-judge what the local car does at `localNow`; returns the server time that was judged at. */
+  private updateMode(localNow: number): number {
+    const serverNow = this.serverClock.now(localNow);
+    this.mode = driveMode(this.race, this.myId, serverNow);
+    return serverNow;
+  }
+  private cycle(step: 1 | -1): void {
+    if (this.mode === "spectate") this.following = cycleTarget(this.race, this.following, step);
+  }
+  /** The car a Spectator watches, named in the banner, and its pose if it is drawn. */
+  private watch(): Pose | null {
+    const target = spectatorTarget(this.race, this.following);
+    // A chosen car that stopped racing hands the camera back to whoever leads.
+    if (target?.id !== this.following) this.following = null;
+    this.hud.setSpectating(target?.name ?? null);
+    return target && (this.remote.pose(target.id) ?? this.gridPacers.pose(target.id));
   }
   /** Swap the Pacer for a Rival in place; like any Pacer it starts at the next start-line crossing. */
   private raceRival({ name }: Rival): void {
@@ -326,7 +416,8 @@ export class Game {
         );
       } else if (message.isTrackRecord)
         this.hud.toast(`${message.name} set a track record: ${formatMs(message.lapTimeMs)}`, true);
-    }
+    } else if (message.type === "racePacers") this.seatGridPacers(message.pacers);
+    else if (message.type === "race") this.setRace(message.race);
   }
   private sendState(): void {
     this.net.send({
@@ -362,35 +453,54 @@ export class Game {
     this.previous = now;
     let dt = Math.min(elapsed, 0.05),
       input = IDLE;
-    const injecting = Boolean(this.seam?.driving);
-    const serverNow = this.serverClock.now(now);
+    const serverNow = this.updateMode(now);
+    const spectating = this.mode === "spectate";
+    // Injected inputs wait for GO, and for the end of a race their driver spectates.
+    const seam = this.mode === "drive" && this.seam?.driving ? this.seam : null;
+    const injecting = seam !== null;
     // Remote cars move first so the local car collides with them where they are drawn.
     this.remote.update(dt, serverNow);
-    if (this.seam?.driving) {
+    if (seam) {
       // The seam sends mid-advance; its steps all belong to this frame.
       this.stateTime = now;
-      dt = this.seam.advance(elapsed, 3);
-    } else {
+      dt = seam.advance(elapsed, 3);
+    } else if (this.mode === "drive") {
       input = this.autopilot
         ? autopilotInput(this.car, this.track.samples, 12)
         : this.input.read(dt);
       this.car.advance(elapsed, input, this.remote.obstacles());
       this.stateTime = now - this.car.backlog * 1000;
+    } else {
+      // Held on the grid, where its states still show it, or put away while spectating.
+      this.stateTime = now;
     }
     const pose = injecting ? this.car : this.car.getRenderPose();
+    this.carMesh.visible = !spectating;
     this.carMesh.position.set(pose.x, 0, pose.z);
     this.carMesh.rotation.y = pose.heading;
     animateCar(this.carMesh, pose.speed, input.steer, dt);
-    this.checkCrossing(now);
-    this.pacer?.update(now, dt);
-    followCar(this.bundle.camera, pose.x, pose.z, pose.heading, dt);
-    updateSun(this.bundle, pose.x, pose.z);
-    this.hud.setSpeed(this.car.speed);
+    if (this.race) this.gridPacers.update(this.race, serverNow, dt);
+    else {
+      this.checkCrossing(now);
+      this.pacer?.update(now, dt);
+    }
+    const view = spectating ? this.watch() : pose;
+    if (!spectating) this.hud.setSpectating(null);
+    if (view) {
+      followCar(this.bundle.camera, view.x, view.z, view.heading, dt);
+      updateSun(this.bundle, view.x, view.z);
+    }
+    this.touch.setHidden(spectating);
+    this.hud.setRespawnEnabled(this.mode === "drive");
+    this.hud.setRaceClock(serverNow);
+    this.hud.setSpeed(spectating ? (view?.speed ?? 0) : this.car.speed);
     this.hud.setPosition(this.car.x, this.car.z);
-    this.hud.setRemotePositions(this.remote.positions());
-    this.hud.setOffTrack(!this.car.onTrack && Math.abs(this.car.speed) > 1);
+    this.hud.setDriverShown(!spectating);
+    this.hud.setRemotePositions(this.remote.positions(), this.gridPacers.positions());
+    this.hud.setOffTrack(!spectating && !this.car.onTrack && Math.abs(this.car.speed) > 1);
     this.hud.setCheckpointMissed(
       Boolean(
+        !spectating &&
         this.lapStartT !== null &&
         this.progress &&
         checkpointMissed(
@@ -402,7 +512,7 @@ export class Game {
       ),
     );
     this.hud.setCurrentLap(
-      this.lapStartT === null ? null : Math.max(serverNow - this.lapStartT, 0),
+      spectating || this.lapStartT === null ? null : Math.max(serverNow - this.lapStartT, 0),
     );
     // While the e2e seam replays inputs, skip the draw: under software WebGL a
     // frame costs 100ms+, and the seam's per-frame step cap (which keeps state
@@ -458,6 +568,7 @@ export class Game {
     this.touch.dispose();
     this.remote.dispose();
     this.pacer?.dispose();
+    this.gridPacers.clear();
     this.seam?.dispose();
     this.hud.dispose();
     disposeCarMesh(this.carMesh);

@@ -9,7 +9,7 @@ A named racing circuit defined by a closed loop of control points. A Track is ch
 _Avoid_: Map, level, course
 
 **Room**:
-A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Daily Room is the exception: the date, not its creator, picks them.
+A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Daily Room is the exception: the date, not its creator, picks them. A Room holds at most one Race at a time; the rest of the time its drivers are free driving, each timing their own laps.
 _Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
 
 **Lobby**:
@@ -29,7 +29,7 @@ One of a Track's ordered gates that a lap must pass through in sequence for the 
 _Avoid_: Gate (informal), waypoint, marker
 
 **Respawn**:
-A driver-initiated action that teleports the driver's own car back to the starting position and abandons the lap in progress. Scoped to the requesting driver only — never affects other players in the Room. Preserves the driver's completed lap count and session best lap; persisted leaderboard records are untouched.
+A driver-initiated action that teleports the driver's own car back to the starting position and abandons the lap in progress. Scoped to the requesting driver only — never affects other players in the Room. Preserves the driver's completed lap count and session best lap; persisted leaderboard records are untouched. In a Race the car goes back to its own Grid slot instead; the lap in progress is still abandoned, so a Respawn can never gain a place. It is unavailable during the countdown and to Spectators.
 _Avoid_: Reset, restart (which imply the whole race or the whole session)
 
 **Track Record**:
@@ -49,7 +49,7 @@ The single canonical fastest lap the trained RL policy drives against the real p
 _Avoid_: Record (collides with Track Record), Replay (which is a persisted human lap), ghost
 
 **Pacer**:
-An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a _Replay_, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human _Replays_ and the AI _Reference Lap_ may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium. A human Pacer renders the Variant recorded with its lap (absent → hash of the recorded driver's name); the AI always drives police, its canonical car.
+An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a _Replay_, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human _Replays_ and the AI _Reference Lap_ may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium. A human Pacer renders the Variant recorded with its lap (absent → hash of the recorded driver's name); the AI always drives police, its canonical car. A Pacer a driver arms in the Lobby is theirs alone and is paused during a Race; Pacers on a Race's Grid are chosen by the server, seen by everyone in the Room, and ranked in the Race's results like drivers — never on the leaderboard (ADR-0014).
 _Avoid_: ghost, shadow, phantom, opponent (informal); rival, except for the Pacer the Rival ladder offers (see **Rival**)
 
 **Medal**:
@@ -79,6 +79,22 @@ _Avoid_: daily leaderboard (fine in prose, but the board is the domain term), da
 **Scene Preset**:
 The look of the world a Room renders: sky, sun, light and fog. Purely visual, like a Variant. A Daily Room renders its Daily Challenge's Scene Preset; every other Room and every Replay render Sunset.
 _Avoid_: weather, theme, time of day (one part of the look)
+
+**Race**:
+A contest among the cars on a Room's Grid, run by the server: a countdown, racing with live positions, then results, after which the Room returns to free driving. Any driver in the Room may call one when none is running. "Race" also names one of its two formats (first to complete three laps wins, and once the first car finishes the rest have a grace period to follow), the other being a Knockout. A car that leaves the Room mid-race, or misses a Race's grace period, is DNF (did not finish).
+_Avoid_: heat, match, session, round
+
+**Knockout**:
+The Race format where the last car to complete each lap is out, until the one car still racing wins; it runs one lap fewer than it has cars on the Grid. Once the first car completes a lap the rest have a grace period to complete it, and whoever has not by then is out, several at once if need be.
+_Avoid_: elimination race, last man standing
+
+**Grid**:
+A Race's starting slots, two abreast behind the starting position. Every driver in the Room when the Race is called takes a slot; the server fills the empty ones, up to six cars, with Pacers from the fastest human Replays on the Room's `(Track, Difficulty)` board.
+_Avoid_: lineup, starting line
+
+**Spectator**:
+A driver in a Room while a Race is counting down or running who is not racing in it: joined mid-race, finished, knocked out, or DNF. A Spectator has no car; they watch the cars still racing, starting with the leader, and drive again when the Room returns to free driving.
+_Avoid_: ghost (implies a car still driving; also avoided for Pacers), observer, viewer
 
 **Jev**:
 TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where a racing line code computed lies ahead, and code's speed check: whether the car is too fast to make the road ahead, and by how much) and Jev answers two Choice questions — brake or accelerate given the speed check, and steer left, right or nothing (leave the wheel centred) to point at the racing line. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (twice how sure Jev is of its side, 2 · (P(left) − P(right)) clamped, so "nothing" adds no steering). Code does the physics and Jev the judgment, so Jev's pedal mostly follows the speed check (ADR-0011). Jev only drives offline, in `npm run jev:record`: the API key lives in the recording developer's `.env`, and neither the game nor the server talks to TypeSafe (ADR-0010). Jev drives Sunset Ridge at Medium only, where its racing line and speed check were tuned, in its canonical car (`race-future`).

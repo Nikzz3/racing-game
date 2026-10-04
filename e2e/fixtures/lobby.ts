@@ -45,3 +45,11 @@ export async function createRoom(
   await page.getByPlaceholder("New room name").fill(roomName);
   await page.getByRole("button", { name: "Create & Race" }).click();
 }
+
+/** Drives the lobby form on an already-loaded page: name the driver, pick the open Room, race. */
+export async function joinRoom(page: Page, playerName: string, roomName: string): Promise<void> {
+  await openRaceSettings(page);
+  await page.getByLabel("Driver", { exact: true }).fill(playerName);
+  await page.locator(".room-row").filter({ hasText: roomName }).click();
+  await page.getByRole("button", { name: "Join & Race" }).click();
+}

@@ -2032,6 +2032,8 @@ a {
   align-items: baseline;
   gap: 20px;
   margin-top: 8px;
+  /* A race's "LAP 2/3" and the gate count stay on one line in the narrow phone panels. */
+  white-space: nowrap;
 }
 .hud-lap {
   font:
@@ -2095,35 +2097,41 @@ a {
   font-weight: 400;
   margin-left: 6px;
 }
-.hud-standings {
+.hud-standings,
+.race-standings {
   right: 40px;
   top: 35px;
   width: 250px;
 }
-.hud-standings h3 {
+.hud-standings h3,
+.race-standings h3 {
   font: 10px var(--mono);
   letter-spacing: 0.18em;
   color: #e2d8ca;
   margin-bottom: 10px;
 }
-.hud-standings table {
+.hud-standings table,
+.race-standings table {
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
   background: linear-gradient(90deg, #11131ce0, #11131c30);
 }
-.hud-standings td {
+.hud-standings td,
+.race-standings td {
   padding: 9px 7px;
   border-bottom: 1px solid #fff1;
 }
-.hud-standings td:first-child {
+.hud-standings td:first-child,
+.race-standings td:first-child {
   font:
     italic 21px "Barlow Condensed",
     Impact,
     sans-serif;
   padding-left: 12px;
 }
-.hud-standings td:nth-child(2) {
+.hud-standings td:nth-child(2),
+.race-standings td:nth-child(2) {
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2133,7 +2141,8 @@ a {
   font: 9px var(--mono);
   color: #e6dfd4;
 }
-.hud-standings tr.me {
+.hud-standings tr.me,
+.race-standings tr.me {
   color: #ffd397;
   background: linear-gradient(90deg, #af642b50, transparent);
 }
@@ -2242,6 +2251,9 @@ a {
   border-width: calc(3 * var(--map-unit));
   background: #9fd4ff;
 }
+.hud-map .hud-map-pacer {
+  background: var(--pacer);
+}
 .hud-map span {
   display: block;
   font: 9px var(--mono);
@@ -2260,6 +2272,8 @@ a {
 }
 .hud-leave,
 .hud-respawn,
+.hud-start-race,
+.hud-start-knockout,
 .replay-exit {
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
   background: #151720d9;
@@ -2273,9 +2287,21 @@ a {
 }
 .hud-leave:hover,
 .hud-respawn:hover,
+.hud-start-race:hover,
+.hud-start-knockout:hover,
 .replay-exit:hover {
   background: #ac713f99;
   border-color: #ffcc89;
+}
+.hud-start-race,
+.hud-start-knockout {
+  border-left: 3px solid #ffc582;
+}
+/* Off while the car waits on the grid for GO, and for a Spectator. */
+.hud-respawn:disabled {
+  background: #151720d9;
+  border-color: #ffffff2a;
+  opacity: 0.4;
 }
 .offtrack-warn,
 .cp-miss-warn {
@@ -2364,6 +2390,185 @@ a {
     opacity: 0;
     transform: translateY(-8px);
   }
+}
+/* Races (game/race.ts): the race order replaces the best laps, and the countdown, the
+   Spectator banner and the results take the middle of the screen. */
+.race-position {
+  margin-top: 10px;
+  font:
+    italic 34px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  color: #ffd397;
+}
+.rs-status {
+  font: 9px var(--mono);
+  color: #e6dfd4;
+  text-align: right;
+}
+.race-standings tr.finished .rs-status {
+  color: #ffd397;
+}
+.race-standings tr.pacer .rs-name,
+.race-results-list li.pacer .rr-name {
+  color: var(--pacer);
+}
+.race-standings tr.out,
+.race-results-list li.out {
+  opacity: 0.55;
+}
+.race-countdown {
+  display: none;
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font:
+    italic 800 150px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  color: #fff3df;
+  text-shadow: 0 4px 18px #000a;
+}
+.race-countdown.visible {
+  display: block;
+}
+.spectator-banner {
+  display: none;
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
+  background: #151720e0;
+  border-left: 3px solid #ffc582;
+  pointer-events: auto;
+}
+.spectator-banner.visible {
+  display: flex;
+}
+.spectator-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  max-width: 46vw;
+  padding: 0 8px;
+}
+.spectator-label {
+  font: 9px var(--mono);
+  letter-spacing: 0.2em;
+  color: #ffcb88;
+}
+.spectator-target {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font:
+    italic 26px/1.15 "Barlow Condensed",
+    Impact,
+    sans-serif;
+}
+/* Thumb-sized: a Spectator on a phone steps through the cars with these. */
+.spectator-prev,
+.spectator-next {
+  width: 44px;
+  height: 44px;
+  background: #ffffff12;
+  border: 1px solid #ffffff2a;
+  border-radius: 2px;
+  color: #fff1de;
+  font:
+    800 30px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+}
+.spectator-prev:hover,
+.spectator-next:hover {
+  background: #ac713f99;
+  border-color: #ffcc89;
+}
+.race-results {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  /* A long field scrolls on a short screen. */
+  pointer-events: auto;
+  padding: 22px 26px;
+  background: #151720ed;
+  border-left: 3px solid #ffc582;
+}
+.race-results.visible {
+  display: block;
+}
+.race-results h2 {
+  margin-bottom: 14px;
+  font:
+    italic 40px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+}
+.race-results-list {
+  padding: 0;
+  list-style: none;
+}
+.race-results-list li {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 6px;
+  border-bottom: 1px solid #fff1;
+}
+.race-results-list li.me {
+  color: #ffd397;
+  background: linear-gradient(90deg, #af642b50, transparent);
+}
+.rr-pos {
+  font:
+    italic 22px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  color: #d0c6ba;
+}
+/* The podium: gold, silver and bronze. */
+.race-results-list li:nth-child(-n + 3) .rr-pos {
+  font-size: 30px;
+}
+.race-results-list li:nth-child(1) .rr-pos {
+  color: #ffcf5c;
+}
+.race-results-list li:nth-child(2) .rr-pos {
+  color: #dfe3ea;
+}
+.race-results-list li:nth-child(3) .rr-pos {
+  color: #db925a;
+}
+.rr-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.rr-time {
+  font: 11px var(--mono);
+  color: #e6dfd4;
+}
+.race-results-return {
+  margin-top: 14px;
+  font: 10px var(--mono);
+  letter-spacing: 0.12em;
+  color: #d0c6ba;
+  text-align: center;
 }
 .replay-panel {
   position: absolute;
@@ -2757,7 +2962,8 @@ a {
   border-radius: 3px;
 }
 @media (max-width: 1000px) {
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     top: 175px;
     right: auto;
     left: 30px;
@@ -2808,7 +3014,8 @@ a {
     display: block;
     margin: 4px 0 0;
   }
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     top: 154px;
     left: 18px;
     width: 175px;
@@ -2816,17 +3023,21 @@ a {
     overflow: auto;
     pointer-events: auto;
   }
-  .hud-standings h3 {
+  .hud-standings h3,
+  .race-standings h3 {
     font-size: 8px;
   }
-  .hud-standings td {
+  .hud-standings td,
+  .race-standings td {
     padding: 5px;
     font-size: 9px;
   }
-  .hud-standings td:first-child {
+  .hud-standings td:first-child,
+  .race-standings td:first-child {
     font-size: 16px;
   }
-  .hud-standings td:nth-child(2) {
+  .hud-standings td:nth-child(2),
+  .race-standings td:nth-child(2) {
     max-width: 70px;
   }
   .hud-map {
@@ -2855,9 +3066,24 @@ a {
     bottom: 20px;
   }
   .hud-leave,
-  .hud-respawn {
+  .hud-respawn,
+  .hud-start-race,
+  .hud-start-knockout {
     font-size: 8px;
     padding: 9px;
+  }
+  .race-position {
+    margin-top: 6px;
+    font-size: 26px;
+  }
+  .race-countdown {
+    font-size: 110px;
+  }
+  .race-results {
+    padding: 16px 18px;
+  }
+  .race-results h2 {
+    font-size: 30px;
   }
   .toasts {
     top: 118px;
@@ -2907,14 +3133,26 @@ a {
     display: block;
   }
   /* Left column: minimap over the race actions over the slider, the actions kept 20px clear
-     of it so a stray steering thumb can't reach "Leave race". Right column: dial over pedals. */
+     of it so a stray steering thumb can't reach "Leave race". Right column: dial over pedals.
+     The actions stop short of the pedals: on a phone the start buttons wrap onto a line of
+     their own above Leave race and Respawn, so the minimap sits a line higher. */
   .hud-actions {
     left: var(--touch-edge);
     bottom: calc(var(--touch-steer-top) + 20px);
+    flex-wrap: wrap;
+    max-width: calc(100% - 2 * var(--touch-edge) - var(--touch-pedal-width) - 24px);
+  }
+  .hud-start-race,
+  .hud-start-knockout {
+    order: -1;
+  }
+  /* A Spectator has no controls to drive with, so the banner takes their place. */
+  .spectator-banner {
+    bottom: var(--touch-edge);
   }
   .hud-map {
     left: var(--touch-edge);
-    bottom: calc(var(--touch-steer-top) + 66px);
+    bottom: calc(var(--touch-steer-top) + 102px);
   }
   .hud-speed {
     bottom: calc(var(--touch-pedals-top) + 10px);
@@ -2939,7 +3177,8 @@ a {
     --touch-standings-top: 110px;
     --touch-warn-bottom: calc(var(--touch-pedals-top) + 10px + var(--touch-dial-size) + 14px);
   }
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     top: var(--touch-standings-top);
     left: auto;
     right: var(--touch-edge);
@@ -2969,10 +3208,12 @@ a {
 @media (max-height: 500px) {
   .hud-top-left,
   .hud-timer,
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     top: 15px;
   }
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     left: auto;
     right: 20px;
     width: 180px;
@@ -2998,6 +3239,27 @@ a {
   .hud-actions {
     bottom: 12px;
   }
+  .spectator-banner {
+    bottom: 60px;
+  }
+  .race-countdown {
+    font-size: 110px;
+  }
+  /* To the right, clear of the race actions where the start buttons are offered again. */
+  .race-results {
+    left: auto;
+    right: 20px;
+    transform: translateY(-50%);
+    width: min(400px, calc(100vw - 260px));
+    padding: 14px 18px;
+  }
+  .race-results h2 {
+    margin-bottom: 8px;
+    font-size: 28px;
+  }
+  .race-results-list li {
+    padding: 4px 6px;
+  }
   .toasts {
     top: 115px;
   }
@@ -3020,10 +3282,22 @@ a {
     font-size: 23px;
   }
   /* One bottom row: slider and minimap on the left, dial and pedals on the right, the race
-     actions above the slider. The warnings sit centred above the row, the standings to the
+     actions above the slider (two compact lines with the start buttons, clear of the map).
+     The warnings, and a Spectator's banner, sit centred above the row, the standings to the
      right of them. */
   .hud-actions {
     bottom: calc(var(--touch-steer-top) + 20px);
+    max-width: var(--touch-steer-width);
+  }
+  .hud-leave,
+  .hud-respawn,
+  .hud-start-race,
+  .hud-start-knockout {
+    font-size: 8px;
+    padding: 9px;
+  }
+  .spectator-banner {
+    bottom: calc(var(--touch-pedals-top) + 8px);
   }
   .hud-map {
     left: calc(var(--touch-edge) + var(--touch-steer-width) + 16px);
@@ -3056,7 +3330,8 @@ a {
     left: 20px;
     width: 200px;
   }
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     max-height: calc(100% - 15px - var(--touch-pedals-top) - 20px);
     overflow: auto;
     pointer-events: auto;
@@ -3065,7 +3340,8 @@ a {
 /* Narrow landscape phones: the centred warnings reach under the standings, so the standings
    end above the warning slot, level with the lap progress and timer beside them. */
 @media (pointer: coarse) and (max-height: 500px) and (max-width: 660px) {
-  .hud-standings {
+  .hud-standings,
+  .race-standings {
     max-height: calc(100% - 15px - var(--touch-warn-bottom) - var(--touch-warn-stack) - 8px);
   }
 }
