@@ -1,4 +1,5 @@
 import type { Difficulty } from "./difficulty";
+import type { Standing } from "./messages";
 import type { TrackSlug } from "./track";
 import type { Variant } from "./variant";
 
@@ -53,6 +54,17 @@ export function nextMedal(times: MedalTimes, bestMs: number | null): Medal | nul
 /** True when `a` is a strictly better Medal than `b` (null is no Medal). */
 export function medalBeats(a: Medal | null, b: Medal | null): boolean {
   return (a === null ? -1 : MEDALS.indexOf(a)) > (b === null ? -1 : MEDALS.indexOf(b));
+}
+
+/** The best Medal earned on any (Track, Difficulty), which is what unlocks Variants. */
+export function bestMedal(standings: readonly Standing[]): Medal | null {
+  let best: Medal | null = null;
+  for (const { track, difficulty, bestMs } of standings) {
+    const times = medalTimes(track, difficulty);
+    const medal = times && medalFor(times, bestMs);
+    if (medalBeats(medal, best)) best = medal;
+  }
+  return best;
 }
 
 /**

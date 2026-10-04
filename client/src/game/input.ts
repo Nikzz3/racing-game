@@ -16,6 +16,7 @@ const DRIVING_KEYS = new Set([
   "ArrowDown",
   "ArrowRight",
   "KeyR",
+  "KeyN",
 ]);
 const STEER_CHANGE_PER_SECOND = 3;
 
@@ -24,6 +25,8 @@ export class Input {
   private readonly keys = new Set<string>();
   private smoothSteer = 0;
   onRespawn: (() => void) | null = null;
+  /** N races the Rival the HUD is offering as the Pacer. */
+  onRaceRival: (() => void) | null = null;
 
   constructor(private readonly touch: TouchControls | null = null) {}
 
@@ -37,6 +40,8 @@ export class Input {
     event.preventDefault();
     if (event.code === "KeyR") {
       if (!event.repeat) this.onRespawn?.();
+    } else if (event.code === "KeyN") {
+      if (!event.repeat) this.onRaceRival?.();
     } else {
       this.keys.add(event.code);
     }

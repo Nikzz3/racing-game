@@ -1,1 +1,516 @@
 /* Medal artwork, the HUD medal chip, the medal award animation and the Rival prompt. */
+.medal-badge {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+.medal-empty {
+  color: #ffffff59;
+}
+
+/* Tier colours: --c1 the medal's metal, --c2 its highlight, --c3 and --c4 its ribbon. */
+.hud-medal[data-medal="bronze"],
+.medal-award-bronze {
+  --c1: #e0935a;
+  --c2: #ffd2a6;
+  --c3: #b3362b;
+  --c4: #f3dcc0;
+}
+.hud-medal[data-medal="silver"],
+.medal-award-silver {
+  --c1: #d9e1e8;
+  --c2: #ffffff;
+  --c3: #2f5fb3;
+  --c4: #9fb3c8;
+}
+.hud-medal[data-medal="gold"],
+.medal-award-gold {
+  --c1: #ffd75e;
+  --c2: #fff6c4;
+  --c3: #c8102e;
+  --c4: #ffb72b;
+}
+.hud-medal[data-medal="author"],
+.medal-award-author {
+  --c1: #5eead4;
+  --c2: #d8b4fe;
+  --c3: #38bdf8;
+  --c4: #f0abfc;
+}
+
+/* HUD chip: the Medal this board's best earned, and the next target. It sits in the lap
+   column, under the checkpoint bar, wherever that column has room below it. */
+.hud-medal {
+  --c1: #ffffff40;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 13px;
+  padding: 5px 12px 5px 6px;
+  background: #13141dac;
+  border-left: 2px solid var(--c1);
+}
+.hud-medal[hidden] {
+  display: none;
+}
+.hud-medal-badge {
+  display: flex;
+}
+.hud-medal .medal-badge {
+  width: 30px;
+  height: 30px;
+}
+.hud-medal-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  white-space: nowrap;
+}
+.hud-medal-label {
+  font: 8px var(--mono);
+  letter-spacing: 0.14em;
+  color: #ffd9ad;
+}
+.hud-medal[data-next="none"] .hud-medal-label {
+  color: var(--c1);
+}
+.hud-medal-time {
+  font:
+    italic 600 18px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Here the standings sit under the lap column, so the chip moves under the lap timer,
+   which these widths put at the right. */
+@media (max-width: 1000px) {
+  .hud-medal {
+    position: fixed;
+    top: 126px;
+    right: 30px;
+    margin: 0;
+  }
+}
+@media (max-width: 600px) {
+  .hud-medal {
+    top: 104px;
+    right: 18px;
+  }
+}
+/* Short screens centre the timer again, and touch portrait gives the timer's column to
+   the standings; both leave the lap column free below. */
+@media (max-height: 500px), (pointer: coarse) and (max-width: 600px) {
+  .hud-medal {
+    position: static;
+    margin-top: 10px;
+  }
+}
+/* Touch landscape: the warnings sit just under the lap column, so the chip waits over the
+   race actions instead, clear of the slider. */
+@media (pointer: coarse) and (max-height: 500px) {
+  .hud-medal {
+    position: fixed;
+    top: auto;
+    right: auto;
+    left: var(--touch-edge);
+    bottom: calc(var(--touch-steer-top) + 66px);
+  }
+}
+
+/* Award: one orchestrated moment over the live race. Only transform and opacity animate,
+   so the compositor runs it without repainting the HUD layer. */
+.medal-award {
+  --size: 132px;
+  --spin: -540deg;
+  --rays: radial-gradient(closest-side, var(--c2), var(--c1) 45%, #0000);
+  --ray: 7deg;
+  --ray-gap: 22.5deg;
+  --rays-opacity: 0.45;
+  --burst: 1;
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  animation: medal-award-life 4.2s ease-out both;
+}
+.medal-award-bronze {
+  --spin: -360deg;
+  --ray: 9deg;
+  --ray-gap: 30deg;
+  --rays-opacity: 0.3;
+}
+.medal-award-gold {
+  --spin: -720deg;
+  --ray: 6deg;
+  --ray-gap: 18deg;
+  --rays-opacity: 0.6;
+}
+.medal-award-author {
+  --spin: -1080deg;
+  --rays: conic-gradient(#5eead4, #38bdf8, #818cf8, #c084fc, #f0abfc, #5eead4);
+  --ray: 5deg;
+  --ray-gap: 15deg;
+  --rays-opacity: 0.75;
+}
+.medal-award-stage {
+  position: relative;
+  width: var(--size);
+  height: var(--size);
+  perspective: 700px;
+}
+.medal-award-stage::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c1) 50%, #0000), #0000);
+  animation: medal-award-glow 1.3s 0.5s ease-out both;
+}
+.medal-award-rays {
+  position: absolute;
+  inset: -95%;
+  border-radius: 50%;
+  background: var(--rays);
+  mask:
+    repeating-conic-gradient(#000 0 var(--ray), #0000 var(--ray) var(--ray-gap)),
+    radial-gradient(closest-side, #000 18%, #0000);
+  mask-composite: intersect;
+  opacity: var(--rays-opacity);
+  will-change: transform;
+  animation: medal-award-rays 4.2s linear both;
+}
+.medal-award-rings {
+  position: absolute;
+  inset: 0;
+}
+.medal-award-rings::before,
+.medal-award-rings::after {
+  content: "";
+  position: absolute;
+  inset: -4%;
+  border: 3px solid var(--c1);
+  border-radius: 50%;
+  opacity: 0;
+  animation: medal-award-ring 1s 0.62s cubic-bezier(0.1, 0.6, 0.3, 1) both;
+}
+.medal-award-rings::after {
+  border-color: var(--c2);
+  animation-delay: 0.84s;
+}
+.medal-award-bronze .medal-award-rings,
+.medal-award-silver .medal-award-rings::after {
+  display: none;
+}
+.medal-award-author .medal-award-rings::before,
+.medal-award-author .medal-award-rings::after {
+  border: 0;
+  background: conic-gradient(#5eead4, #38bdf8, #818cf8, #c084fc, #f0abfc, #5eead4);
+  mask: radial-gradient(closest-side, #0000 84%, #000 87%, #000 95%, #0000 98%);
+}
+.medal-award-confetti {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: scale(var(--burst));
+}
+.medal-award-confetti i {
+  position: absolute;
+  left: -3px;
+  top: -6px;
+  width: 6px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--c1);
+  opacity: 0;
+  animation: medal-award-confetti 1.9s calc(0.55s + var(--d)) both;
+}
+.medal-award-confetti i:nth-child(4n + 2) {
+  background: var(--c2);
+}
+.medal-award-confetti i:nth-child(4n + 3) {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c3);
+}
+.medal-award-confetti i:nth-child(4n) {
+  height: 8px;
+  background: var(--c4);
+}
+.medal-award-badge {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 16px #000a);
+  animation: medal-award-drop 1.05s cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.medal-award .medal-shine {
+  animation: medal-award-shine 0.85s 1s ease-in-out both;
+}
+.medal-award-author .medal-sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: medal-award-twinkle 1.1s 1.05s ease-in-out 2 both;
+}
+/* The title rides a slanted plate, like a podium board, edged in the tier's metal. */
+.medal-award-title {
+  position: relative;
+  isolation: isolate;
+  margin: 20px 0 0;
+  padding: 6px 30px 4px;
+  font:
+    italic 900 46px/1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--c2);
+  text-shadow: 0 3px 0 #0007;
+  animation: medal-award-rise 0.5s 0.62s cubic-bezier(0.2, 0.8, 0.3, 1.25) both;
+}
+.medal-award-title::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, #151720f0, #151720c8);
+  border-left: 5px solid var(--c1);
+  border-right: 2px solid var(--c3);
+  transform: skewX(-14deg);
+}
+.medal-award-author .medal-award-title span {
+  background: linear-gradient(100deg, #99f6e4, #5eead4 25%, #a5b4fc 55%, #f0abfc 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #0000;
+  text-shadow: none;
+}
+.medal-award-time {
+  margin: 10px 0 0;
+  font: 600 17px var(--mono);
+  letter-spacing: 0.12em;
+  color: #fff6e5;
+  text-shadow: 0 2px 6px #000c;
+  animation: medal-award-rise 0.45s 0.85s ease-out both;
+}
+.medal-award-unlock {
+  margin: 12px 0 0;
+  padding: 7px 14px;
+  font:
+    500 13px "DM Sans",
+    Arial,
+    sans-serif;
+  color: #f8f5e9;
+  background: #151720e6;
+  border-left: 3px solid var(--c1);
+  animation: medal-award-rise 0.45s 1.25s ease-out both;
+}
+.medal-award-unlock b {
+  color: var(--c2);
+}
+@keyframes medal-award-life {
+  0% {
+    opacity: 0;
+  }
+  5%,
+  86% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes medal-award-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-170px) rotateY(var(--spin)) rotateX(40deg) scale(0.4);
+  }
+  12% {
+    opacity: 1;
+  }
+  62% {
+    transform: translateY(10px) rotateY(-14deg) rotateX(0deg) scale(1.1);
+  }
+  80% {
+    transform: translateY(-4px) rotateY(6deg) rotateX(0deg) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
+  }
+}
+@keyframes medal-award-shine {
+  from {
+    opacity: 1;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(62px);
+  }
+}
+@keyframes medal-award-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+@keyframes medal-award-rays {
+  0% {
+    opacity: 0;
+    transform: rotate(0deg) scale(0.6);
+  }
+  16% {
+    opacity: var(--rays-opacity);
+    transform: rotate(12deg) scale(1);
+  }
+  100% {
+    opacity: var(--rays-opacity);
+    transform: rotate(75deg) scale(1.05);
+  }
+}
+/* Rings and confetti wait out their delays invisible, so each starts from nothing. */
+@keyframes medal-award-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  6% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+@keyframes medal-award-confetti {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(0.3);
+    animation-timing-function: cubic-bezier(0.15, 0.75, 0.35, 1);
+  }
+  4% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y)) rotate(calc(var(--r) * 0.4)) scale(1);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.9, 0.55);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--x) * 1.12), calc(var(--y) + 150px)) rotate(var(--r)) scale(0.8);
+  }
+}
+@keyframes medal-award-twinkle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.7) rotate(45deg);
+  }
+}
+@keyframes medal-award-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+}
+@media (max-width: 600px), (max-height: 500px) {
+  .medal-award {
+    --size: 92px;
+    --burst: 0.7;
+  }
+  .medal-award-title {
+    margin-top: 14px;
+    padding: 5px 22px 3px;
+    font-size: 32px;
+  }
+  .medal-award-time {
+    margin-top: 7px;
+    font-size: 13px;
+  }
+  .medal-award-unlock {
+    margin-top: 8px;
+    padding: 5px 11px;
+    font-size: 11px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* style.css stops every animation. A fade is not motion, so the award still eases
+     in and out; the flying parts stay away. */
+  .medal-award {
+    animation: medal-award-life 4.2s ease-out both !important;
+  }
+  .medal-award-rays,
+  .medal-award-rings,
+  .medal-award-confetti {
+    display: none;
+  }
+}
+
+/* Rival prompt: a toast that offers the next rung of the ladder as the Pacer. Only its
+   button takes pointer input, so it never blocks the race behind it. */
+.rival-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 16px;
+  padding: 10px 10px 10px 20px;
+  border-left-color: var(--pacer);
+}
+.rival-prompt b {
+  font-weight: 600;
+  color: var(--pacer);
+}
+.rival-prompt-race {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px 7px 12px;
+  background: var(--pacer);
+  border: 0;
+  border-radius: 2px;
+  color: #0f1a15;
+  font: 700 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.rival-prompt-race:hover {
+  background: #a9ecd2;
+}
+.rival-prompt-race kbd {
+  padding: 1px 5px;
+  border: 1px solid #0f1a1570;
+  border-radius: 2px;
+  font: inherit;
+}
+@media (pointer: coarse) {
+  .rival-prompt-race {
+    padding: 10px 14px;
+  }
+  .rival-prompt-race kbd {
+    display: none;
+  }
+}
