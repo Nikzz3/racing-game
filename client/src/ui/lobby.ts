@@ -23,6 +23,7 @@ import { TrackStage } from "./track-stage";
 import { buildReferenceLap, type ReferenceLap } from "../game/reference-lap";
 import { JEV_LAP } from "../game/jev-lap";
 import { asSteeringMode, DEFAULT_STEERING, STEERING_MODES, type SteeringMode } from "../game/touch";
+import { VOLUME_STEP, type SoundSettings } from "../game/sound-settings";
 import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
 import { escapeHtml as html, formatMs, whenIdle } from "../util";
@@ -197,6 +198,7 @@ export class Lobby {
   constructor(
     parent: HTMLElement,
     private readonly callbacks: LobbyCallbacks,
+    private readonly sound: SoundSettings,
   ) {
     const saved = localStorage.getItem("racer-variant");
     this.choice = asVariant(saved) ?? CAR_VARIANTS[0];
@@ -233,7 +235,7 @@ export class Lobby {
             <div class="settings-inner"><div class="settings-heading"><h1>RACE <span>SETUP.</span></h1><div class="setup-selections"><button class="change-selection change-car" type="button" data-change-car aria-label="Change car"><img class="selected-car-thumb" alt="" hidden><span class="selected-car-name"></span><span class="change-label">Change car</span></button><button class="change-selection change-track" type="button" data-change-track aria-label="Change track"><span class="selected-track-name"></span><span class="change-label">Change track</span></button></div></div>
             <div class="setup-shell"><nav class="setup-menu" aria-label="Race menu" role="tablist">${SETUP_TABS.map((tab, i) => radio("setup-menu-item", `aria-controls="setup-${tab}-panel" id="setup-${tab}-tab" data-setup-tab="${tab}"`, `<span>0${i + 1}</span>${tab === "race" ? "Race" : "Records"}<span class="setup-menu-arrow">→</span>`, "aria-selected")).join("")}</nav>
             <div class="setup-workspace">
-              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
+              <section class="setup-panel panel-rooms" role="tabpanel" id="setup-race-panel" aria-labelledby="setup-race-tab" data-setup-panel="race"><h2>YOUR RACE</h2><div class="name-row setup-field"><label for="driver-name">Driver</label><input id="driver-name" aria-label="Driver" maxlength="16" placeholder="Your name" autocomplete="off"></div><div class="steering-picker setup-field" role="radiogroup" aria-label="Steering"><span class="section-label">Steering</span><div class="steering-options">${STEERING_MODES.map((m) => radio("steering-opt", `data-steering="${m}"`, STEERING_LABELS[m])).join("")}</div></div><div class="sound-field setup-field" role="group" aria-labelledby="sound-field-label"><span class="section-label" id="sound-field-label">Sound</span><div class="sound-controls"><button type="button" class="sound-mute" aria-pressed="false" data-sound-mute>Mute</button><input type="range" class="sound-volume" min="0" max="100" step="${VOLUME_STEP}" aria-label="Volume"><output class="sound-volume-value" aria-hidden="true"></output></div></div><div class="diff-picker setup-field" role="radiogroup" aria-label="Difficulty"><span class="section-label">Difficulty</span><div class="diff-options">${DIFFICULTIES.map((d) => radio(`diff-opt diff-${d}`, `data-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div></div><label class="pacer-picker setup-field"><span class="pacer-picker-lead">Pacer</span><select class="pacer-select" aria-label="Pacer"></select></label><form class="create-form"><div class="setup-field room-field"><span class="section-label" id="room-field-label">Room<small class="room-total"></small></span><div class="room-list" role="radiogroup" aria-labelledby="room-field-label"></div></div><label class="setup-field room-name-field"><span>Room name</span><input maxlength="24" placeholder="New room name" aria-label="New room name"></label><button type="submit" class="primary-action"><span class="primary-action-label">Create &amp; Race</span> <span>→</span></button></form></section>
               <section class="setup-panel panel-laps" role="tabpanel" id="setup-records-panel" aria-labelledby="setup-records-tab" data-setup-panel="records" hidden><div class="panel-heading board-heading"><h2>RECORDS</h2><div class="board-controls"><div class="board-diff-picker" role="radiogroup" aria-label="Records difficulty">${DIFFICULTIES.map((d) => radio(`board-diff-opt diff-${d}`, `data-board-diff="${d}"`, DIFFICULTY_LABELS[d])).join("")}</div><div class="board-track-menu"><button type="button" class="board-track-select" aria-haspopup="listbox" aria-expanded="false" aria-label="Records track" data-board-track-toggle="1"><span class="board-track-label"></span><span class="board-track-chevron" aria-hidden="true"></span></button><div class="board-track-list" role="listbox" aria-label="Records track" hidden>${TRACKS.map((t, i) => `<button type="button" role="option" class="board-track-opt" aria-selected="false" data-board-track="${t.id}">${outline(t, "board-track-thumb")}<span class="board-track-opt-copy"><small>0${i + 1}</small>${html(t.name)}</span></button>`).join("")}</div></div></div></div><div class="board-note" aria-live="polite" hidden><span class="board-note-text"></span><button type="button" class="board-use-settings" data-board-use-settings="1">Use these settings</button></div><ol class="lb-list"></ol><div class="lb-empty" hidden><span class="empty-timer">--:--.---</span><span class="lb-empty-copy">No laps yet.</span></div><div class="lb-ai-record" hidden><button class="lb-ai-record-btn" data-ai-record="1">▶ Watch AI Record</button><button class="lb-ai-record-btn lb-jev-lap-btn" data-jev-lap="1">▶ Watch Jev Lap</button></div></section>
             </div></div></div>
           </section>
@@ -268,6 +270,9 @@ export class Lobby {
     this.root.addEventListener("click", (event) => this.click(event));
     this.root.addEventListener("keydown", (event) => this.keydown(event));
     this.picker.addEventListener("change", () => this.choosePacer());
+    const volume = this.find<HTMLInputElement>(".sound-volume");
+    volume.addEventListener("input", () => sound.setVolume(Number(volume.value)));
+    sound.subscribe(() => this.paintSound());
     document.addEventListener("pointerdown", ({ target }) => {
       if (target instanceof Node && !this.find(".board-track-menu").contains(target))
         this.toggleBoardTrackMenu(false);
@@ -292,6 +297,7 @@ export class Lobby {
     this.check(".track-card", "track", this.track);
     this.check(".diff-opt", "diff", this.difficulty);
     this.check(".steering-opt", "steering", this.steeringMode);
+    this.paintSound();
     this.check("[data-setup-tab]", "setupTab", this.setupTab, "aria-selected");
     this.paintHero();
     this.paintTrack();
@@ -345,6 +351,15 @@ export class Lobby {
       node.tabIndex = active ? 0 : -1;
     }
   }
+  /** The Sound field follows the settings, which the race HUD and M key change too. */
+  private paintSound(): void {
+    const { volume, muted } = this.sound;
+    this.find<HTMLInputElement>(".sound-volume").value = String(volume);
+    this.find(".sound-volume-value").textContent = `${volume}%`;
+    const mute = this.find(".sound-mute");
+    mute.setAttribute("aria-pressed", String(muted));
+    mute.classList.toggle("active", muted);
+  }
   private saveName(): void {
     localStorage.setItem("racer-name", this.playerName);
   }
@@ -390,6 +405,7 @@ export class Lobby {
     else if (data.track) this.chooseTrack(data.track);
     else if (data.diff) this.chooseDifficulty(data.diff as Difficulty);
     else if (data.steering) this.chooseSteering(data.steering as SteeringMode);
+    else if (data.soundMute !== undefined) this.sound.toggleMuted();
   }
   private chooseSteering(mode: SteeringMode): void {
     this.steeringMode = mode;

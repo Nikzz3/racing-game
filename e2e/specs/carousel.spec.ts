@@ -92,10 +92,12 @@ test.describe("touch controls", () => {
     await page
       .locator(".offtrack-warn, .cp-miss-warn")
       .evaluateAll((warnings) => warnings.forEach((w) => ((w as HTMLElement).style.opacity = "1")));
-    // One race, resized between checks: portrait then landscape, each on a roomy and a short phone.
+    // One race, resized between checks: portrait then landscape, each on a roomy and a short
+    // phone, and the narrowest portrait phone, where the race actions only just clear the pedals.
     for (const [width, height, name] of [
       [390, 844, "race-hud-portrait-390x844.png"],
       [375, 667, "race-hud-portrait-375x667.png"],
+      [320, 568, "race-hud-portrait-320x568.png"],
       [844, 390, "race-hud-landscape-844x390.png"],
       [667, 375, "race-hud-landscape-667x375.png"],
       [568, 320, "race-hud-landscape-568x320.png"],

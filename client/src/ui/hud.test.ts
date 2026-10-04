@@ -214,3 +214,28 @@ describe("Hud lap timer", () => {
     expect(lap.textContent).toBe("0:00.020");
   });
 });
+
+describe("Hud mute toggle", () => {
+  it("offers a Mute toggle that reports whether sound is muted", () => {
+    const toggle = vi.fn();
+    const hud = new Hud(makeParent(), "Test Room", vi.fn(), 3, vi.fn(), undefined, toggle);
+    const mute = document.querySelector<HTMLButtonElement>(".hud-actions .hud-mute")!;
+    expect(mute.textContent).toBe("Mute");
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    mute.click();
+    expect(toggle).toHaveBeenCalledOnce();
+    hud.setMuted(true);
+    expect(mute.getAttribute("aria-pressed")).toBe("true");
+    hud.setMuted(false);
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    hud.dispose();
+  });
+
+  it("has no Mute toggle without sound", () => {
+    const parent = makeParent();
+    const hud = new Hud(parent, "Test Room", vi.fn(), 3);
+    expect(parent.querySelector(".hud-mute")).toBeNull();
+    expect(() => hud.setMuted(true)).not.toThrow();
+    hud.dispose();
+  });
+});

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Lobby } from "./lobby";
+import { SoundSettings } from "../game/sound-settings";
 
 const stage = vi.hoisted(() => ({
   setActive: vi.fn(),
@@ -32,14 +33,18 @@ afterEach(() => {
 
 describe("persistent lobby garage", () => {
   it("keeps the background mounted and active through circuit and race setup", () => {
-    const lobby = new Lobby(document.body, {
-      onCreate: vi.fn(),
-      onJoin: vi.fn(),
-      onReplay: vi.fn(),
-      onReferenceLap: vi.fn(),
-      onJevLap: vi.fn(),
-      onVariantChange: vi.fn(),
-    });
+    const lobby = new Lobby(
+      document.body,
+      {
+        onCreate: vi.fn(),
+        onJoin: vi.fn(),
+        onReplay: vi.fn(),
+        onReferenceLap: vi.fn(),
+        onJevLap: vi.fn(),
+        onVariantChange: vi.fn(),
+      },
+      new SoundSettings(),
+    );
     lobby.paintGarageThumbnails();
     const background = document.querySelector(".live-car-stage");
     expect(background?.parentElement?.className).toBe("lobby-deck");
@@ -62,14 +67,18 @@ describe("persistent lobby garage", () => {
   });
 
   it("does not redraw the garage when shown while already visible", () => {
-    const lobby = new Lobby(document.body, {
-      onCreate: vi.fn(),
-      onJoin: vi.fn(),
-      onReplay: vi.fn(),
-      onReferenceLap: vi.fn(),
-      onJevLap: vi.fn(),
-      onVariantChange: vi.fn(),
-    });
+    const lobby = new Lobby(
+      document.body,
+      {
+        onCreate: vi.fn(),
+        onJoin: vi.fn(),
+        onReplay: vi.fn(),
+        onReferenceLap: vi.fn(),
+        onJevLap: vi.fn(),
+        onVariantChange: vi.fn(),
+      },
+      new SoundSettings(),
+    );
     lobby.paintGarageThumbnails();
     stage.setActive.mockClear();
     lobby.show();

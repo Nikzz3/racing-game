@@ -38,6 +38,7 @@ export class Hud {
     private readonly checkpointCount: number,
     onRespawn?: () => void,
     track?: Track,
+    onToggleMute?: () => void,
   ) {
     this.root.className = "hud";
     this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
@@ -45,11 +46,12 @@ export class Hud {
     <div class="hud-panel hud-standings"><h3>BEST LAPS</h3><table><tbody></tbody></table></div>
     <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-shadow" d="M 36 155 A 84 84 0 1 1 164 155"/><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
     ${track ? `<div class="hud-map"><div class="hud-map-plot"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path class="hud-map-shadow" d="${trackPath(track)}"/><path d="${trackPath(track)}"/></svg><div class="hud-map-remotes"></div><i class="hud-map-dot hud-map-driver"></i></div><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
-    <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}</div>
+    <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}${onToggleMute ? '<button class="hud-mute" aria-pressed="false" title="Mute (M)">Mute</button>' : ""}</div>
     <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div><div class="toasts" role="status" aria-live="polite"></div>`;
     parent.append(this.root);
     this.el(".hud-leave").onclick = onLeave;
     if (onRespawn) this.el(".hud-respawn").onclick = onRespawn;
+    if (onToggleMute) this.el(".hud-mute").onclick = onToggleMute;
     if (track) placeMapDot(this.el(".hud-map-driver"), track.samples[0].x, track.samples[0].z);
   }
   private el(selector: string): HTMLElement {
@@ -77,7 +79,7 @@ export class Hud {
     if (dot) placeMapDot(dot, x, z);
   }
   /** Mirror the other drivers in the room onto the circuit map. */
-  setRemotePositions(positions: RemotePosition[]): void {
+  setRemotePositions(positions: readonly Pick<RemotePosition, "id" | "x" | "z">[]): void {
     const group = this.el(".hud-map-remotes");
     if (!group) return;
     const seen = new Set<string>();
@@ -105,6 +107,10 @@ export class Hud {
       return;
     this.lapShown = time;
     this.text(".hud-cur-lap", formatMs(time));
+  }
+  /** Shows whether sound is muted on the Mute toggle, when the HUD has one. */
+  setMuted(muted: boolean): void {
+    this.root.querySelector(".hud-mute")?.setAttribute("aria-pressed", String(muted));
   }
   setOffTrack(off: boolean): void {
     this.el(".offtrack-warn").classList.toggle("visible", off);

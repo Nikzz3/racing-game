@@ -5,6 +5,7 @@ import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
 import { CAR_VARIANTS, type LeaderboardEntry, type ReplayFrame } from "@racing/shared";
 import type { ReferenceLap } from "../game/reference-lap";
 import { JEV_LAP } from "../game/jev-lap";
+import { SoundSettings } from "../game/sound-settings";
 import { formatMs } from "../util";
 
 // The lobby bakes the AI Reference Lap through buildReferenceLap; mock it so
@@ -56,6 +57,7 @@ function entry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
 let parent: HTMLElement;
 let lobby: Lobby;
 let cbs: LobbyCallbacks;
+let sound: SoundSettings;
 
 /** Mounts a fresh Lobby into `parent`; call again in a test to remount. */
 function mount(): Lobby {
@@ -67,7 +69,8 @@ function mount(): Lobby {
     onJevLap: vi.fn(),
     onVariantChange: vi.fn(),
   };
-  lobby = new Lobby(parent, cbs);
+  sound = new SoundSettings();
+  lobby = new Lobby(parent, cbs, sound);
   return lobby;
 }
 function q<T extends HTMLElement = HTMLElement>(selector: string): T {
@@ -816,6 +819,48 @@ describe("Lobby steering preference", () => {
     press(q(steering("buttons")), "ArrowRight");
     expect(lobby.steering).toBe("slider");
     expect(parent.querySelectorAll('.steering-opt[tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe("Lobby sound settings", () => {
+  const volume = () => q<HTMLInputElement>(".sound-volume");
+  const mute = () => q(".sound-mute");
+
+  it("is a Sound group on Race Setup showing the stored volume and mute", () => {
+    localStorage.setItem("racer-volume", "40");
+    localStorage.setItem("racer-muted", "true");
+    mountSetup();
+    const group = q(".settings-screen .sound-field");
+    expect(group.getAttribute("role")).toBe("group");
+    expect(q(`#${group.getAttribute("aria-labelledby")}`).textContent).toBe("Sound");
+    expect(volume().getAttribute("aria-label")).toBe("Volume");
+    expect(volume().value).toBe("40");
+    expect(q(".sound-volume-value").textContent).toBe("40%");
+    expect(mute().textContent).toBe("Mute");
+    expect(mute().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("saves a new volume and a press of Mute", () => {
+    mountSetup();
+    expect(volume().value).toBe("70");
+    expect(mute().getAttribute("aria-pressed")).toBe("false");
+    volume().value = "25";
+    volume().dispatchEvent(new Event("input", { bubbles: true }));
+    click(".sound-mute");
+    expect(sound.volume).toBe(25);
+    expect(sound.muted).toBe(true);
+    expect(localStorage.getItem("racer-volume")).toBe("25");
+    expect(localStorage.getItem("racer-muted")).toBe("true");
+    expect(q(".sound-volume-value").textContent).toBe("25%");
+    expect(mute().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("follows a change made in the race", () => {
+    mountSetup();
+    sound.toggleMuted();
+    sound.setVolume(90);
+    expect(mute().getAttribute("aria-pressed")).toBe("true");
+    expect(volume().value).toBe("90");
   });
 });
 

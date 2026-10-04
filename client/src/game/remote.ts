@@ -30,6 +30,8 @@ export interface RemotePosition {
   id: string;
   x: number;
   z: number;
+  /** As drawn this frame, m/s. */
+  speed: number;
 }
 /**
  * How far behind the server clock remote cars are drawn. The state after the
@@ -141,10 +143,11 @@ export class RemotePlayers {
 
   /** Where each remote car is drawn this frame, after interpolation. */
   positions(): RemotePosition[] {
-    return [...this.cars].map(([id, { mesh }]) => ({
+    return [...this.cars].map(([id, { mesh, speed }]) => ({
       id,
       x: mesh.position.x,
       z: mesh.position.z,
+      speed,
     }));
   }
 

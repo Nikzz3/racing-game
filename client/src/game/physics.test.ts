@@ -237,3 +237,47 @@ describe("CarPhysics.advance — other players' cars", () => {
     expect(car.speed).toBe(-14);
   });
 });
+
+describe("CarPhysics — what the driver feels", () => {
+  it("reports a rear-ending's impulse once, then nothing", () => {
+    const car = spawned();
+    const rammer = parked(car, -(CAR_HALF_LENGTH * 2 - 0.1), 0, 20);
+    runSteps(car, 1, COAST, [rammer]);
+    expect(car.takeImpact()).toBeCloseTo(13, 6);
+    expect(car.takeImpact()).toBe(0);
+  });
+
+  it("reports the speed a barrier takes off, only on the first touch", () => {
+    const car = spawned();
+    car.speed = 40;
+    // Sideways off the road and into the barrier.
+    car.heading += Math.PI / 2;
+    let impact = 0;
+    for (let step = 0; step < 120 && impact === 0; step++) {
+      car.update(PHYSICS_STEP, COAST);
+      impact = car.takeImpact();
+    }
+    // The barrier keeps 45% of the speed it met, and the impact is the rest.
+    expect(impact).toBeGreaterThan(0);
+    expect(impact).toBeCloseTo((car.speed / 0.45) * 0.55, 9);
+    // Scraping along it is not another hit.
+    for (let step = 0; step < 10; step++) car.update(PHYSICS_STEP, { ...COAST, throttle: 1 });
+    expect(car.takeImpact()).toBe(0);
+  });
+
+  it("forgets a hit on respawn", () => {
+    const car = spawned();
+    runSteps(car, 1, COAST, [parked(car, -(CAR_HALF_LENGTH * 2 - 0.1), 0, 20)]);
+    car.spawnAtSample(TRACK_DIVISIONS - 14, 0);
+    expect(car.takeImpact()).toBe(0);
+  });
+
+  it("tops out where drag outpulls the engine, or at the Room's limit", () => {
+    expect(new CarPhysics("easy", SUNSET_RIDGE.samples).topSpeed).toBe(MAX_SPEED_MS.easy);
+    const medium = spawned();
+    expect(medium.topSpeed).toBeLessThan(MAX_SPEED_MS.medium);
+    medium.speed = medium.topSpeed;
+    runSteps(medium, 1, FULL_THROTTLE);
+    expect(medium.speed).toBeCloseTo(medium.topSpeed, 1);
+  });
+});

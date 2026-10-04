@@ -69,6 +69,8 @@ export class CarPhysics {
   centerIndex = 0;
 
   private touchingWall = false;
+  /** The hardest hit since `takeImpact()` last read it; see there. */
+  private impact = 0;
   private stepAccumulator = 0;
   private readonly previousPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly renderPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
@@ -90,6 +92,7 @@ export class CarPhysics {
     this.centerIndex = index;
     this.stepAccumulator = 0;
     this.touchingWall = false;
+    this.impact = 0;
     this.onTrack = Math.abs(lateralOffset) <= ROAD_HALF_WIDTH + 0.6;
     this.rememberPose();
   }
@@ -104,6 +107,21 @@ export class CarPhysics {
   /** Seconds of frame time not yet simulated: the physical state trails the latest frame by this. */
   get backlog(): number {
     return this.stepAccumulator;
+  }
+
+  /** The fastest the car goes on the road: its top speed, or where drag outpulls the engine. */
+  get topSpeed(): number {
+    return Math.min(this.tuning.maxSpeed, Math.sqrt(this.tuning.engineAccel / DRAG));
+  }
+
+  /**
+   * The hardest hit since the last call, in m/s: the speed a barrier took off, or the
+   * impulse of a collision with another car. 0 when nothing was hit.
+   */
+  takeImpact(): number {
+    const impact = this.impact;
+    this.impact = 0;
+    return impact;
   }
 
   /**
@@ -199,6 +217,7 @@ export class CarPhysics {
       if (closing >= 0) continue;
       const impulse = (-(1 + CAR_RESTITUTION) / 2) * closing;
       this.speed += impulse * (forwardX * nx + forwardZ * nz);
+      this.impact = Math.max(this.impact, impulse);
     }
     if (!hit) return;
     // A shove must never outrun the Room's top speed, or the lap reads as implausible.
@@ -219,6 +238,7 @@ export class CarPhysics {
       this.x = sample.x + (this.x - sample.x) * inverseDistance * WALL_DIST;
       this.z = sample.z + (this.z - sample.z) * inverseDistance * WALL_DIST;
       if (!this.touchingWall) {
+        this.impact = Math.max(this.impact, Math.abs(this.speed) * 0.55);
         this.speed *= 0.45;
         this.touchingWall = true;
       }

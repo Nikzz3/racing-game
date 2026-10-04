@@ -44,8 +44,16 @@ can install the new version by hand.
 - `S` : brake / reverse
 - `A` / `D` : steer
 - `R` : respawn (teleport back to the start, abandon the in-progress lap)
+- `M` : mute or unmute the sound (also on the race screen's Mute button; the volume is
+  under Race Setup)
 
 On phones and tablets, on-screen touch controls replace the keyboard.
+
+A gamepad works alongside the keyboard: the right trigger (or A / Cross) accelerates, the
+left trigger (or X / Square) brakes, the left stick or the d-pad steers, and Y / Triangle
+respawns. The triggers and stick are analog. Pads with motors rumble on hits and off the
+road (Chromium-based browsers and the desktop app). A pad only shows up after you press
+one of its buttons with the game open.
 
 ## How to race
 

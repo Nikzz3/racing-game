@@ -12,12 +12,15 @@ import { JEV_LAP } from "./game/jev-lap";
 import type { JevRecording } from "./game/jev-recording";
 import { ReplayViewer } from "./game/replay";
 import { preloadModels } from "./game/models";
+import { Sound } from "./game/sound";
+import { SoundSettings } from "./game/sound-settings";
 import { Lobby } from "./ui/lobby";
 import { LoadingScreen } from "./ui/loading-screen";
 
 /** Owns transitions between lobby, live driving and replay playback. */
 export class RacingApp {
   private readonly net = new Net();
+  private readonly sound = new Sound(new SoundSettings());
   private readonly lobby: Lobby;
   private readonly assets: Promise<void>;
   private view: Game | ReplayViewer | null = null;
@@ -30,24 +33,28 @@ export class RacingApp {
   private notice: HTMLElement | null = null;
 
   constructor(private readonly root: HTMLElement) {
-    this.lobby = new Lobby(root, {
-      onCreate: (roomName, track, difficulty) => {
-        this.hello();
-        this.net.send({ type: "createRoom", roomName, track, difficulty });
+    this.lobby = new Lobby(
+      root,
+      {
+        onCreate: (roomName, track, difficulty) => {
+          this.hello();
+          this.net.send({ type: "createRoom", roomName, track, difficulty });
+        },
+        onJoin: (roomId) => {
+          this.hello();
+          this.net.send({ type: "joinRoom", roomId });
+        },
+        onReplay: (name, track, difficulty) =>
+          this.net.send({ type: "getReplay", name, track, difficulty }),
+        onVariantChange: () => this.hello(),
+        onReferenceLap: () => {
+          const lap = this.lobby.getReferenceLap();
+          if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
+        },
+        onJevLap: () => void this.openJevLap(),
       },
-      onJoin: (roomId) => {
-        this.hello();
-        this.net.send({ type: "joinRoom", roomId });
-      },
-      onReplay: (name, track, difficulty) =>
-        this.net.send({ type: "getReplay", name, track, difficulty }),
-      onVariantChange: () => this.hello(),
-      onReferenceLap: () => {
-        const lap = this.lobby.getReferenceLap();
-        if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
-      },
-      onJevLap: () => void this.openJevLap(),
-    });
+      this.sound.settings,
+    );
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
       this.lobby.setConnection(state);
@@ -177,6 +184,7 @@ export class RacingApp {
             pacer,
             this.lobby.selectedVariant,
             this.lobby.steering,
+            this.sound,
           );
           this.view = game;
           this.joining = false;

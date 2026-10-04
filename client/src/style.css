@@ -927,6 +927,45 @@ a {
   border-color: var(--accent);
   color: var(--accent);
 }
+.sound-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sound-mute {
+  flex: none;
+  padding: 14px 18px;
+  background: #24262dcc;
+  border: 1px solid #ffffff19;
+  border-radius: 2px;
+  font-size: 12px;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.sound-mute:hover {
+  border-color: #efad6570;
+}
+.sound-mute[aria-pressed="true"] {
+  background: #efad6518;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setup-field input.sound-volume {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  accent-color: var(--accent);
+}
+.sound-volume-value {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+  font: 12px var(--mono);
+}
 .pacer-opt-ai {
   color: var(--pacer);
 }
@@ -1969,6 +2008,7 @@ a {
 }
 .hud-leave,
 .hud-respawn,
+.hud-mute,
 .replay-exit {
   /* Solid, not a backdrop blur: that re-blurs the live canvas behind it every frame. */
   background: #151720d9;
@@ -1982,9 +2022,14 @@ a {
 }
 .hud-leave:hover,
 .hud-respawn:hover,
+.hud-mute:hover,
 .replay-exit:hover {
   background: #ac713f99;
   border-color: #ffcc89;
+}
+.hud-mute[aria-pressed="true"] {
+  border-color: #ffcc89;
+  color: #ffcc89;
 }
 .offtrack-warn,
 .cp-miss-warn {
@@ -2564,7 +2609,8 @@ a {
     bottom: 20px;
   }
   .hud-leave,
-  .hud-respawn {
+  .hud-respawn,
+  .hud-mute {
     font-size: 8px;
     padding: 9px;
   }
@@ -2734,6 +2780,13 @@ a {
   .hud-actions {
     bottom: calc(var(--touch-steer-top) + 20px);
   }
+  /* Compact as on narrow screens: the actions share the slider's column with the map beside it. */
+  .hud-leave,
+  .hud-respawn,
+  .hud-mute {
+    font-size: 8px;
+    padding: 9px;
+  }
   .hud-map {
     left: calc(var(--touch-edge) + var(--touch-steer-width) + 16px);
     bottom: var(--touch-edge);
@@ -2782,6 +2835,18 @@ a {
 @media (pointer: coarse) and (max-height: 500px) and (max-width: 539px) {
   .hud-map {
     display: none;
+  }
+}
+/* The narrowest portrait phones: the three race actions tighten to stay clear of the pedals. */
+@media (pointer: coarse) and (max-width: 359px) {
+  .hud-actions {
+    gap: 5px;
+  }
+  .hud-leave,
+  .hud-respawn,
+  .hud-mute {
+    padding: 9px 5px;
+    letter-spacing: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
