@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
-import { CAR_VARIANTS, type LeaderboardEntry, type ReplayFrame } from "@racing/shared";
+import { CAR_VARIANTS, TRACKS, type LeaderboardEntry, type ReplayFrame } from "@racing/shared";
 import type { ReferenceLap } from "../game/reference-lap";
 import { JEV_LAP } from "../game/jev-lap";
 import { formatMs } from "../util";
@@ -731,7 +731,8 @@ describe("Lobby Garage picker", () => {
     click("[data-change-track]");
     expect(q(".lobby-deck").getAttribute("data-screen")).toBe("track");
     expect(q(".track-card.active").getAttribute("data-track")).toBe("stormhaven");
-    click('[data-track-carousel="next"]');
+    // Stepping on past the last track wraps round to the first.
+    for (let index = 1; index < TRACKS.length; index++) click('[data-track-carousel="next"]');
     expect(q(".track-slide.active").getAttribute("data-track-slide")).toBe("sunset-ridge");
   });
 

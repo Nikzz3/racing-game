@@ -32,6 +32,15 @@ beforeAll(async () => {
   }));
   const { scene } = await loader.parseAsync(buffer, "");
   registerLibrary(scene);
+  // Tracks drawn after the split ship as their own file, loaded the way preloadModels does.
+  for (const track of TRACKS) {
+    if (getModel(`track:${track.id}`)) continue;
+    const file = await readFile(
+      new URL(`../../public/models/tracks/${track.id}.glb`, import.meta.url),
+    );
+    const data = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    registerLibrary((await loader.parseAsync(data, "")).scene);
+  }
 });
 
 describe("Blender asset integration", () => {

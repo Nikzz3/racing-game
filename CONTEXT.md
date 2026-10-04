@@ -5,7 +5,7 @@ A 3D multiplayer racing game. Players join shared rooms to race a circuit, with 
 ## Language
 
 **Track**:
-A named racing circuit defined by a closed loop of control points. A Track is chosen at Room creation alongside Difficulty and is fixed for the Room's lifetime. The game is named **Sunset Ridge**; the one circuit currently in the game is **Sunset Ridge Circuit** (slug `sunset-ridge`). These are distinct — "Sunset Ridge" is the product, "Sunset Ridge Circuit" is one Track.
+A named racing circuit defined by a closed loop of control points, stored in `shared/src/tracks/<slug>.json` and drawn in Blender (ADR-0012). A Track is chosen at Room creation alongside Difficulty and is fixed for the Room's lifetime. The game is named **Sunset Ridge**; its Tracks are **Sunset Ridge Circuit** (slug `sunset-ridge`), **Stormhaven Circuit** and **Arrowhead Raceway**. "Sunset Ridge" is the product, "Sunset Ridge Circuit" is one Track.
 _Avoid_: Map, level, course
 
 **Room**:

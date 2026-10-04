@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { TRACKS } from "@racing/shared";
 import { renderQuality } from "./quality";
 
 const library = new Map<string, THREE.Group>();
@@ -29,14 +30,8 @@ export function registerLibrary(root: THREE.Group): void {
       if (!(part instanceof THREE.Mesh)) return;
       part.castShadow = true;
       part.receiveShadow = true;
-      const meshMaterials = Array.isArray(part.material) ? part.material : [part.material];
-      for (const material of meshMaterials) {
-        if (!(material instanceof THREE.MeshStandardMaterial)) continue;
-        materials.set(material.name, material);
-        for (const texture of [material.map, material.normalMap, material.roughnessMap]) {
-          if (texture) textures.add(texture);
-        }
-      }
+      if (Array.isArray(part.material)) part.material = part.material.map(shareMaterial);
+      else part.material = shareMaterial(part.material);
     });
     if (name.startsWith("car:")) {
       // The source lays cars out on a workshop floor. Remove that display offset.
@@ -52,6 +47,19 @@ export function registerLibrary(root: THREE.Group): void {
     library.set(name, group);
   });
   setTextureAnisotropy(renderQuality().anisotropy);
+}
+
+/** The first surface registered under a name is the one every later file uses: track
+ * files are exported without textures and pick up the library's textured materials. */
+function shareMaterial(material: THREE.Material): THREE.Material {
+  if (!(material instanceof THREE.MeshStandardMaterial)) return material;
+  const existing = material.name ? materials.get(material.name) : undefined;
+  if (existing) return existing;
+  materials.set(material.name, material);
+  for (const texture of [material.map, material.normalMap, material.roughnessMap]) {
+    if (texture) textures.add(texture);
+  }
+  return material;
 }
 
 /** Anisotropic filtering of the library's surfaces, applied by each context that uploads them. */
@@ -173,9 +181,10 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
         total: event.lengthComputable ? event.total : 0,
       }),
     )
-    .then(({ scene }) => {
+    .then(async ({ scene }) => {
       reportLoad({ ...loadProgress, phase: "preparing" });
       registerLibrary(scene);
+      await loadTrackFiles();
       reportLoad({ ...loadProgress, phase: "ready" });
     })
     .catch((error: unknown) => {
@@ -187,6 +196,20 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
       loadObservers.clear();
     }));
 }
+/** Tracks drawn after the library was split out ship as their own small file
+ * (`assets/blender/track_tools.py`); register any track the library lacks. */
+async function loadTrackFiles(): Promise<void> {
+  const loader = createAssetLoader();
+  await Promise.all(
+    TRACKS.filter((track) => !library.has(`track:${track.id}`)).map((track) =>
+      loader
+        .loadAsync(`${import.meta.env.BASE_URL}models/tracks/${track.id}.glb`)
+        .then(({ scene }) => registerLibrary(scene))
+        .catch((error: unknown) => console.warn(`Track ${track.id} could not load`, error)),
+    ),
+  );
+}
+
 export function getModel(key: string): THREE.Group | null {
   return library.get(key) ?? null;
 }

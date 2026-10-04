@@ -1,7 +1,7 @@
 # Sunset Ridge Racing
 
 A browser-based 3D multiplayer arcade racing game. Pick one of eight cars, race the
-Sunset Ridge or Stormhaven circuit in a live multiplayer room, watch replays of recorded
+Sunset Ridge, Stormhaven or Arrowhead circuit in a live multiplayer room, watch replays of recorded
 laps, chase a human or AI pacer around the track, and put your best lap on a persistent
 leaderboard that survives server restarts.
 

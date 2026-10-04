@@ -4,7 +4,6 @@ import {
   DEFAULT_TRACK_SLUG,
   getTrack,
   nearestCenterline,
-  NUM_CHECKPOINTS,
   SUNSET_RIDGE,
   STORMHAVEN,
   TRACKS,
@@ -45,16 +44,12 @@ describe("track registry", () => {
     expect(asTrackSlug("sunset-ridge")).toBe("sunset-ridge");
   });
 
-  it("SUNSET_RIDGE checkpoint count equals NUM_CHECKPOINTS (12 evenly-spaced gates)", () => {
-    expect(SUNSET_RIDGE.checkpoints.length).toBe(NUM_CHECKPOINTS);
+  it("SUNSET_RIDGE has 12 evenly-spaced gates", () => {
+    expect(SUNSET_RIDGE.checkpoints.length).toBe(12);
   });
 
   it("SUNSET_RIDGE samples array has the expected length", () => {
     expect(SUNSET_RIDGE.samples.length).toBe(512);
-  });
-
-  it("TRACKS contains exactly two entries", () => {
-    expect(TRACKS.length).toBe(2);
   });
 
   it("getTrack returns STORMHAVEN for stormhaven", () => {

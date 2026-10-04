@@ -1,11 +1,14 @@
 // Tracks are closed Catmull-Rom splines in the XZ plane (y = 0). Client mesh
 // generation, off-track checks and server checkpoint validation all derive from
-// the sampled centerline defined here.
+// the sampled centerline defined here, from the control points in tracks/*.json.
+
+import arrowhead from "./tracks/arrowhead.json";
+import stormhaven from "./tracks/stormhaven.json";
+import sunsetRidge from "./tracks/sunset-ridge.json";
 
 export const ROAD_HALF_WIDTH = 7;
 /** Distance from road edge to the physical barrier wall. */
 export const BARRIER_OFFSET = 6;
-export const NUM_CHECKPOINTS = 12;
 export const CHECKPOINT_RADIUS = 8;
 export const TRACK_DIVISIONS = 512;
 
@@ -87,121 +90,72 @@ export function nearestCenterline(
 }
 
 /**
- * Sunset Ridge Circuit centerline [x, z], in order of travel: start straight
- * along the bottom, a fast right sweeper onto the right side, a left-right
- * chicane, a blast up to the top-right corner, esses across the top, a dive on
- * the left into a double-apex sweep, and a bottom-left corner back onto the
- * start straight.
+ * How a Track places its checkpoints (ADR-0003): a number spaces that many gates
+ * evenly along the centerline; `control-points` gates every control point, for
+ * layouts that fold back on themselves so the apex-to-apex path is the racing line.
  */
-const SUNSET_RIDGE_CONTROL_POINTS: [number, number][] = [
-  [-40, -210],
-  [40, -213],
-  [110, -205],
-  // T1: fast right sweeper
-  [175, -180],
-  [215, -120],
-  // T2-T3: left-right chicane
-  [196, -58],
-  [157, -20],
-  [178, 32],
-  // run up the right side
-  [225, 85],
-  [235, 150],
-  // T4: top-right corner
-  [195, 200],
-  [125, 185],
-  // T5-T7: esses across the top
-  [70, 215],
-  [5, 185],
-  [-60, 215],
-  [-130, 205],
-  // T8: top-left corner
-  [-185, 155],
-  // T9: dive to the inside
-  [-150, 95],
-  [-100, 60],
-  [-105, -5],
-  // T10-T11: double-apex right sweep back to the outside
-  [-160, -35],
-  [-205, -80],
-  // T12: bottom-left corner onto the start straight
-  [-195, -150],
-  [-130, -195],
-];
-
-const sunsetRidgeSamples = sampleTrack(SUNSET_RIDGE_CONTROL_POINTS);
-
-// Sunset Ridge spaces NUM_CHECKPOINTS gates evenly along the centerline.
-export const SUNSET_RIDGE: Track = {
-  id: "sunset-ridge",
-  name: "Sunset Ridge Circuit",
-  controlPoints: SUNSET_RIDGE_CONTROL_POINTS,
-  samples: sunsetRidgeSamples,
-  checkpoints: Array.from({ length: NUM_CHECKPOINTS }, (_, k) => {
-    const s = sunsetRidgeSamples[Math.floor((k * TRACK_DIVISIONS) / NUM_CHECKPOINTS)];
-    return { x: s.x, z: s.z };
-  }),
-};
+export type CheckpointLayout = number | "control-points";
 
 /**
- * Stormhaven Circuit centerline [x, z]. "Serpent's Coil": a fast, open outer
- * loop wrapped around a tight, knotted infield, with the technical corners
- * clustered on one side. Original layout, not a trace of any real circuit.
- *
- *   S1: Start/finish on the long right-hand main straight → sweeps down to the bottom
- *   S2: Long curving back straight (bottom) → heavy-braking hairpin at the far corner
- *   S3: High-speed esse snake → triple-apex tightening spiral
- *   S4: Long curving top straight → fast top-right sweep back onto the main straight
+ * A Track as stored in `tracks/<slug>.json`. Tracks drawn in Blender export this
+ * file from their centerline curve (`assets/blender/track_tools.py`); the Python
+ * RL port reads the same files.
  */
-const STORMHAVEN_CONTROL_POINTS: [number, number][] = [
-  [232, 30], // T0 – start/finish, mid main straight (right edge)
-  [228, -60], // main straight sweeping down
-  [218, -150], // T1 turn-in
-  [188, -202], // T1 exit onto the bottom
-  [110, -220], // long curving back straight (bottom)
-  [25, -220], // back straight continuing
-  [-65, -208], // back straight approach to the hairpin
-  [-150, -188], // hairpin braking zone
-  [-198, -150], // T2 – heavy-braking hairpin apex (far bottom-left, eased open)
-  [-190, -102], // hairpin exit
-  [-150, -72], // into the infield
-  [-110, -100], // T3 – esse snake (swing 1, amplitude eased)
-  [-70, -73], // esse swing 2
-  [-30, -100], // esse swing 3
-  [10, -70], // esse swing 4
-  [45, -94], // esse swing 5
-  [95, -70], // esse snake exit
-  [135, -20], // T4 – triple-apex spiral entry
-  [140, 40], // spiral apex 1
-  [110, 80], // spiral apex 2 (tightening)
-  [60, 95], // spiral apex 3
-  [0, 80], // spiral exit
-  [-70, 112], // sweep out toward the top-left (rounds the entry)
-  [-140, 150], // top-left apex of the outer loop
-  [-95, 172], // rounds the exit onto the top straight
-  [-40, 178], // long curving top straight
-  [90, 175], // top straight → top-right sweep
-  [185, 140], // fast top-right sweeper
-  [225, 90], // sweep exit → loop closes back to T0
-];
+export interface TrackSource {
+  id: TrackSlug;
+  name: string;
+  description: string;
+  checkpoints: CheckpointLayout;
+  controlPoints: [number, number][];
+}
 
-const stormhavenSamples = sampleTrack(STORMHAVEN_CONTROL_POINTS);
+function parseTrackSource(value: unknown): TrackSource {
+  const source = value as Partial<TrackSource>;
+  const valid =
+    typeof source.id === "string" &&
+    /^[a-z0-9]+(-[a-z0-9]+)*$/.test(source.id) &&
+    typeof source.name === "string" &&
+    typeof source.description === "string" &&
+    (source.checkpoints === "control-points" ||
+      (Number.isInteger(source.checkpoints) && (source.checkpoints as number) >= 4)) &&
+    Array.isArray(source.controlPoints) &&
+    source.controlPoints.length >= 4 &&
+    source.controlPoints.every(
+      (p) => Array.isArray(p) && p.length === 2 && p.every((c) => Number.isFinite(c)),
+    );
+  if (!valid) throw new Error(`Invalid track source: ${JSON.stringify(value).slice(0, 80)}`);
+  return source as TrackSource;
+}
 
-// Stormhaven folds back on itself, so it places one gate per control point (at
-// the nearest centerline sample) to make the apex-to-apex path the racing line.
-// Control points are already in lap order, so gate 0 is the start/finish.
-export const STORMHAVEN: Track = {
-  id: "stormhaven",
-  name: "Stormhaven Circuit",
-  controlPoints: STORMHAVEN_CONTROL_POINTS,
-  samples: stormhavenSamples,
-  checkpoints: STORMHAVEN_CONTROL_POINTS.map(([cx, cz]) => {
-    const s = stormhavenSamples[nearestCenterline(cx, cz, stormhavenSamples).index];
-    return { x: s.x, z: s.z };
-  }),
-};
+/** Builds a Track from its JSON source: centerline samples plus checkpoint gates. */
+export function defineTrack(value: unknown): Track {
+  const { id, name, checkpoints, controlPoints } = parseTrackSource(value);
+  const samples = sampleTrack(controlPoints);
+  return {
+    id,
+    name,
+    controlPoints,
+    samples,
+    checkpoints:
+      checkpoints === "control-points"
+        ? // Control points are in lap order, so gate 0 is the start/finish.
+          controlPoints.map(([cx, cz]) => {
+            const s = samples[nearestCenterline(cx, cz, samples).index];
+            return { x: s.x, z: s.z };
+          })
+        : Array.from({ length: checkpoints }, (_, k) => {
+            const s = samples[Math.floor((k * TRACK_DIVISIONS) / checkpoints)];
+            return { x: s.x, z: s.z };
+          }),
+  };
+}
 
-export const TRACKS: Track[] = [SUNSET_RIDGE, STORMHAVEN];
+export const SUNSET_RIDGE = defineTrack(sunsetRidge);
+export const STORMHAVEN = defineTrack(stormhaven);
+export const ARROWHEAD = defineTrack(arrowhead);
+
+/** Every playable Track, in lobby order. Register a new `tracks/<slug>.json` here. */
+export const TRACKS: Track[] = [SUNSET_RIDGE, STORMHAVEN, ARROWHEAD];
 
 export function getTrack(slug: string): Track | undefined {
   return TRACKS.find((t) => t.id === slug);
