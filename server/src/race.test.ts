@@ -141,6 +141,18 @@ describe("knockout", () => {
     ]);
     expect(knockout.tick(deadline)?.deadlineT).toBeUndefined();
   });
+
+  it("times a lap's grace from the cars still racing, so a leader who leaves knocks no one out", () => {
+    const knockout = callRace("knockout", ["ava", "ben", "cy"]);
+    knockout.tick(GO);
+    drive(knockout, "ava", lap(1), GO + 40_000);
+    knockout.leave("ava", GO + 41_000);
+    expect(positions(knockout, GO + 40_000 + GRACE_MS)).toEqual([
+      "ben racing",
+      "cy racing",
+      "ava out",
+    ]);
+  });
 });
 
 describe("grid Pacers", () => {

@@ -294,10 +294,14 @@ export class Race {
     this.deadlineT = this.knockoutDeadline(this.knockoutLap);
   }
 
-  /** GRACE_MS after the first car completed Knockout lap k; undefined until one has. */
+  /**
+   * GRACE_MS after the first car still racing completed Knockout lap k;
+   * undefined until one has. A car that completed it and then left starts no
+   * clock, or the grace could run out on every car left racing.
+   */
   private knockoutDeadline(k: number): number | undefined {
     const first = Math.min(
-      ...this.entrants.map((car) => (car.lapT.length >= k ? car.lapT[k - 1] : Infinity)),
+      ...this.racing().map((car) => (car.lapT.length >= k ? car.lapT[k - 1] : Infinity)),
     );
     return Number.isFinite(first) ? first + GRACE_MS : undefined;
   }
