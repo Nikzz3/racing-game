@@ -170,8 +170,8 @@ export class RacingApplication {
           return [];
         },
       );
-      // The Room may have emptied or expired while the Pacers loaded.
-      if (this.rooms.rooms.get(room.id) !== room) return;
+      // The caller may have left, or the Room emptied or expired, while the Pacers loaded.
+      if (player.room !== room || this.rooms.rooms.get(room.id) !== room) return;
       if (!room.startRace(format, replays, Date.now())) {
         send(player.ws, { type: "error", message: "A Knockout needs at least two cars" });
       }

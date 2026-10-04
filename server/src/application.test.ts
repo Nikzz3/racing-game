@@ -221,6 +221,29 @@ describe("races", () => {
     expect(received(cy).map(({ type }) => type)).toEqual(["joined", "racePacers", "race"]);
   });
 
+  it("calls off a race whose caller left while its Pacers loaded", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    let loadPacers!: (value: never) => void;
+    vi.mocked(pool.query).mockImplementation(async (text) =>
+      text.includes("FROM replays")
+        ? new Promise((resolve) => (loadPacers = resolve))
+        : ({ rows: [] } as never),
+    );
+    const application = new RacingApplication();
+    const ava = await connect(application, "Ava");
+    const ben = await connect(application, "Ben");
+    ava.message({ type: "createRoom", roomName: "Dusk" });
+    const room = application.rooms.rooms.get(application.rooms.list()[0].id)!;
+    ben.message({ type: "joinRoom", roomId: room.id });
+
+    ava.message({ type: "startRace", format: "race" });
+    await vi.waitFor(() => expect(loadPacers).toBeDefined());
+    ava.message({ type: "leaveRoom" });
+    loadPacers({ rows: [] } as never);
+    await vi.waitFor(() => expect(room.raceStarting).toBe(false));
+    expect(room.race).toBeNull();
+  });
+
   it("refuses a Knockout without a rival, telling the driver who called it", async () => {
     vi.mocked(topEntries).mockResolvedValue([]);
     const application = new RacingApplication();

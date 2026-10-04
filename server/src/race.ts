@@ -143,6 +143,11 @@ export class Race {
     return this.currentPhase;
   }
 
+  /** Whether `id` is a car still racing; everyone else in the Room is a Spectator, with no car. */
+  isRacing(id: string): boolean {
+    return this.entrants.some((entrant) => entrant.id === id && entrant.status === "racing");
+  }
+
   /**
    * A driver entrant's timing after one of its states landed: its progress,
    * and its finish once it completes the race's laps. Ignored before GO, and

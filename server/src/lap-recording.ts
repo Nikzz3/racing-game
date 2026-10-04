@@ -43,6 +43,8 @@ export function recordState(
 ): CompletedLap | null {
   const room = player.room;
   if (!room) return null;
+  // A Spectator has no car until the race is over: nothing of theirs to place or time.
+  if (room.race && !room.race.isRacing(player.id)) return null;
   const { x, y, z, rot, speed } = state;
   player.x = x;
   player.y = y;

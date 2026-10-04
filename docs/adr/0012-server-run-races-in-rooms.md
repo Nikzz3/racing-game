@@ -28,7 +28,8 @@ must see the same way.
   a driver without receiving or simulating anything.
 - **Non-racers are Spectators.** A driver in the Room who is not racing in the current race
   (joined mid-race, finished, out) has no car; their camera follows the leader and cycles
-  through the cars still racing.
+  through the cars still racing. The server ignores any state a Spectator still sends until
+  the race is over, so a Spectator's lap can never be timed or reach the leaderboard.
 
 ## Considered options
 

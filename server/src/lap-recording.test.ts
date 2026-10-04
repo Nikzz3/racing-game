@@ -56,6 +56,19 @@ describe("race start", () => {
     recordState(player, state, goT);
     expect(player.timing.lapStartT).toBe(goT);
   });
+
+  it("ignores a Spectator's states until the race is over", () => {
+    const { player, state } = driver();
+    const room = player.room!;
+    room.startRace("race", [], 0);
+    const late = createPlayer("late", {} as WebSocket);
+    late.room = room;
+    room.players.set(late.id, late);
+
+    recordState(late, state, room.race!.goT);
+    expect(late.x).toBe(0);
+    expect(late.timing.lapStartT).toBeNull();
+  });
 });
 
 describe("lap recording boundaries", () => {
