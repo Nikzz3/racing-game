@@ -198,11 +198,15 @@ describe("Blender asset integration", () => {
       for (let x = bounds.min.x + 0.025; x < bounds.max.x; x += 0.025) {
         for (let y = bounds.min.y + 0.025; y < Math.min(bounds.max.y, 1); y += 0.025) {
           ray.ray.origin.set(x, y, carBounds.max.z + 1);
-          const hits = ray.intersectObject(car, true);
-          const lens = hits.find(
-            (hit) => hit.object === part && hit.point.z > carBounds.max.z - 1.1,
-          );
+          // Most grid points lie between the two lamps. Reject those against
+          // the small lamp mesh before raycasting the detailed vehicle interior.
+          ray.far = Infinity;
+          const lens = ray
+            .intersectObject(part, false)
+            .find((hit) => hit.point.z > carBounds.max.z - 1.1);
           if (!lens) continue;
+          ray.far = lens.distance + 0.00001;
+          const hits = ray.intersectObject(car, true);
           samples++;
           lampSides.add(Math.sign(lens.point.x));
           const coplanar = hits.find(
