@@ -32,6 +32,12 @@ plus penalties.
   to the leaderboard (Track Record, Replay, Pacer) with the penalty baked into its time.
   The plausibility lap-time floor (ADR-0005) is judged on the driven time, so penalties
   cannot pad a fabricated lap over the floor.
+- **In a Race or Knockout the penalty runs the driver's race clock behind**
+  (`server/src/race.ts`). Races rank by elapsed time, not lap times, so without this,
+  cutting would be free there. A completed lap counts toward the race only once the
+  penalties missed since GO are served. So a penalized car finishes at its crossing
+  time plus penalties, and in a Knockout it can be knocked out by a clean car that
+  completed the lap during its penalty. Ties on progress go against it by as much.
 - **The penalty is published**: the penalty so far this lap rides in each snapshot
   (`PlayerSnapshot.lapPenaltyMs`) and on the `lap` message (`penaltyMs`). The HUD's
   running lap timer includes it. A brief "CHECKPOINT MISSED +2s" flash replaces the

@@ -1,5 +1,10 @@
 import * as THREE from "three";
-import { nearestCenterline, ROAD_HALF_WIDTH, type TrackSample } from "@racing/shared";
+import {
+  nearestCenterline,
+  ROAD_HALF_WIDTH,
+  type ScenePreset,
+  type TrackSample,
+} from "@racing/shared";
 import { disposeMaterials } from "./car";
 import { getMaterial, getModel, instancedFromModel, setTextureAnisotropy } from "./models";
 import { renderQuality } from "./quality";
@@ -9,20 +14,70 @@ export interface SceneBundle {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   sun: THREE.DirectionalLight;
+  /** Where the sun stays relative to the car it follows. */
+  sunOffset: THREE.Vector3;
 }
-// A low sun casts tree silhouettes across the verge and lights the starting straight.
-const SUN = new THREE.Vector3(150, 30, -65);
-const HORIZON = 0xe4ad80;
+
+/** How a Scene Preset colours and lights the world. */
+interface SceneLook {
+  /** The sky draws the sun's disk in the direction of the light's offset. */
+  sun: { offset: THREE.Vector3; color: number; intensity: number };
+  /** `horizon` is also the fog, so distant scenery fades into the sky. */
+  sky: {
+    zenith: number;
+    horizon: number;
+    glow: number;
+    /** Linear, and above 1 so tone mapping keeps the disk brighter than the sky. */
+    disk: [r: number, g: number, b: number];
+  };
+  fog: { near: number; far: number };
+  hemisphere: { sky: number; ground: number; intensity: number };
+}
+
+const LOOKS: Record<ScenePreset, SceneLook> = {
+  sunset: {
+    // A low sun casts tree silhouettes across the verge and lights the starting straight.
+    sun: { offset: new THREE.Vector3(150, 30, -65), color: 0xffb45f, intensity: 3.8 },
+    sky: { zenith: 0x536b89, horizon: 0xe4ad80, glow: 0xffad54, disk: [5, 1.9, 0.35] },
+    fog: { near: 190, far: 820 },
+    hemisphere: { sky: 0xbcc8e2, ground: 0x745038, intensity: 1.25 },
+  },
+  "golden-hour": {
+    sun: { offset: new THREE.Vector3(150, 70, -65), color: 0xffc35c, intensity: 4.8 },
+    sky: { zenith: 0x7aa6dc, horizon: 0xf6cf8e, glow: 0xffc65a, disk: [4.5, 3.2, 1.4] },
+    fog: { near: 230, far: 960 },
+    hemisphere: { sky: 0xa9bde0, ground: 0x7a5a3a, intensity: 1.1 },
+  },
+  dusk: {
+    // Half set: the light only grazes the ground, so the sky lights the road.
+    sun: { offset: new THREE.Vector3(150, 1.5, -65), color: 0xff7a4a, intensity: 2 },
+    sky: { zenith: 0x283463, horizon: 0x8c6b91, glow: 0xff6a3a, disk: [2, 0.32, 0.08] },
+    fog: { near: 150, far: 640 },
+    hemisphere: { sky: 0x9aa0d8, ground: 0x5a4050, intensity: 2 },
+  },
+  "foggy-morning": {
+    // Corners loom out of the fog late; the low eastern sun only whitens it.
+    sun: { offset: new THREE.Vector3(-150, 55, 65), color: 0xfff1dc, intensity: 1.2 },
+    sky: { zenith: 0xb9c3cc, horizon: 0xd3d8dc, glow: 0xfff6e0, disk: [1.8, 1.75, 1.6] },
+    fog: { near: 40, far: 240 },
+    hemisphere: { sky: 0xe0e6ee, ground: 0x8c8a7c, intensity: 2 },
+  },
+};
 const FOLLOW_DISTANCE = 10;
 const EYE_HEIGHT = 4.6;
 const look = new THREE.Vector3();
 const eye = new THREE.Vector3();
 
-export function createScene(container: HTMLElement, samples: TrackSample[]): SceneBundle {
+export function createScene(
+  container: HTMLElement,
+  samples: TrackSample[],
+  preset: ScenePreset = "sunset",
+): SceneBundle {
+  const { sun: light, sky, fog, hemisphere } = LOOKS[preset];
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(HORIZON);
-  scene.fog = new THREE.Fog(HORIZON, 190, 820);
-  scene.add(createSunsetSky());
+  scene.background = new THREE.Color(sky.horizon);
+  scene.fog = new THREE.Fog(sky.horizon, fog.near, fog.far);
+  scene.add(createSky(sky, light.offset));
   const camera = new THREE.PerspectiveCamera(
     64,
     container.clientWidth / Math.max(1, container.clientHeight),
@@ -41,9 +96,9 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   container.append(renderer.domElement);
-  scene.add(new THREE.HemisphereLight(0xbcc8e2, 0x745038, 1.25));
-  const sun = new THREE.DirectionalLight(0xffb45f, 3.8);
-  sun.position.copy(SUN);
+  scene.add(new THREE.HemisphereLight(hemisphere.sky, hemisphere.ground, hemisphere.intensity));
+  const sun = new THREE.DirectionalLight(light.color, light.intensity);
+  sun.position.copy(light.offset);
   sun.castShadow = quality.shadows;
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, {
@@ -81,7 +136,7 @@ export function createScene(container: HTMLElement, samples: TrackSample[]): Sce
   for (const child of scene.children)
     if (child !== sun && child !== sun.target) freezeStatic(child);
   scene.matrixAutoUpdate = false;
-  return { scene, camera, renderer, sun };
+  return { scene, camera, renderer, sun, sunOffset: light.offset };
 }
 
 /**
@@ -96,16 +151,17 @@ export function freezeStatic(root: THREE.Object3D): void {
   });
 }
 
-function createSunsetSky(): THREE.Mesh {
+function createSky(colors: SceneLook["sky"], sunOffset: THREE.Vector3): THREE.Mesh {
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(1, 32, 16),
     new THREE.ShaderMaterial({
       uniforms: {
-        sunDirection: { value: SUN.clone().normalize() },
-        zenith: { value: new THREE.Color(0x536b89) },
-        horizon: { value: new THREE.Color(HORIZON) },
+        sunDirection: { value: sunOffset.clone().normalize() },
+        zenith: { value: new THREE.Color(colors.zenith) },
+        horizon: { value: new THREE.Color(colors.horizon) },
         dusk: { value: new THREE.Color(0x9a6c65) },
-        glow: { value: new THREE.Color(0xffad54) },
+        glow: { value: new THREE.Color(colors.glow) },
+        disk: { value: new THREE.Color(...colors.disk) },
       },
       vertexShader: `
         varying vec3 skyDirection;
@@ -122,6 +178,7 @@ function createSunsetSky(): THREE.Mesh {
         uniform vec3 horizon;
         uniform vec3 dusk;
         uniform vec3 glow;
+        uniform vec3 disk;
         varying vec3 skyDirection;
         void main() {
           vec3 direction = normalize(skyDirection);
@@ -131,8 +188,9 @@ function createSunsetSky(): THREE.Mesh {
           float alignment = max(dot(direction, sunDirection), 0.0);
           // Broad atmospheric warmth and a small halo, in the same draw as the sky.
           color += glow * (pow(alignment, 18.0) * 0.24 + pow(alignment, 190.0) * 0.48);
-          float disk = smoothstep(0.99954, 0.99966, alignment);
-          color = mix(color, vec3(5.0, 1.9, 0.35), disk);
+          // A sun on the horizon is cut by it, and one below it draws no disk at all.
+          float sunDisk = smoothstep(0.99954, 0.99966, alignment) * step(0.0, direction.y);
+          color = mix(color, disk, sunDisk);
           gl_FragColor = vec4(color, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -143,7 +201,7 @@ function createSunsetSky(): THREE.Mesh {
       depthTest: false,
     }),
   );
-  sky.name = "sunset-sky";
+  sky.name = "sky";
   sky.frustumCulled = false;
   sky.renderOrder = -1000;
   sky.userData.owned = true;
@@ -166,8 +224,8 @@ export function disposeWorld({ scene, renderer, sun }: SceneBundle): void {
   disposeRenderer(renderer);
   scene.clear();
 }
-export function updateSun(sun: THREE.DirectionalLight, x: number, z: number): void {
-  sun.position.set(x + SUN.x, SUN.y, z + SUN.z);
+export function updateSun({ sun, sunOffset }: SceneBundle, x: number, z: number): void {
+  sun.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z);
   sun.target.position.set(x, 0, z);
 }
 function cameraTargets(x: number, z: number, heading: number): void {

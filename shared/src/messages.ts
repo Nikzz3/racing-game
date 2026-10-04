@@ -1,4 +1,6 @@
+import type { DailyChallenge } from "./daily";
 import { asDifficulty, type Difficulty } from "./difficulty";
+import { asRaceFormat, type RaceFormat, type RacePacer, type RaceState } from "./race";
 import { asTrackSlug, type TrackSlug } from "./track";
 import { asVariant, type Variant } from "./variant";
 
@@ -50,6 +52,28 @@ export interface LeaderboardEntry {
   track: TrackSlug;
 }
 
+/** One driver's fastest Plausible Lap in a Daily Challenge. */
+export interface DailyEntry {
+  name: string;
+  timeMs: number;
+}
+
+/** A Daily Challenge with its board: one entry per driver, fastest first. */
+export interface DailyBoard {
+  challenge: DailyChallenge;
+  entries: DailyEntry[];
+}
+
+/** A driver's place on one (Track, Difficulty) board, from which Medals and the Rival derive. */
+export interface Standing {
+  track: TrackSlug;
+  difficulty: Difficulty;
+  /** The driver's persisted best lap; null before their first Plausible Lap on this board. */
+  bestMs: number | null;
+  /** The next rung of the Rival ladder; null when no other driver's Replay is faster. */
+  rival: { name: string; timeMs: number } | null;
+}
+
 /** A recorded car state sample: [t ms since lap start, x, z, rot (rad), speed]. */
 export type ReplayFrame = [number, number, number, number, number];
 
@@ -57,9 +81,13 @@ export type ClientMessage =
   | { type: "hello"; name: string; variant?: Variant }
   | { type: "createRoom"; roomName: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "joinRoom"; roomId: string }
+  | { type: "joinDaily" }
   | { type: "leaveRoom" }
   | { type: "respawn" }
+  /** Call a race in the sender's Room; ignored while one is already counting down or running. */
+  | { type: "startRace"; format: RaceFormat }
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
+  | { type: "getStandings"; name: string }
   | {
       type: "state";
       x: number;
@@ -70,6 +98,14 @@ export type ClientMessage =
       /** When the pose was current, on the sender's monotonic clock (any epoch); absent from older clients. */
       t?: number;
     };
+
+/** Longest driver name the server keeps; longer names are cut to it. */
+export const MAX_NAME_LENGTH = 16;
+
+/** The name a driver races, and their Medals and Standings belong to, under the server's rules. */
+export function driverName(name: string): string {
+  return name.trim().slice(0, MAX_NAME_LENGTH) || "Racer";
+}
 
 const isString = (value: unknown): value is string => typeof value === "string";
 const isFiniteNumber = (value: unknown): value is number =>
@@ -94,8 +130,10 @@ const PARSERS: {
         }
       : null,
   joinRoom: (v) => (isString(v.roomId) ? { type: "joinRoom", roomId: v.roomId } : null),
+  joinDaily: () => ({ type: "joinDaily" }),
   leaveRoom: () => ({ type: "leaveRoom" }),
   respawn: () => ({ type: "respawn" }),
+  startRace: (v) => ({ type: "startRace", format: asRaceFormat(v.format) }),
   getReplay: (v) =>
     isString(v.name)
       ? {
@@ -105,6 +143,7 @@ const PARSERS: {
           track: asTrackSlug(v.track),
         }
       : null,
+  getStandings: (v) => (isString(v.name) ? { type: "getStandings", name: v.name } : null),
   state: (v) =>
     isFiniteNumber(v.x) &&
     isFiniteNumber(v.y) &&
@@ -144,9 +183,19 @@ export type ServerMessage =
       playerId: string;
       rooms: RoomInfo[];
       leaderboard: LeaderboardEntry[];
+      /** Absent from servers predating the Daily Challenge. */
+      daily?: DailyBoard;
     }
   | { type: "rooms"; rooms: RoomInfo[] }
-  | { type: "joined"; roomId: string; roomName: string; difficulty: Difficulty; track: TrackSlug }
+  | {
+      type: "joined";
+      roomId: string;
+      roomName: string;
+      difficulty: Difficulty;
+      track: TrackSlug;
+      /** Present when the Room is a Daily Room: its forced Variant and scene. */
+      daily?: DailyChallenge;
+    }
   | { type: "left" }
   | { type: "snapshot"; t: number; players: PlayerSnapshot[] }
   | {
@@ -163,6 +212,8 @@ export type ServerMessage =
       isTrackRecord: boolean;
     }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
+  /** The Daily board changed, or the day rolled over to a new challenge. */
+  | { type: "daily"; board: DailyBoard }
   | {
       type: "replay";
       name: string;
@@ -172,4 +223,17 @@ export type ServerMessage =
       /** Variant snapshotted when the lap persisted; absent → name-hash fallback. */
       variant?: Variant;
     }
+  /**
+   * The Room's race, sent whenever it changes and on joining mid-race; null once the
+   * results screen ends and the Room is back to free driving.
+   */
+  | { type: "race"; race: RaceState | null }
+  /** The grid's Pacers and their laps, sent once per race (and on joining mid-race), before its first `race`. */
+  | { type: "racePacers"; pacers: RacePacer[] }
+  /**
+   * Every board's Standing for one driver name: the answer to getStandings, and
+   * sent unprompted to a driver after each of their Plausible Laps is persisted
+   * (`afterLap`). A driver receives them in the order they were asked for.
+   */
+  | { type: "standings"; name: string; standings: Standing[]; afterLap: boolean }
   | { type: "error"; message: string };

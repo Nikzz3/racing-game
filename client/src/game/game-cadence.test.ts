@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import type { PlayerSnapshot } from "@racing/shared";
+import {
+  DEFAULT_TRACK_SLUG,
+  gridSlot,
+  resolveTrack,
+  type PlayerSnapshot,
+  type RaceEntrant,
+  type RaceState,
+} from "@racing/shared";
 import { Game } from "./game";
 import { Net } from "../net";
 import { Hud } from "../ui/hud";
@@ -221,5 +228,77 @@ describe("local lap timer", () => {
     game.onMessage({ type: "snapshot", t: 0, players: [nextLap] });
     expect(flash).toHaveBeenLastCalledWith(2000);
     expect(flash).toHaveBeenCalledTimes(2);
+  });
+});
+
+function entrant(id: string, slot: number): RaceEntrant {
+  return { id, name: id.toUpperCase(), slot, laps: 0, status: "racing" };
+}
+/** How many messages of `type` the Game has sent. */
+function sent(type: string): number {
+  return vi.mocked(Net.prototype.send).mock.calls.filter(([message]) => message.type === type)
+    .length;
+}
+
+/** The car a Spectator's banner names; undefined while the banner is down. */
+function spectated(): string | null | undefined {
+  return document.querySelector(".spectator-banner.visible .spectator-target")?.textContent;
+}
+
+describe("races", () => {
+  const race = (overrides: Partial<RaceState>): RaceState => ({
+    format: "race",
+    phase: "racing",
+    laps: 3,
+    goT: now,
+    entrants: [entrant("other", 0)],
+    ...overrides,
+  });
+
+  it("holds an entrant on its grid slot until GO, then lets it drive", () => {
+    const goT = now + 3000;
+    game.onMessage({
+      type: "race",
+      race: race({ phase: "countdown", goT, entrants: [entrant("other", 0), entrant("local", 1)] }),
+    });
+    const track = resolveTrack(DEFAULT_TRACK_SLUG);
+    const { sample, offset } = gridSlot(track, 1);
+    const { x, z, dirX, dirZ } = track.samples[sample];
+    expect(carMesh.position.x).toBeCloseTo(x - dirZ * offset);
+    expect(carMesh.position.z).toBeCloseTo(z + dirX * offset);
+    const grid = carMesh.position.clone();
+    throttle();
+    respawn();
+    while (now < goT - 20) tick(1000 / 60);
+    expect(carMesh.position.distanceTo(grid)).toBe(0);
+    // The server already put the car on the grid; neither it nor the driver respawns it.
+    expect(sent("respawn")).toBe(0);
+    for (let i = 0; i < 10; i++) tick(1000 / 60);
+    expect(carMesh.position.distanceTo(grid)).toBeGreaterThan(0);
+  });
+
+  it("keeps a Spectator on whoever leads until they pick a car", () => {
+    game.onMessage({ type: "race", race: race({ entrants: [entrant("a", 0), entrant("b", 1)] }) });
+    tick(1000 / 60);
+    expect(spectated()).toBe("A");
+    game.onMessage({ type: "race", race: race({ entrants: [entrant("b", 1), entrant("a", 0)] }) });
+    tick(1000 / 60);
+    expect(spectated()).toBe("B");
+  });
+
+  it("puts a Spectator's car away, then drives it again from the spawn once the race is over", () => {
+    game.onMessage({ type: "race", race: race({}) });
+    tick(1000 / 60);
+    expect(carMesh.visible).toBe(false);
+    expect(document.querySelector(".spectator-banner.visible .spectator-target")?.textContent).toBe(
+      "OTHER",
+    );
+    respawn();
+    expect(sent("respawn")).toBe(0);
+    game.onMessage({ type: "race", race: null });
+    tick(1000 / 60);
+    expect(carMesh.visible).toBe(true);
+    expect(document.querySelector(".spectator-banner.visible")).toBeNull();
+    expect(sent("respawn")).toBe(1);
   });
 });

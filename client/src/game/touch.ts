@@ -48,6 +48,14 @@ export class TouchControls {
     this.steering.release();
   };
 
+  /** A Spectator has nothing to drive: hide the controls, letting go of anything held. */
+  setHidden(hidden: boolean): void {
+    if (this.pedals.hidden === hidden) return;
+    if (hidden) this.reset();
+    this.pedals.hidden = hidden;
+    this.steering.element.hidden = hidden;
+  }
+
   read(): CarInput {
     return {
       throttle: this.gas.value(),
