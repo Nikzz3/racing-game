@@ -188,7 +188,7 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
       reportLoad({ ...loadProgress, phase: "ready" });
     })
     .catch((error: unknown) => {
-      console.warn("Blender asset library could not load", error);
+      console.warn("Blender assets could not load", error);
       reportLoad({ ...loadProgress, phase: "error" });
     })
     .finally(() => {
@@ -197,16 +197,18 @@ export function preloadModels(onProgress?: (progress: ModelLoadProgress) => void
     }));
 }
 /** Tracks drawn after the library was split out ship as their own small file
- * (`assets/blender/track_tools.py`); register any track the library lacks. */
+ * (`assets/blender/track_tools.py`); register any track the library lacks. A file
+ * that fails to load fails the preload like the library does, so the loading screen
+ * offers its retry instead of racing on an untextured emergency road. */
 async function loadTrackFiles(): Promise<void> {
   const loader = createAssetLoader();
   await Promise.all(
-    TRACKS.filter((track) => !library.has(`track:${track.id}`)).map((track) =>
-      loader
-        .loadAsync(`${import.meta.env.BASE_URL}models/tracks/${track.id}.glb`)
-        .then(({ scene }) => registerLibrary(scene))
-        .catch((error: unknown) => console.warn(`Track ${track.id} could not load`, error)),
-    ),
+    TRACKS.filter((track) => !library.has(`track:${track.id}`)).map(async (track) => {
+      const { scene } = await loader.loadAsync(
+        `${import.meta.env.BASE_URL}models/tracks/${track.id}.glb`,
+      );
+      registerLibrary(scene);
+    }),
   );
 }
 

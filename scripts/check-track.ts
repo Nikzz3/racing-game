@@ -176,6 +176,10 @@ function targets(d: TrackDesign, lap: ReturnType<typeof racingLineLap>, t: Track
   ];
 }
 
+/** Track names are free text; `&` or `<` in one would make the SVG invalid. */
+const escapeXml = (text: string) =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 /** Blue (slow) → yellow → red (fast). */
 function speedColour(share: number): string {
   const hue = 220 - 220 * Math.max(0, Math.min(1, share));
@@ -215,7 +219,7 @@ function mapSvg(t: Track, d: TrackDesign, lap: RunResult | null): string {
     .join("");
   const s0 = s[0];
   const startLine = `<line x1="${s0.x - s0.dirZ * 12}" y1="${s0.z + s0.dirX * 12}" x2="${s0.x + s0.dirZ * 12}" y2="${s0.z - s0.dirX * 12}" stroke="#000" stroke-width="5"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${z0} ${w} ${h}" width="${Math.round((1200 * w) / Math.max(w, h))}" height="${Math.round((1200 * h) / Math.max(w, h))}"><rect x="${x0}" y="${z0}" width="${w}" height="${h}" fill="#f4efe6"/><path d="${road}" fill="none" stroke="#9a9a9a" stroke-width="${ROAD_HALF_WIDTH * 2}" stroke-linejoin="round"/>${trail}${gates}${startLine}${labels}<text x="${x0 + 10}" y="${z0 + font * 1.4}" font-size="${font * 0.8}" font-family="sans-serif">${t.name}: racing line by speed (blue slow, red fast); T# full-lock apex km/h</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x0} ${z0} ${w} ${h}" width="${Math.round((1200 * w) / Math.max(w, h))}" height="${Math.round((1200 * h) / Math.max(w, h))}"><rect x="${x0}" y="${z0}" width="${w}" height="${h}" fill="#f4efe6"/><path d="${road}" fill="none" stroke="#9a9a9a" stroke-width="${ROAD_HALF_WIDTH * 2}" stroke-linejoin="round"/>${trail}${gates}${startLine}${labels}<text x="${x0 + 10}" y="${z0 + font * 1.4}" font-size="${font * 0.8}" font-family="sans-serif">${escapeXml(t.name)}: racing line by speed (blue slow, red fast); T# full-lock apex km/h</text></svg>`;
 }
 
 function speedSvg(t: Track, d: TrackDesign, lap: RunResult | null): string {
