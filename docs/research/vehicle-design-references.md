@@ -244,9 +244,9 @@ models. Accessible CC-BY 4.0 sources yielded eight different body meshes:
   meshes; logos are excluded from the source's content license.
 - [SportsCar, Yasutoshi Mori](https://github.com/MirageYM/3DModels), © 2015,
   [CC-BY 4.0 license](https://github.com/MirageYM/3DModels/blob/master/LICENSE).
-  Native FBX subdivision geometry used for the hypercar. Its complete projector
-  headlight assemblies are also fitted to the Race car, with new mounting cutouts,
-  revised proportions and dark perimeter housings. Separate projector optics,
+  Native FBX subdivision geometry used for the hypercar. Its projector optics and
+  LED components also form the Race car's distinct horizontal headlights, inside
+  recessed housings with body-contoured painted mounting lips. Separate projector optics,
   deep front/side ducts, wheel spokes, discs/calipers, door seams, mirrors, cabin
   and rear diffuser address the detail gaps identified in the references.
 
