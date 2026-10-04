@@ -1,5 +1,6 @@
 import type { DailyChallenge } from "./daily";
 import { asDifficulty, type Difficulty } from "./difficulty";
+import { asRaceFormat, type RaceFormat, type RacePacer, type RaceState } from "./race";
 import { asTrackSlug, type TrackSlug } from "./track";
 import { asVariant, type Variant } from "./variant";
 
@@ -79,6 +80,8 @@ export type ClientMessage =
   | { type: "joinDaily" }
   | { type: "leaveRoom" }
   | { type: "respawn" }
+  /** Call a race in the sender's Room; ignored while one is already counting down or running. */
+  | { type: "startRace"; format: RaceFormat }
   | { type: "getReplay"; name: string; difficulty: Difficulty; track: TrackSlug }
   | { type: "getStandings"; name: string }
   | {
@@ -126,6 +129,7 @@ const PARSERS: {
   joinDaily: () => ({ type: "joinDaily" }),
   leaveRoom: () => ({ type: "leaveRoom" }),
   respawn: () => ({ type: "respawn" }),
+  startRace: (v) => ({ type: "startRace", format: asRaceFormat(v.format) }),
   getReplay: (v) =>
     isString(v.name)
       ? {
@@ -212,6 +216,13 @@ export type ServerMessage =
       /** Variant snapshotted when the lap persisted; absent → name-hash fallback. */
       variant?: Variant;
     }
+  /**
+   * The Room's race, sent whenever it changes and on joining mid-race; null once the
+   * results screen ends and the Room is back to free driving.
+   */
+  | { type: "race"; race: RaceState | null }
+  /** The grid's Pacers and their laps, sent once per race (and on joining mid-race), before its first `race`. */
+  | { type: "racePacers"; pacers: RacePacer[] }
   /**
    * Every board's Standing for one driver name: the answer to getStandings, and
    * sent unprompted to a driver after each of their Plausible Laps is persisted

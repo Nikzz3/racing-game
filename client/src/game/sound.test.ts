@@ -344,6 +344,17 @@ describe("RaceSound", () => {
     expect(idleLoop.playbackRate.value).toBeGreaterThan(5);
   });
 
+  it("silences a put-away car (a Spectator's) but keeps the cars it watches", () => {
+    const race = sound().race(TOP_SPEED)!;
+    // Created in order: master, the race's output, then the driver's engine voice.
+    const driverEngine = context.gains[2];
+    race.update(1 / 60, { ...PARKED, speed: 30, throttle: 1 }, LISTENER, []);
+    expect(driverEngine.gain.value).toBeGreaterThan(0);
+    race.update(1 / 60, null, LISTENER, [car("watched", 15)]);
+    expect(driverEngine.gain.value).toBe(0);
+    expect(race.engines).toBe(2);
+  });
+
   it("ignores a car whose relayed pose or speed isn't a finite number", () => {
     const race = sound().race(TOP_SPEED)!;
     const forged = [

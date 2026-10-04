@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { MAX_SPEED_MS, type PlayerSnapshot, type Variant } from "@racing/shared";
 import { animateCar, createCarMesh, disposeCarMesh, resolveVariant } from "./car";
 import type { CarObstacle } from "./car-collision";
-import { interpolateHeading } from "./pose-interpolation";
+import { interpolateHeading, type Pose } from "./pose-interpolation";
 
 /** A remote car's reported state, at the server time it was current. */
 interface Sample {
@@ -71,6 +71,7 @@ function record(samples: Sample[], sample: Sample): void {
 /** Buffer each remote car's states so it moves continuously between them. */
 export class RemotePlayers {
   private readonly cars = new Map<string, RemoteCar>();
+  private racing: ReadonlySet<string> | null = null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -96,11 +97,24 @@ export class RemotePlayers {
     }
   }
 
+  /**
+   * While a race exists, only the cars still racing in it are drawn and solid:
+   * everyone else in the Room is a Spectator, with no car. Null draws everyone.
+   */
+  setRacing(ids: ReadonlySet<string> | null): void {
+    this.racing = ids;
+  }
+
+  private drawn(id: string): boolean {
+    return this.racing?.has(id) ?? true;
+  }
+
   /** Draw every remote car as it was `INTERPOLATION_DELAY_MS` before `serverNow`. */
   update(dt: number, serverNow: number): void {
     const renderT = serverNow - INTERPOLATION_DELAY_MS;
-    for (const car of this.cars.values()) {
+    for (const [id, car] of this.cars) {
       const { mesh, samples } = car;
+      mesh.visible = this.drawn(id);
       // The last state at or before the render time and the one after it, or
       // the first two (clamped) or the last two (extrapolated).
       let index = samples.length - 1;
@@ -143,12 +157,17 @@ export class RemotePlayers {
 
   /** Where each remote car is drawn this frame, after interpolation. */
   positions(): RemotePosition[] {
-    return [...this.cars].map(([id, { mesh, speed }]) => ({
-      id,
-      x: mesh.position.x,
-      z: mesh.position.z,
-      speed,
-    }));
+    return [...this.cars].flatMap(([id, { mesh, speed }]) =>
+      this.drawn(id) ? [{ id, x: mesh.position.x, z: mesh.position.z, speed }] : [],
+    );
+  }
+
+  /** Where a remote car is drawn this frame, or null while it is not. */
+  pose(id: string): Pose | null {
+    const car = this.cars.get(id);
+    if (!car || !this.drawn(id)) return null;
+    const { position, rotation } = car.mesh;
+    return { x: position.x, z: position.z, heading: rotation.y, speed: car.speed };
   }
 
   /**
@@ -160,7 +179,7 @@ export class RemotePlayers {
    */
   obstacles(): CarObstacle[] {
     return [...this.cars].flatMap(([id, { mesh, speed, solid }]) =>
-      solid
+      solid && this.drawn(id)
         ? [
             {
               x: mesh.position.x,

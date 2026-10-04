@@ -513,3 +513,32 @@ describe("RemotePlayers obstacles", () => {
     }
   });
 });
+
+describe("RemotePlayers during a race", () => {
+  it("draws, maps and collides with only the cars still racing, and everyone again after", () => {
+    const meshes = new Map<string, THREE.Group>();
+    vi.mocked(createCarMesh)
+      .mockReset()
+      .mockImplementation((id) => meshes.set(id, new THREE.Group()).get(id)!);
+    const rp = new RemotePlayers(makeMockScene(), "me");
+    for (const t of [0, 50])
+      rp.onSnapshot(
+        [
+          { ...makeSnapshot("racer"), x: t / 10 },
+          { ...makeSnapshot("spectator"), z: t / 10 },
+        ],
+        t,
+      );
+    rp.setRacing(new Set(["racer"]));
+    drawAt(rp, 25);
+    expect([meshes.get("racer")!.visible, meshes.get("spectator")!.visible]).toEqual([true, false]);
+    expect(rp.positions().map(({ id }) => id)).toEqual(["racer"]);
+    expect(rp.obstacles()).toHaveLength(1);
+    expect(rp.pose("racer")).toMatchObject({ x: 2.5, z: 0 });
+    expect(rp.pose("spectator")).toBeNull();
+    rp.setRacing(null);
+    drawAt(rp, 25);
+    expect(meshes.get("spectator")!.visible).toBe(true);
+    expect(rp.obstacles()).toHaveLength(2);
+  });
+});

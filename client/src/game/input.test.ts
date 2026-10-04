@@ -30,6 +30,17 @@ afterEach(() => {
 });
 
 describe("keyboard driving controls", () => {
+  it("reports ←/→ presses as steps through the cars, once per press, while still steering", () => {
+    const control = input();
+    const cycle = vi.fn();
+    control.onCycle = cycle;
+    key("ArrowLeft");
+    key("ArrowLeft", true);
+    expect(control.read(1).steer).toBe(1);
+    key("ArrowRight");
+    expect(cycle.mock.calls).toEqual([[-1], [1]]);
+  });
+
   it("clears held pedals and smoothed steering when the window loses focus", () => {
     const control = input();
     key("KeyW");

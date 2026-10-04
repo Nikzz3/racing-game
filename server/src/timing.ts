@@ -50,6 +50,15 @@ export function respawnTiming(t: TimingState): void {
   t.spawnPending = true;
 }
 
+/**
+ * Line up on a race's grid: a Respawn (the client moves the car to its slot)
+ * that also clears the completed laps, since race laps count from GO.
+ */
+export function gridTiming(t: TimingState): void {
+  respawnTiming(t);
+  t.laps = 0;
+}
+
 /** Publish the respawn only once the spawn position is stored, so no snapshot
  * pairs the new counter with the pre-respawn coordinates. */
 export function settleSpawn(t: TimingState): void {

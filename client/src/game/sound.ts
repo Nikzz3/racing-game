@@ -266,8 +266,20 @@ export class RaceSound {
     return this.ended ? 0 : 1 + this.others.size;
   }
 
-  update(dt: number, driver: DriverSound, listener: Listener, cars: readonly HeardCar[]): void {
+  /** `driver` is null while the driver's car is put away (a Spectator's): only other cars sound. */
+  update(
+    dt: number,
+    driver: DriverSound | null,
+    listener: Listener,
+    cars: readonly HeardCar[],
+  ): void {
     if (this.ended) return;
+    if (driver) this.drive(dt, driver);
+    else this.silence();
+    this.hear(dt, listener, cars);
+  }
+
+  private drive(dt: number, driver: DriverSound): void {
     const now = this.context.currentTime;
     const speed = Math.abs(driver.speed);
     const speedShare = Math.min(1, speed / Math.max(1, this.topSpeed));
@@ -288,7 +300,13 @@ export class RaceSound {
       this.lastThud = now;
       this.thud(driver.hit);
     }
-    this.hear(dt, listener, cars);
+  }
+
+  private silence(): void {
+    this.engineVoice.set(this.engine.rpm, 0, 0);
+    this.squeal.set(0, 1);
+    this.road.set(0, 1);
+    this.gravel.set(0, 1);
   }
 
   /** Gives the nearest cars an engine voice placed where they are, and releases the rest. */
