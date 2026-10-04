@@ -168,6 +168,7 @@ describe("race sound", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       audio as unknown as Sound,
     );
     carMesh = vi

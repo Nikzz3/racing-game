@@ -10,6 +10,7 @@ import {
   type Difficulty,
   type PlayerSnapshot,
   type ReplayFrame,
+  type ScenePreset,
   type ServerMessage,
   type Standing,
   type Track,
@@ -121,6 +122,7 @@ export class Game {
     armedPacer?: ArmedPacer | null,
     private readonly variant?: Variant,
     steering?: SteeringMode,
+    scene: ScenePreset = "sunset",
     private readonly audio: Sound | null = null,
   ) {
     this.track = resolveTrack(trackSlug);
@@ -131,7 +133,7 @@ export class Game {
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container.className = "race-viewport";
     parent.append(this.container);
-    this.bundle = createScene(this.container, this.track.samples);
+    this.bundle = createScene(this.container, this.track.samples, scene);
     buildTrack(this.bundle.scene, this.track);
     this.remote = new RemotePlayers(this.bundle.scene, myId, MAX_SPEED_MS[difficulty]);
     this.carMesh = createCarMesh(myId, undefined, variant);
@@ -195,7 +197,7 @@ export class Game {
       // Without parallel compilation the draw below links them just as synchronously.
       if (renderer.extensions.has("KHR_parallel_shader_compile")) await this.shadersLinked();
       if (!this.disposed) {
-        updateSun(this.bundle.sun, this.car.x, this.car.z);
+        updateSun(this.bundle, this.car.x, this.car.z);
         renderer.render(scene, camera);
       }
     } catch (error) {
@@ -404,7 +406,7 @@ export class Game {
     followCar(this.bundle.camera, pose.x, pose.z, pose.heading, dt);
     const remotes = this.remote.positions();
     this.feedback(now, dt, input, remotes);
-    updateSun(this.bundle.sun, pose.x, pose.z);
+    updateSun(this.bundle, pose.x, pose.z);
     this.hud.setSpeed(this.car.speed);
     this.hud.setPosition(this.car.x, this.car.z);
     this.hud.setRemotePositions(remotes);

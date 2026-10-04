@@ -75,7 +75,7 @@ reaper — which cannot reap under rootless Podman — for you. An explicit `DOC
 overrides that detection. To use an existing Postgres instead, set
 `E2E_DATABASE_URL`; the wrapper uses that URL verbatim and skips testcontainers. This is
 also the escape hatch when no container socket is available. Because the suite truncates
-`rooms`, `best_laps`, and `replays` in the target database, an external URL also
+`rooms`, `best_laps`, `replays`, and `daily_laps` in the target database, an external URL also
 requires `E2E_DATABASE_ALLOW_TRUNCATE=1` as an explicit "this database is disposable"
 opt-in; both the wrapper and the database fixture refuse to run without it.
 
