@@ -1,4 +1,5 @@
 import { DIFFICULTIES, type Difficulty } from "./difficulty";
+import { variantUnlocked } from "./medals";
 import { TRACKS, type TrackSlug } from "./track";
 import { CAR_VARIANTS, type Variant } from "./variant";
 
@@ -27,6 +28,9 @@ export const DAILY_EPOCH = "2026-10-04";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The Daily forces only cars every driver may drive, never a Medal-locked one. */
+const DAILY_VARIANTS = CAR_VARIANTS.filter((variant) => variantUnlocked(variant, null));
+
 /** The challenge running at `now` (epoch ms); it rolls over at UTC midnight. */
 export function dailyChallenge(now: number): DailyChallenge {
   const day = Math.floor(now / DAY_MS);
@@ -37,7 +41,7 @@ export function dailyChallenge(now: number): DailyChallenge {
     date: new Date(day * DAY_MS).toISOString().slice(0, 10),
     track: pick(TRACKS).id,
     difficulty: pick(DIFFICULTIES),
-    variant: pick(CAR_VARIANTS),
+    variant: pick(DAILY_VARIANTS),
     scene: pick(SCENE_PRESETS),
   };
 }

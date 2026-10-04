@@ -4,10 +4,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DESKTOP_DOWNLOAD_URL, Lobby, type LobbyCallbacks } from "./lobby";
 import {
   CAR_VARIANTS,
+  medalTimes,
   type DailyBoard,
   type DailyEntry,
+  type Difficulty,
   type LeaderboardEntry,
   type ReplayFrame,
+  type Standing,
+  type TrackSlug,
 } from "@racing/shared";
 import { shareText } from "./daily-banner";
 import type { ReferenceLap } from "../game/reference-lap";
@@ -60,6 +64,14 @@ function entry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
   };
 }
 
+function standing(overrides: Partial<Standing> = {}): Standing {
+  return { track: "sunset-ridge", difficulty: "medium", bestMs: null, rival: null, ...overrides };
+}
+/** A board's Medal target times; every registered board has them. */
+function targets(track: TrackSlug = "sunset-ridge", difficulty: Difficulty = "medium") {
+  return medalTimes(track, difficulty)!;
+}
+
 let parent: HTMLElement;
 let lobby: Lobby;
 let cbs: LobbyCallbacks;
@@ -74,6 +86,7 @@ function mount(): Lobby {
     onJevLap: vi.fn(),
     onDaily: vi.fn(),
     onVariantChange: vi.fn(),
+    onNameChange: vi.fn(),
   };
   lobby = new Lobby(parent, cbs);
   return lobby;
@@ -127,6 +140,8 @@ const diff = (d: string) => `button[data-diff="${d}"]`;
 const boardDiff = (d: string) => `.board-diff-opt[data-board-diff="${d}"]`;
 const steering = (mode: string) => `.steering-opt[data-steering="${mode}"]`;
 const card = (variant: string) => `.garage-card[data-variant="${variant}"]`;
+/** Where first-time visitors start: Hatch S, the first Variant free without a Medal. */
+const FREE = "hatchback-sports";
 
 beforeEach(() => {
   buildReferenceLapMock.mockReset();
@@ -292,7 +307,6 @@ describe("Lobby Pacer arming UX", () => {
       name: "Alice",
       track: "sunset-ridge",
       difficulty: "medium",
-      entry: replayEntry,
     });
   });
 
@@ -305,10 +319,7 @@ describe("Lobby Pacer arming UX", () => {
   it("picking a new entry replaces the previous one", () => {
     pickByName("Alice");
     pickByName("Carol");
-    expect(lobby.armedPacer).toMatchObject({
-      kind: "replay",
-      entry: replayEntry2,
-    });
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Carol" });
   });
 
   it("only offers entries matching selected Track and Difficulty", () => {
@@ -331,10 +342,7 @@ describe("Lobby Pacer arming UX", () => {
   it("the armed Pacer survives a leaderboard refresh with new entry objects", () => {
     pickByName("Alice");
     lobby.setLeaderboard([{ ...replayEntry }, noReplayEntry, replayEntry2]);
-    expect(lobby.armedPacer).toMatchObject({
-      kind: "replay",
-      entry: replayEntry,
-    });
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
     expect(picker().value).not.toBe("-1");
   });
 
@@ -426,7 +434,7 @@ describe("Lobby AI Record Pacer option", () => {
     pickPacer("ai");
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
     pickPacer("0");
-    expect(lobby.armedPacer).toMatchObject({ kind: "replay", entry: alice });
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Alice" });
     pickPacer("ai");
     expect(lobby.armedPacer).toMatchObject({ kind: "ai" });
   });
@@ -570,23 +578,23 @@ describe("Lobby Garage picker", () => {
     expect(parent.querySelector(".garage-selected")).toBeNull();
   });
 
-  it("pre-selects the first car on first visit", () => {
+  it("pre-selects the first free car on first visit", () => {
     mount();
-    expect(active(card(CAR_VARIANTS[0]))).toBe(true);
-    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
+    expect(active(card(FREE))).toBe(true);
+    expect(lobby.selectedVariant).toBe(FREE);
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
   it("clicking a garage card selects that model directly", () => {
     mount();
-    click(card("police"));
-    expect(active(card("police"))).toBe(true);
-    expect(checked(card("police"))).toBe("true");
-    expect(q(card("police")).tabIndex).toBe(0);
-    expect(checked(card(CAR_VARIANTS[0]))).toBe("false");
-    expect(q(card(CAR_VARIANTS[0])).tabIndex).toBe(-1);
-    expect(lobby.selectedVariant).toBe("police");
-    expect(localStorage.getItem("racer-variant")).toBe("police");
+    click(card("taxi"));
+    expect(active(card("taxi"))).toBe(true);
+    expect(checked(card("taxi"))).toBe("true");
+    expect(q(card("taxi")).tabIndex).toBe(0);
+    expect(checked(card(FREE))).toBe("false");
+    expect(q(card(FREE)).tabIndex).toBe(-1);
+    expect(lobby.selectedVariant).toBe("taxi");
+    expect(localStorage.getItem("racer-variant")).toBe("taxi");
     expect(parent.querySelectorAll(".garage-card.active").length).toBe(1);
   });
 
@@ -595,7 +603,7 @@ describe("Lobby Garage picker", () => {
     selectCar("suv");
     expect(localStorage.getItem("racer-variant")).toBe("suv");
     expect(active(card("suv"))).toBe(true);
-    expect(active(card(CAR_VARIANTS[0]))).toBe(false);
+    expect(active(card(FREE))).toBe(false);
     expect(lobby.selectedVariant).toBe("suv");
   });
 
@@ -607,13 +615,13 @@ describe("Lobby Garage picker", () => {
   });
 
   it.each(["random", "batmobile"])(
-    "a stored %s falls back to the first car and overwrites the stored value",
+    "a stored %s falls back to the first free car and overwrites the stored value",
     (stored) => {
       localStorage.setItem("racer-variant", stored);
       mount();
-      expect(active(card(CAR_VARIANTS[0]))).toBe(true);
-      expect(lobby.selectedVariant).toBe(CAR_VARIANTS[0]);
-      expect(localStorage.getItem("racer-variant")).toBe(CAR_VARIANTS[0]);
+      expect(active(card(FREE))).toBe(true);
+      expect(lobby.selectedVariant).toBe(FREE);
+      expect(localStorage.getItem("racer-variant")).toBe(FREE);
     },
   );
 
@@ -646,9 +654,9 @@ describe("Lobby Garage picker", () => {
   it("hides the Race Setup car image until the selected car's thumbnail is ready", () => {
     mount();
     lobby.paintGarageThumbnails();
-    selectCar("police");
-    thumbnails.deliver("police", "blob:police");
-    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:police");
+    selectCar("taxi");
+    thumbnails.deliver("taxi", "blob:taxi");
+    expect(q<HTMLImageElement>(".setup-car-image").src).toBe("blob:taxi");
     selectCar("van");
     for (const selector of [".setup-car-image", ".selected-car-thumb"])
       expect(q<HTMLImageElement>(selector).hidden).toBe(true);
@@ -657,20 +665,22 @@ describe("Lobby Garage picker", () => {
     expect(q<HTMLImageElement>(".setup-car-image").hidden).toBe(false);
   });
 
-  it("cycles across every car, wrapping in both directions", () => {
+  it("cycles across every car, locked ones included, wrapping in both directions", () => {
     mount();
-    for (const variant of [...CAR_VARIANTS.slice(1), CAR_VARIANTS[0]]) {
+    const start = CAR_VARIANTS.indexOf(FREE);
+    for (let i = 1; i <= CAR_VARIANTS.length; i++) {
+      const variant = CAR_VARIANTS[(start + i) % CAR_VARIANTS.length];
       click('[data-carousel="next"]');
       expect(checked(card(variant))).toBe("true");
       expect(q('.car-slide[data-position="current"]').getAttribute("data-slide")).toBe(variant);
     }
     click('[data-carousel="previous"]');
-    expect(checked(card(CAR_VARIANTS.at(-1)!))).toBe("true");
+    expect(checked(card(CAR_VARIANTS[start - 1]))).toBe("true");
   });
 
   it("requires car and track confirmation before entering settings", () => {
     mount();
-    selectCar("police");
+    selectCar("van");
     const settings = q(".settings-screen");
     expect(settings.hasAttribute("inert")).toBe(true);
     click("[data-select-car]");
@@ -708,11 +718,11 @@ describe("Lobby Garage picker", () => {
     stage.focus();
     press(stage, "ArrowRight");
     expect(document.activeElement).toBe(stage);
-    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[1]);
+    expect(lobby.selectedVariant).toBe("suv");
     expect(parent.querySelectorAll('.garage-card[tabindex="0"]')).toHaveLength(1);
     enterSettings();
     press(q("#driver-name"), "ArrowRight");
-    expect(lobby.selectedVariant).toBe(CAR_VARIANTS[1]);
+    expect(lobby.selectedVariant).toBe("suv");
   });
 
   it("dragging never changes the selected car", () => {
@@ -723,9 +733,9 @@ describe("Lobby Garage picker", () => {
       stage.dispatchEvent(new MouseEvent("pointerup", { clientX: to[0], clientY: to[1] }));
     };
     drag([220, 120], [90, 130]);
-    expect(checked(card(CAR_VARIANTS[0]))).toBe("true");
+    expect(checked(card(FREE))).toBe("true");
     drag([220, 120], [190, 280]);
-    expect(checked(card(CAR_VARIANTS[0]))).toBe("true");
+    expect(checked(card(FREE))).toBe("true");
     expect(cbs.onVariantChange).not.toHaveBeenCalled();
   });
 
@@ -1037,6 +1047,224 @@ describe("Lobby Records board filters", () => {
     // The race difficulty never moved.
     expect(checked(diff("medium"))).toBe("true");
     expect(parent.querySelectorAll('.diff-opt[tabindex="0"]')).toHaveLength(1);
+  });
+});
+
+describe("Lobby Race Setup medals", () => {
+  const times = targets();
+  /** Each Medal target's state in `scope`, easiest first. */
+  function states(scope = ".medal-field"): string[] {
+    return [...parent.querySelectorAll<HTMLElement>(`${scope} .medal-target`)].map(
+      (t) => `${t.dataset.medal}:${t.dataset.state}`,
+    );
+  }
+
+  it.each([
+    [
+      "no lap",
+      null,
+      "No lap yet",
+      ["bronze:next", "silver:unearned", "gold:unearned", "author:unearned"],
+    ],
+    [
+      "a lap slower than Bronze",
+      times.bronze + 1,
+      "No medal yet",
+      ["bronze:next", "silver:unearned", "gold:unearned", "author:unearned"],
+    ],
+    [
+      "a Silver lap",
+      times.silver - 1,
+      "Silver medal",
+      ["bronze:earned", "silver:earned", "gold:next", "author:unearned"],
+    ],
+    [
+      "an Author lap",
+      times.author,
+      "Author medal",
+      ["bronze:earned", "silver:earned", "gold:earned", "author:earned"],
+    ],
+  ])("with %s, shows the best, its Medal and lights the targets", (_, bestMs, medal, lit) => {
+    mountSetup().setStandings([standing({ bestMs })]);
+    const best = q(".medal-best").textContent;
+    if (bestMs !== null) expect(best).toContain(formatMs(bestMs));
+    expect(best).toContain(medal);
+    expect(states()).toEqual(lit);
+    expect(q(".medal-field .medal-targets").textContent).toContain(formatMs(times.gold));
+  });
+
+  it("shows no Medals before Standings arrive", () => {
+    mountSetup();
+    expect(q(".medal-best").textContent).toContain("No lap yet");
+    expect(states()[0]).toBe("bronze:next");
+  });
+
+  it("follows the race's Track and Difficulty and badges each Difficulty's Medal", () => {
+    const medal = (d: string) => q(`${diff(d)} .diff-medal`).dataset.medal;
+    mountSetup().setStandings([
+      standing({ difficulty: "hard", bestMs: targets("sunset-ridge", "hard").gold }),
+      standing({ track: "stormhaven", bestMs: targets("stormhaven", "medium").bronze }),
+    ]);
+    expect([medal("easy"), medal("medium"), medal("hard")]).toEqual(["", "", "gold"]);
+    expect(q(".medal-best").textContent).toContain("No lap yet");
+    click(diff("hard"));
+    expect(q(".medal-best").textContent).toContain("Gold medal");
+    click(track("stormhaven"));
+    expect([medal("easy"), medal("medium"), medal("hard")]).toEqual(["", "bronze", ""]);
+    expect(q(".medal-field .medal-targets").textContent).toContain(
+      formatMs(targets("stormhaven", "hard").author),
+    );
+  });
+});
+
+describe("Lobby Records medals", () => {
+  const times = targets();
+  function rowMedals(): (string | undefined)[] {
+    return [...parent.querySelectorAll<HTMLElement>(".lb-list .lb-medal")].map(
+      (m) => m.dataset.medal,
+    );
+  }
+
+  it("badges each lap with the Medal its time earned on the browsed board", () => {
+    mountSetup().setLeaderboard([
+      entry({ name: "Ace", timeMs: times.author }),
+      entry({ name: "Gil", timeMs: times.gold + 1 }),
+      entry({ name: "Slow", timeMs: times.bronze + 1 }),
+      entry({ name: "Storm", timeMs: times.gold + 1, track: "stormhaven" }),
+    ]);
+    expect(rowMedals()).toEqual(["author", "silver", undefined]);
+    click('[data-board-track="stormhaven"]');
+    // The same time earns a different Medal on another board.
+    expect(rowMedals()).toEqual(["author"]);
+  });
+
+  it("lists the browsed board's four targets as a legend", () => {
+    mountSetup().setStandings([standing({ bestMs: times.author })]);
+    click(boardDiff("hard"));
+    const legend = [...parent.querySelectorAll<HTMLElement>(".board-medals .medal-target")];
+    expect(legend.map((t) => t.dataset.state)).toEqual(["legend", "legend", "legend", "legend"]);
+    expect(legend.map((t) => t.querySelector(".medal-target-time")!.textContent)).toEqual(
+      (["bronze", "silver", "gold", "author"] as const).map((m) =>
+        formatMs(targets("sunset-ridge", "hard")[m]),
+      ),
+    );
+  });
+});
+
+describe("Lobby Rival Pacer option", () => {
+  const zed = { name: "Zed", timeMs: 31_440 };
+
+  it("offers the race board's Rival first and arms it as a replay Pacer", () => {
+    mountSetup();
+    click(track("stormhaven"));
+    lobby.setStandings([
+      standing({ track: "stormhaven", rival: zed }),
+      standing({ rival: { name: "Elsewhere", timeMs: 24_000 } }),
+    ]);
+    expect(optionTexts()).toEqual(["No Pacer — race alone", `⚑ Next rival: Zed — 0:31.440`]);
+    expect(picker().disabled).toBe(false);
+    pickPacer("rival");
+    expect(lobby.armedPacer).toEqual({
+      kind: "replay",
+      name: "Zed",
+      track: "stormhaven",
+      difficulty: "medium",
+    });
+  });
+
+  it("lists a Rival who is also on the leaderboard once, as the Rival", () => {
+    mountSetup().setLeaderboard([
+      entry({ name: "Zed", timeMs: zed.timeMs, hasReplay: true }),
+      entry({ name: "Carol", timeMs: 63_000, hasReplay: true }),
+    ]);
+    lobby.setStandings([standing({ rival: zed })]);
+    expect(optionTexts().filter((t) => t.includes("Zed"))).toEqual([
+      `⚑ Next rival: Zed — 0:31.440`,
+    ]);
+    pickPacer("rival");
+    lobby.setLeaderboard([entry({ name: "Carol", timeMs: 63_000, hasReplay: true })]);
+    expect(lobby.armedPacer).toMatchObject({ kind: "replay", name: "Zed" });
+    expect(picker().value).toBe("rival");
+  });
+
+  it("disarms once the ladder moves past the armed Rival", () => {
+    mountSetup().setStandings([standing({ bestMs: 32_000, rival: zed })]);
+    pickPacer("rival");
+    lobby.setStandings([standing({ bestMs: 31_000, rival: { name: "Yan", timeMs: 30_500 } })]);
+    expect(lobby.armedPacer).toBeNull();
+    expect(picker().value).toBe("-1");
+    expect(optionTexts()[1]).toBe(`⚑ Next rival: Yan — 0:30.500`);
+  });
+});
+
+describe("Lobby locked cars", () => {
+  const lockedCards = () =>
+    [...parent.querySelectorAll<HTMLElement>(".garage-card.locked")].map((c) => c.dataset.variant);
+  const selectDisabled = () => q("[data-select-car]").getAttribute("aria-disabled");
+  const silver = standing({ bestMs: targets().silver });
+
+  it("without a Medal, locked cars can be browsed but never selected", () => {
+    mount();
+    expect(lockedCards()).toEqual(["race", "race-future", "sedan-sports", "police"]);
+    expect(q(card("police")).textContent).toContain("Locked. Earn a Gold medal to unlock");
+    expect(q(card("race-future")).textContent).toContain("Earn an Author medal to unlock");
+    click(card("police"));
+    expect(checked(card("police"))).toBe("true");
+    expect(q(".hero-car-name").textContent).toBe("Police");
+    expect(q(".car-lock-note").textContent).toBe("Earn a Gold medal to unlock");
+    expect(selectDisabled()).toBe("true");
+    // hello carries the selected car, which is never a locked one.
+    expect(lobby.selectedVariant).toBe(FREE);
+    expect(cbs.onVariantChange).not.toHaveBeenCalled();
+    click("[data-select-car]");
+    expect(q(".lobby-deck").dataset.screen).toBe("garage");
+    press(q(".car-stage"), "ArrowRight");
+    expect(checked(card("van"))).toBe("true");
+    expect(selectDisabled()).toBe("false");
+    expect(q(".car-lock-note").hidden).toBe(true);
+  });
+
+  it("the best Medal on any board unlocks every car up to its tier", () => {
+    mount();
+    lobby.setStandings([
+      standing({ bestMs: targets().bronze }),
+      standing({
+        track: "stormhaven",
+        difficulty: "hard",
+        bestMs: targets("stormhaven", "hard").gold,
+      }),
+    ]);
+    expect(lockedCards()).toEqual(["race-future"]);
+    expect(q(`${card("police")} .garage-card-lock`).hidden).toBe(true);
+  });
+
+  it("keeps a saved locked car and drives it once Standings unlock it", () => {
+    localStorage.setItem("racer-variant", "race");
+    mount();
+    expect(checked(card("race"))).toBe("true");
+    expect(lobby.selectedVariant).toBe(FREE);
+    expect(localStorage.getItem("racer-variant")).toBe("race");
+    lobby.setStandings([silver]);
+    expect(lobby.selectedVariant).toBe("race");
+    expect(selectDisabled()).toBe("false");
+    expect(localStorage.getItem("racer-variant")).toBe("race");
+  });
+
+  it("a new driver name races a free car until its own Standings arrive", () => {
+    localStorage.setItem("racer-variant", "race");
+    mount().setStandings([silver]);
+    enterSettings();
+    expect(q(".selected-car-name").textContent).toBe("Race");
+    const name = q<HTMLInputElement>("#driver-name");
+    name.value = "Someone New";
+    name.dispatchEvent(new Event("change"));
+    expect(cbs.onNameChange).toHaveBeenCalledOnce();
+    expect(lobby.selectedVariant).toBe(FREE);
+    expect(q(".selected-car-name").textContent).toBe("Hatch S");
+    lobby.setStandings([silver]);
+    expect(lobby.selectedVariant).toBe("race");
+    submitForm();
+    expect(cbs.onNameChange).toHaveBeenCalledOnce();
   });
 });
 

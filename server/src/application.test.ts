@@ -1,16 +1,24 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
-import { CAR_VARIANTS, dailyChallenge, dailyEndsAt, type Variant } from "@racing/shared";
+import {
+  CAR_VARIANTS,
+  dailyChallenge,
+  dailyEndsAt,
+  SUNSET_RIDGE,
+  type ClientMessage,
+  type Standing,
+  type Variant,
+} from "@racing/shared";
 import { RacingApplication } from "./application";
 import { dailyBoard, submitDailyLap } from "./daily";
-import { topEntries } from "./leaderboard";
+import { standings, topEntries } from "./leaderboard";
 import { pool } from "./db";
 import { submitLap } from "./replay";
 import { LEGACY_RECORD } from "../../tests/fixtures/legacy-replay";
 
 vi.mock("./db", () => ({ pool: { query: vi.fn(async () => ({ rows: [] })) } }));
-vi.mock("./leaderboard", () => ({ topEntries: vi.fn(), bestTime: vi.fn() }));
+vi.mock("./leaderboard", () => ({ topEntries: vi.fn(), bestTime: vi.fn(), standings: vi.fn() }));
 vi.mock("./daily", () => ({ dailyBoard: vi.fn(), submitDailyLap: vi.fn() }));
 vi.mock("./replay", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./replay")>()),
@@ -38,12 +46,16 @@ class ClientSocket extends EventEmitter {
 
 beforeEach(() => {
   vi.mocked(topEntries).mockReset();
+  vi.mocked(standings).mockReset();
+  vi.mocked(submitLap).mockReset().mockResolvedValue(false);
   vi.mocked(pool.query).mockReset();
   vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never);
   vi.mocked(dailyBoard)
     .mockReset()
     .mockImplementation(async (challenge) => ({ challenge, entries: [] }));
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("legacy replay wire compatibility", () => {
   it("accepts requests predating track and difficulty and sends the original frame values", async () => {
@@ -195,7 +207,7 @@ async function joinedDriver(
  * Finish a lap of `lapMs` from the start line, skipping the Checkpoints between.
  * The car never moves, so only the Room's lap-time floor judges plausibility.
  */
-function driveLap(
+function finishLap(
   { client, room, player }: Awaited<ReturnType<typeof joinedDriver>>,
   lapMs: number,
 ) {
@@ -309,7 +321,7 @@ describe("daily challenge", () => {
     const board = { challenge, entries: [{ name: "Ava", timeMs: lapMs }] };
     vi.mocked(dailyBoard).mockResolvedValue(board);
 
-    driveLap(driver, lapMs);
+    finishLap(driver, lapMs);
 
     await vi.waitFor(() => expect(lobby.messages).toContainEqual({ type: "daily", board }));
     expect(submitDailyLap).toHaveBeenCalledWith(challenge.date, "Ava", lapMs);
@@ -327,7 +339,7 @@ describe("daily challenge", () => {
   it("keeps an implausible Daily lap off the day's board", async () => {
     const application = new RacingApplication();
     const driver = await joinedDriver(application, { type: "joinDaily" });
-    driveLap(driver, driver.room.minLapMs - 1);
+    finishLap(driver, driver.room.minLapMs - 1);
     await vi.waitFor(() =>
       expect(driver.client.messages).toContainEqual(expect.objectContaining({ type: "lap" })),
     );
@@ -342,7 +354,7 @@ describe("daily challenge", () => {
       difficulty: challenge.difficulty,
       track: challenge.track,
     });
-    driveLap(driver, driver.room.minLapMs + 1_000);
+    finishLap(driver, driver.room.minLapMs + 1_000);
     await vi.waitFor(() =>
       expect(driver.client.messages).toContainEqual(expect.objectContaining({ type: "lap" })),
     );
@@ -377,7 +389,7 @@ describe("daily challenge", () => {
     const midnight = dailyEndsAt(challenge);
     vi.setSystemTime(midnight + 500 - lapMs);
 
-    driveLap(driver, lapMs);
+    finishLap(driver, lapMs);
     // The rollover lands while the lap is still being written.
     application.tick();
 
@@ -390,5 +402,134 @@ describe("daily challenge", () => {
     expect(boards).toEqual([
       { type: "daily", board: { challenge: dailyChallenge(midnight), entries: [] } },
     ]);
+  });
+});
+
+async function enter(client: ClientSocket, message: ClientMessage) {
+  client.message(message);
+  await vi.waitFor(() => expect(client.messages.some((m) => m.type === "joined")).toBe(true));
+}
+
+/** Visit every gate of Sunset Ridge and cross the line, `stepMs` apart on the server clock. */
+function driveLap(client: ClientSocket, stepMs: number) {
+  const clock = vi.spyOn(Date, "now");
+  const gates = SUNSET_RIDGE.checkpoints;
+  let now = 0;
+  for (const gate of [...gates, gates[0]]) {
+    clock.mockReturnValue((now += stepMs));
+    client.message({ type: "state", x: gate.x, y: 0, z: gate.z, rot: 0, speed: 0 });
+  }
+}
+
+const DUSK: ClientMessage = {
+  type: "createRoom",
+  roomName: "Dusk",
+  difficulty: "medium",
+  track: "sunset-ridge",
+};
+
+describe("standings", () => {
+  const STANDINGS: Standing[] = [
+    {
+      track: "sunset-ridge",
+      difficulty: "medium",
+      bestMs: 60_000,
+      rival: { name: "Bolt", timeMs: 55_000 },
+    },
+  ];
+
+  let application: RacingApplication;
+  beforeEach(() => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    vi.mocked(standings).mockResolvedValue(STANDINGS);
+    application = new RacingApplication();
+  });
+
+  async function connected(name: string) {
+    const client = new ClientSocket();
+    application.connect(client.socket);
+    client.message({ type: "hello", name });
+    await vi.waitFor(() => expect(client.messages[0]?.type).toBe("welcome"));
+    return client;
+  }
+
+  it("answers getStandings for the name normalized as hello does", async () => {
+    const client = await connected("Ava");
+    client.message({ type: "getStandings", name: "  Ava  " });
+    await vi.waitFor(() =>
+      expect(client.messages).toContainEqual({
+        type: "standings",
+        name: "Ava",
+        afterLap: false,
+        standings: STANDINGS,
+      }),
+    );
+    expect(standings).toHaveBeenCalledWith("Ava");
+  });
+
+  it("logs a failed lookup without closing the socket", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(standings).mockRejectedValue(new Error("database down"));
+    const client = await connected("Ava");
+    client.message({ type: "getStandings", name: "Ava" });
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith("Failed to load standings:", expect.any(Error)),
+    );
+    expect(client.readyState).toBe(WebSocket.OPEN);
+    expect(client.messages.map((message) => message.type)).toEqual(["welcome"]);
+  });
+
+  it("sends the driver alone their standings after a plausible lap, behind the lap", async () => {
+    const driver = await connected("Ava");
+    await enter(driver, DUSK);
+    const other = await connected("Ben");
+    await enter(other, { type: "joinRoom", roomId: application.rooms.list()[0].id });
+
+    driveLap(driver, 5_000);
+    await vi.waitFor(() => expect(driver.messages.at(-1)?.type).toBe("standings"));
+    expect(submitLap).toHaveBeenCalledOnce();
+    expect(driver.messages.at(-2)).toMatchObject({ type: "lap", name: "Ava" });
+    expect(driver.messages.at(-1)).toEqual({
+      type: "standings",
+      name: "Ava",
+      afterLap: true,
+      standings: STANDINGS,
+    });
+    expect(other.messages).toContainEqual(expect.objectContaining({ type: "lap", name: "Ava" }));
+    expect(other.messages.some((m) => m.type === "standings")).toBe(false);
+  });
+
+  it("sends a driver's standings in the order they were asked for", async () => {
+    let release!: (value: Standing[]) => void;
+    vi.mocked(standings).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    const driver = await connected("Ava");
+    await enter(driver, DUSK);
+
+    // A slow lookup the Lobby asked for must not land after the newer lap's.
+    driver.message({ type: "getStandings", name: "Ava" });
+    driveLap(driver, 5_000);
+    await vi.waitFor(() => expect(submitLap).toHaveBeenCalledOnce());
+    release([]);
+    await vi.waitFor(() =>
+      expect(driver.messages.filter((m) => m.type === "standings")).toHaveLength(2),
+    );
+    expect(driver.messages.filter((m) => m.type === "standings").map((m) => m.afterLap)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("sends no standings after an implausible lap", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const driver = await connected("Ava");
+    await enter(driver, DUSK);
+
+    // 100 ms between gates is a teleport at any Difficulty.
+    driveLap(driver, 100);
+    expect(driver.messages.at(-1)).toMatchObject({ type: "lap", name: "Ava" });
+    // Let any persistence job run: every mock resolves within this macrotask.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(submitLap).not.toHaveBeenCalled();
+    expect(standings).not.toHaveBeenCalled();
   });
 });

@@ -40,6 +40,7 @@ describe("persistent lobby garage", () => {
       onJevLap: vi.fn(),
       onDaily: vi.fn(),
       onVariantChange: vi.fn(),
+      onNameChange: vi.fn(),
     });
     lobby.paintGarageThumbnails();
     const background = document.querySelector(".live-car-stage");
@@ -71,6 +72,7 @@ describe("persistent lobby garage", () => {
       onJevLap: vi.fn(),
       onDaily: vi.fn(),
       onVariantChange: vi.fn(),
+      onNameChange: vi.fn(),
     });
     lobby.paintGarageThumbnails();
     stage.setActive.mockClear();

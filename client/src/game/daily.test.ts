@@ -6,6 +6,7 @@ import {
   DIFFICULTIES,
   SCENE_PRESETS,
   TRACKS,
+  variantUnlocked,
 } from "@racing/shared";
 
 describe("dailyChallenge", () => {
@@ -27,14 +28,15 @@ describe("dailyChallenge", () => {
     expect(dailyChallenge(dailyEndsAt(morning)).date).toBe("2027-03-15");
   });
 
-  it("draws every pick from the known Tracks, Difficulties, Variants and scenes", () => {
+  it("draws every pick from the known Tracks, Difficulties, free Variants and scenes", () => {
     const tracks = new Set(TRACKS.map((track) => track.id));
+    const freeVariants = CAR_VARIANTS.filter((variant) => variantUnlocked(variant, null));
     const seen = { track: new Set(), difficulty: new Set(), variant: new Set(), scene: new Set() };
     for (let day = 0; day < 365; day++) {
       const challenge = dailyChallenge(Date.parse("2026-10-04T12:00:00Z") + day * 86_400_000);
       expect(tracks).toContain(challenge.track);
       expect(DIFFICULTIES).toContain(challenge.difficulty);
-      expect(CAR_VARIANTS).toContain(challenge.variant);
+      expect(freeVariants).toContain(challenge.variant);
       expect(SCENE_PRESETS).toContain(challenge.scene);
       for (const key of ["track", "difficulty", "variant", "scene"] as const)
         seen[key].add(challenge[key]);
@@ -42,7 +44,7 @@ describe("dailyChallenge", () => {
     // A year of days reaches every option, so no pick is stuck on one value.
     expect(seen.track.size).toBe(TRACKS.length);
     expect(seen.difficulty.size).toBe(DIFFICULTIES.length);
-    expect(seen.variant.size).toBe(CAR_VARIANTS.length);
+    expect(seen.variant.size).toBe(freeVariants.length);
     expect(seen.scene.size).toBe(SCENE_PRESETS.length);
   });
 });

@@ -1,12 +1,15 @@
 import {
   DIFFICULTY_LABELS,
+  medalFor,
+  medalTimes,
   resolveTrack,
+  VARIANT_LABELS,
   type DailyBoard,
   type DailyChallenge,
+  type Medal,
   type ScenePreset,
 } from "@racing/shared";
 import { escapeHtml as html, formatMs } from "../util";
-import { VARIANT_LABELS } from "./variant-labels";
 
 const SCENE_LABELS: Record<ScenePreset, string> = {
   sunset: "Sunset",
@@ -21,13 +24,19 @@ function spec(term: string, value: string): string {
   return `<div><dt>${term}</dt><dd>${value}</dd></div>`;
 }
 
+/** Author is the cut gem the Medal art draws. */
+const MEDAL_EMOJI: Record<Medal, string> = { bronze: "🥉", silver: "🥈", gold: "🥇", author: "💎" };
+
 /**
- * The line a driver shares, Wordle-style: the Daily's number and their best,
- * nothing that spoils the challenge. The time is in centiseconds, truncated
- * like formatMs floors. A medal (#169) slots in as one more part.
+ * The line a driver shares, Wordle-style: the Daily's number, their best and
+ * the Medal it earns on the challenge's board, nothing that spoils the
+ * challenge. The time is in centiseconds, truncated like formatMs floors.
  */
 export function shareText(challenge: DailyChallenge, timeMs: number): string {
-  return [`Sunset Ridge Daily #${challenge.number}`, formatMs(timeMs).slice(0, -1)].join(" · ");
+  const times = medalTimes(challenge.track, challenge.difficulty);
+  const medal = times && medalFor(times, timeMs);
+  const parts = [`Sunset Ridge Daily #${challenge.number}`, formatMs(timeMs).slice(0, -1)];
+  return [...parts, ...(medal ? [MEDAL_EMOJI[medal]] : [])].join(" · ");
 }
 
 /**

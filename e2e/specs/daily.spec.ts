@@ -5,6 +5,7 @@ import {
   resolveTrack,
   type DailyChallenge,
   type ServerMessage,
+  variantUnlocked,
 } from "@racing/shared";
 import { expect, test } from "../fixtures/players";
 
@@ -34,9 +35,11 @@ test("two drivers race the Daily from the Garage in one shared Daily Room", asyn
   playerA,
   playerB,
 }) => {
-  // Both drivers saved a car the Daily does not force, so forcing it is visible.
+  // Both drivers saved a free car the Daily does not force, so forcing it is visible.
   const forced = dailyChallenge(Date.now()).variant;
-  const ownCar = CAR_VARIANTS.find((variant) => variant !== forced)!;
+  const ownCar = CAR_VARIANTS.find(
+    (variant) => variant !== forced && variantUnlocked(variant, null),
+  )!;
   for (const [page, name] of [
     [playerA, PLAYER_A],
     [playerB, PLAYER_B],
