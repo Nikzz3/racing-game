@@ -34,8 +34,6 @@ for (const track of TRACKS) {
     await game.driveInputs(inputsThroughStart(track));
 
     await expect.poll(() => game.state().then((s) => s.lap.active)).toBe(true);
-    await expect
-      .poll(() => game.state().then((s) => s.checkpoint))
-      .toBe(GATES_PAST_START + 1);
+    await expect.poll(() => game.state().then((s) => s.checkpoint)).toBe(GATES_PAST_START + 1);
   });
 }
