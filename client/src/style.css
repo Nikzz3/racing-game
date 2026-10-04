@@ -2847,7 +2847,7 @@ a {
     left: var(--touch-edge);
     bottom: calc(var(--touch-steer-top) + 20px);
     flex-wrap: wrap;
-    max-width: calc(100% - 2 * var(--touch-edge) - var(--touch-pedal-width) - 12px);
+    max-width: calc(100% - 2 * var(--touch-edge) - var(--touch-pedal-width) - 24px);
   }
   .hud-start-race,
   .hud-start-knockout {
