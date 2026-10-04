@@ -50,6 +50,10 @@ export class RacingApp {
         if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
       },
       onJevLap: () => void this.openJevLap(),
+      onDaily: () => {
+        this.hello();
+        this.net.send({ type: "joinDaily" });
+      },
     });
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
@@ -132,7 +136,11 @@ export class RacingApp {
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
+        this.lobby.setDaily(message.daily);
         this.requestStandings();
+        return;
+      case "daily":
+        this.lobby.setDaily(message.board);
         return;
       case "standings":
         // A lap finished under a name the driver has since changed reports the old name.
@@ -186,8 +194,10 @@ export class RacingApp {
             message.difficulty,
             message.track,
             pacer,
-            this.variant,
+            // A Daily Room forces its Variant; the Garage choice stays saved for other Rooms.
+            message.daily?.variant ?? this.variant,
             this.lobby.steering,
+            message.daily?.scene,
           );
           this.view = game;
           this.joining = false;

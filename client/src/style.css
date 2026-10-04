@@ -251,6 +251,11 @@ a {
 .garage-heading {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 40px;
 }
 .section-label {
   font: 9px var(--mono);
@@ -505,10 +510,13 @@ a {
     transform 0.2s,
     box-shadow 0.2s;
 }
-.primary-action:hover {
-  background: #ffd19a;
-  box-shadow: 0 5px 30px #efa65c22;
-  transform: translateY(-2px);
+/* Touch screens keep :hover after a tap, which would leave the button lifted. */
+@media (hover: hover) {
+  .primary-action:hover {
+    background: #ffd19a;
+    box-shadow: 0 5px 30px #efa65c22;
+    transform: translateY(-2px);
+  }
 }
 .primary-action span {
   font-size: 20px;
@@ -577,6 +585,148 @@ a {
 }
 .garage-card.active .garage-card-line::after {
   transform: scaleX(1);
+}
+/* Daily Challenge banner, beside the Garage heading. */
+.daily {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-areas:
+    "intro board"
+    "actions actions";
+  gap: 14px 24px;
+  flex: 1 1 380px;
+  max-width: 540px;
+  padding: 15px 18px 18px;
+  background: #141519e6;
+  border: 1px solid #ffffff17;
+  border-top: 2px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 18px 40px #0007;
+  text-shadow: none;
+}
+.daily-intro {
+  grid-area: intro;
+  min-width: 0;
+}
+.daily-number {
+  font: 10px var(--mono);
+  color: var(--accent);
+  letter-spacing: 0.12em;
+}
+.daily-track {
+  margin-top: 6px;
+  font:
+    700 26px / 1 "Barlow Condensed",
+    Impact,
+    sans-serif;
+  text-transform: uppercase;
+}
+.daily-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 0;
+}
+.daily-specs dt {
+  font: 9px var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.daily-specs dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.daily-board {
+  grid-area: board;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.daily-top {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.daily-top li,
+.daily-standing {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+}
+.daily-place {
+  font: 10px var(--mono);
+  color: #6f717a;
+}
+.daily-name,
+.daily-driver {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.daily-time,
+.daily-result {
+  font: 11px var(--mono);
+  white-space: nowrap;
+}
+.daily-time {
+  color: var(--accent);
+}
+.daily-top .mine .daily-name {
+  color: var(--accent);
+}
+.daily-standing {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #ffffff14;
+}
+.daily-driver {
+  color: var(--muted);
+}
+.daily-actions {
+  grid-area: actions;
+  display: flex;
+  gap: 10px;
+}
+.daily-race {
+  flex: 1;
+  gap: 16px;
+  padding: 12px 18px;
+}
+.daily-share {
+  padding: 0 20px;
+  background: transparent;
+  border: 1px solid #ffffff30;
+  border-radius: 2px;
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+.daily-share:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.daily-share:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+.daily-share[data-flash="copied"] {
+  border-color: #8cd0ac;
+  color: #8cd0ac;
+}
+.daily-share[data-flash="failed"] {
+  border-color: #f17c54;
+  color: #f17c54;
 }
 .track-screen {
   display: grid;
@@ -1695,6 +1845,147 @@ a {
   }
   .menu-back {
     font-size: 8px;
+  }
+}
+/* The Daily banner sheds its spec captions, then its top times, as space runs out. */
+@media (max-width: 700px), (max-height: 580px) {
+  .daily {
+    gap: 10px 14px;
+    padding: 11px 14px 13px;
+  }
+  .daily-track {
+    margin-top: 4px;
+    font-size: 20px;
+  }
+  .daily-specs {
+    gap: 0;
+    margin-top: 6px;
+  }
+  .daily-specs dt {
+    display: none;
+  }
+  .daily-specs dd {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .daily-specs div + div dd::before {
+    content: "·";
+    margin: 0 6px;
+    color: var(--muted);
+  }
+  .daily-top li,
+  .daily-standing {
+    gap: 7px;
+    font-size: 11px;
+  }
+  .daily-race {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .daily-race span {
+    font-size: 16px;
+  }
+  .daily-share {
+    padding: 0 14px;
+  }
+}
+@media (max-width: 700px) {
+  .garage-heading {
+    row-gap: 12px;
+  }
+  .daily {
+    max-width: none;
+  }
+  .daily-standing {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .daily-driver {
+    flex-basis: 100%;
+  }
+}
+@media (max-height: 580px) {
+  .garage-heading {
+    column-gap: 24px;
+  }
+  .daily {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "intro board"
+      "intro actions";
+    flex-basis: 300px;
+    max-width: 460px;
+  }
+  .daily-top {
+    display: none;
+  }
+}
+/* Landscape phones: one line about the challenge over the standing and the actions. */
+@media (max-height: 500px) {
+  .garage-heading {
+    column-gap: 16px;
+  }
+  /* Two heading lines are no taller than the strip and leave it the width. */
+  .garage-heading:has(.daily:not([hidden])) h1 {
+    max-width: 6em;
+  }
+  .daily {
+    grid-template-areas:
+      "intro intro"
+      "board actions";
+    align-items: center;
+    gap: 4px 10px;
+    flex-basis: 340px;
+    max-width: 520px;
+    padding: 5px 6px 6px 12px;
+  }
+  .daily-intro {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 18px;
+  }
+  .daily-intro > *,
+  .daily-specs div,
+  .daily-specs dd {
+    display: inline;
+  }
+  .daily-number {
+    font-size: 9px;
+  }
+  .daily-track {
+    margin: 0;
+    font-size: 15px;
+  }
+  .daily-track::before,
+  .daily-specs div:first-child dd::before {
+    content: "·";
+    margin: 0 6px;
+    color: var(--muted);
+  }
+  .daily-standing {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .daily-driver {
+    display: none;
+  }
+  .daily-result {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .daily-actions {
+    gap: 6px;
+  }
+  .daily-race,
+  .daily-share {
+    min-height: 40px;
+  }
+  .daily-race {
+    padding-block: 0;
   }
 }
 .race-viewport {

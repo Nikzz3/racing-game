@@ -9,7 +9,7 @@ A named racing circuit defined by a closed loop of control points. A Track is ch
 _Avoid_: Map, level, course
 
 **Room**:
-A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime.
+A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Daily Room is the exception: the date, not its creator, picks them.
 _Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
 
 **Lobby**:
@@ -17,7 +17,7 @@ The pre-Room screen where a driver sets their identity (name, and their chosen c
 _Avoid_: using Lobby to mean Room, menu, title screen
 
 **Variant**:
-One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid. Four Variants are free; each of the others unlocks once the driver's best Medal on any `(Track, Difficulty)` reaches its tier, so a driver can never drive a locked Variant. First-time visitors start on the first free Variant. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
+One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid. Four Variants are free; each of the others unlocks once the driver's best Medal on any `(Track, Difficulty)` reaches its tier, so a driver can never drive a locked Variant. First-time visitors start on the first free Variant. In a Daily Room every driver drives the Daily Challenge's Variant instead, which is always a free one. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
 _Avoid_: car type, skin, model (ambiguous with 3D asset files)
 
 **Difficulty**:
@@ -63,6 +63,22 @@ _Avoid_: opponent, target, nemesis
 **Standing**:
 A driver name's place on one `(Track, Difficulty)` leaderboard: their persisted best lap (if any) and their current Rival. Medals, car unlocks and the Rival ladder are all read off a driver's Standings; the server sends them on request and after each of the driver's Plausible Laps.
 _Avoid_: profile, stats, progress
+
+**Daily Challenge**:
+The one challenge everyone shares on a given UTC day, numbered from Daily #1 on release day: a Track, a Difficulty, a Variant and a Scene Preset, all derived from the date alone. It rolls over at UTC midnight.
+_Avoid_: Track of the Day, daily race, daily mode
+
+**Daily Room**:
+The single Room in which the current Daily Challenge is raced, shared by every driver who enters it that day. Its Track, Difficulty and Variant are the Daily Challenge's; it closes when the day rolls over.
+_Avoid_: Daily lobby, daily session
+
+**Daily Board**:
+The fastest Plausible Lap per driver driven in a day's Daily Room, separate from the all-time Track Record board. A daily lap also counts toward the all-time board for its Track and Difficulty (ADR-0013).
+_Avoid_: daily leaderboard (fine in prose, but the board is the domain term), daily records
+
+**Scene Preset**:
+The look of the world a Room renders: sky, sun, light and fog. Purely visual, like a Variant. A Daily Room renders its Daily Challenge's Scene Preset; every other Room and every Replay render Sunset.
+_Avoid_: weather, theme, time of day (one part of the look)
 
 **Jev**:
 TypeSafe's System One model (`jev-latest`), used as a second AI driver alongside the RL policy. Jev never sees pixels or world coordinates: code describes the car and the road ahead in plain English (speed, position on the road, where a racing line code computed lies ahead, and code's speed check: whether the car is too fast to make the road ahead, and by how much) and Jev answers two Choice questions — brake or accelerate given the speed check, and steer left, right or nothing (leave the wheel centred) to point at the racing line. Code turns the answers into pedals (the pedal Jev picked, full on) and steering (twice how sure Jev is of its side, 2 · (P(left) − P(right)) clamped, so "nothing" adds no steering). Code does the physics and Jev the judgment, so Jev's pedal mostly follows the speed check (ADR-0011). Jev only drives offline, in `npm run jev:record`: the API key lives in the recording developer's `.env`, and neither the game nor the server talks to TypeSafe (ADR-0010). Jev drives Sunset Ridge at Medium only, where its racing line and speed check were tuned, in its canonical car (`race-future`).

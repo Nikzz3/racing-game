@@ -36,12 +36,12 @@ function adoptPodmanSocket(): void {
 async function databaseUrl(): Promise<string> {
   if (process.env.E2E_DATABASE_URL !== undefined) {
     // The suite creates racing_e2e_w* databases on that server and truncates
-    // rooms, best_laps, and replays in them between tests, so an external server
+    // rooms, best_laps, replays, and daily_laps in them between tests, so an external server
     // must be explicitly marked disposable before we touch it.
     if (process.env.E2E_DATABASE_ALLOW_TRUNCATE !== "1") {
       throw new Error(
         "E2E_DATABASE_URL is set, but the e2e suite creates racing_e2e_w* databases on " +
-          "that Postgres server and erases their rooms, best_laps, and replays tables. " +
+          "that Postgres server and erases their rooms, best_laps, replays, and daily_laps tables. " +
           "Set E2E_DATABASE_ALLOW_TRUNCATE=1 to confirm that server is disposable.",
       );
     }
