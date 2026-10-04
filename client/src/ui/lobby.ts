@@ -15,6 +15,7 @@ import {
   resolveTrack,
   trackPath,
   variantUnlocked,
+  type DailyBoard,
   type Difficulty,
   type LeaderboardEntry,
   type Medal,
@@ -25,6 +26,7 @@ import {
   type TrackSlug,
   type Variant,
 } from "@racing/shared";
+import { DailyBanner } from "./daily-banner";
 import { renderVariantThumbnails } from "./garage-thumbs";
 import { GarageStage } from "./garage-stage";
 import { CHEAP_RENDER } from "../game/quality";
@@ -45,6 +47,8 @@ export interface LobbyCallbacks {
   onReferenceLap(): void;
   /** Replay the recorded Jev Lap (ADR-0009). */
   onJevLap(): void;
+  /** Join today's Daily Room straight from the Garage (ADR-0013). */
+  onDaily(): void;
   onVariantChange(): void;
   /** The driver name changed, so its Standings must be fetched again. */
   onNameChange(): void;
@@ -195,6 +199,7 @@ export class Lobby {
   private images = new Map<Variant, string>();
   private readonly nameInput: HTMLInputElement;
   private readonly picker: HTMLSelectElement;
+  private readonly daily: DailyBanner;
   private screen: Screen = "garage";
   private setupTab: SetupTab = "race";
   private rooms: RoomInfo[] = [];
@@ -260,6 +265,13 @@ export class Lobby {
       localStorage.getItem("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
     this.standingsName = this.playerName;
     this.nameInput.addEventListener("change", () => this.saveName());
+    this.daily = new DailyBanner(this.find(".garage-heading"), () => {
+      // Keep a generated name, so the standing still finds this driver next visit.
+      this.saveName();
+      callbacks.onDaily();
+    });
+    this.daily.setDriver(this.playerName);
+    this.nameInput.addEventListener("input", () => this.daily.setDriver(this.playerName));
     const form = this.find<HTMLFormElement>(".create-form");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -770,6 +782,10 @@ export class Lobby {
     this.find(".primary-action-label").textContent = this.roomChoice
       ? "Join & Race"
       : "Create & Race";
+  }
+  /** Today's Daily Board; undefined from servers that predate it hides the banner. */
+  setDaily(board: DailyBoard | undefined): void {
+    this.daily.setBoard(board);
   }
   /** The driver name's Standings on every board: Medals, car unlocks and the Rival. */
   setStandings(standings: Standing[]): void {

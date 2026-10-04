@@ -9,7 +9,7 @@ A named racing circuit defined by a closed loop of control points. A Track is ch
 _Avoid_: Map, level, course
 
 **Room**:
-A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Room holds at most one Race at a time; the rest of the time its drivers are free driving, each timing their own laps.
+A shared race space holding one or more players who race the same Track under the same rules. Both Track and Difficulty are properties of the Room, chosen at creation and fixed for its lifetime. A Daily Room is the exception: the date, not its creator, picks them. A Room holds at most one Race at a time; the rest of the time its drivers are free driving, each timing their own laps.
 _Avoid_: Lobby (which is the pre-Room screen, not the race space), session, game
 
 **Lobby**:
@@ -17,7 +17,7 @@ The pre-Room screen where a driver sets their identity (name, and their chosen c
 _Avoid_: using Lobby to mean Room, menu, title screen
 
 **Variant**:
-One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid. Four Variants are free; each of the others unlocks once the driver's best Medal on any `(Track, Difficulty)` reaches its tier, so a driver can never drive a locked Variant. First-time visitors start on the first free Variant. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
+One of the fixed set of cosmetic car models a driver's car can render as. Purely visual — every Variant shares identical physics under a given Difficulty, and the Variant never affects the leaderboard. Drivers pick one in the Lobby's Garage grid. Four Variants are free; each of the others unlocks once the driver's best Medal on any `(Track, Difficulty)` reaches its tier, so a driver can never drive a locked Variant. First-time visitors start on the first free Variant. In a Daily Room every driver drives the Daily Challenge's Variant instead, which is always a free one. A player whose hello carried no Variant renders via the hash-of-player-id fallback.
 _Avoid_: car type, skin, model (ambiguous with 3D asset files)
 
 **Difficulty**:
@@ -49,7 +49,7 @@ The single canonical fastest lap the trained RL policy drives against the real p
 _Avoid_: Record (collides with Track Record), Replay (which is a persisted human lap), ghost
 
 **Pacer**:
-An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a _Replay_, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human _Replays_ and the AI _Reference Lap_ may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium. A human Pacer renders the Variant recorded with its lap (absent → hash of the recorded driver's name); the AI always drives police, its canonical car. A Pacer a driver arms in the Lobby is theirs alone and is paused during a Race; Pacers on a Race's Grid are chosen by the server, seen by everyone in the Room, and ranked in the Race's results like drivers — never on the leaderboard (ADR-0013).
+An in-Room opponent that plays back a recorded lap's poses live, alongside the driver's own car, sharing the Room's Track and Difficulty. Rendered translucent and non-colliding, with no camera of its own — distinct from a _Replay_, which is a standalone playback following its own chase camera. A Pacer interpolates stored poses by timestamp (it does not re-simulate physics) and never adapts to the driver. Both persisted human _Replays_ and the AI _Reference Lap_ may be surfaced as Pacers: a human Pacer's poses are fetched from the server, while the AI's are baked client-side from the trained policy at selection time and never persisted or ranked (ADR-0006). The AI is offered only where a policy is trained — Sunset Ridge at Medium. A human Pacer renders the Variant recorded with its lap (absent → hash of the recorded driver's name); the AI always drives police, its canonical car. A Pacer a driver arms in the Lobby is theirs alone and is paused during a Race; Pacers on a Race's Grid are chosen by the server, seen by everyone in the Room, and ranked in the Race's results like drivers — never on the leaderboard (ADR-0014).
 _Avoid_: ghost, shadow, phantom, opponent (informal); rival, except for the Pacer the Rival ladder offers (see **Rival**)
 
 **Medal**:
@@ -63,6 +63,22 @@ _Avoid_: opponent, target, nemesis
 **Standing**:
 A driver name's place on one `(Track, Difficulty)` leaderboard: their persisted best lap (if any) and their current Rival. Medals, car unlocks and the Rival ladder are all read off a driver's Standings; the server sends them on request and after each of the driver's Plausible Laps.
 _Avoid_: profile, stats, progress
+
+**Daily Challenge**:
+The one challenge everyone shares on a given UTC day, numbered from Daily #1 on release day: a Track, a Difficulty, a Variant and a Scene Preset, all derived from the date alone. It rolls over at UTC midnight.
+_Avoid_: Track of the Day, daily race, daily mode
+
+**Daily Room**:
+The single Room in which the current Daily Challenge is raced, shared by every driver who enters it that day. Its Track, Difficulty and Variant are the Daily Challenge's; it closes when the day rolls over.
+_Avoid_: Daily lobby, daily session
+
+**Daily Board**:
+The fastest Plausible Lap per driver driven in a day's Daily Room, separate from the all-time Track Record board. A daily lap also counts toward the all-time board for its Track and Difficulty (ADR-0013).
+_Avoid_: daily leaderboard (fine in prose, but the board is the domain term), daily records
+
+**Scene Preset**:
+The look of the world a Room renders: sky, sun, light and fog. Purely visual, like a Variant. A Daily Room renders its Daily Challenge's Scene Preset; every other Room and every Replay render Sunset.
+_Avoid_: weather, theme, time of day (one part of the look)
 
 **Race**:
 A contest among the cars on a Room's Grid, run by the server: a countdown, racing with live positions, then results, after which the Room returns to free driving. Any driver in the Room may call one when none is running. "Race" also names one of its two formats (first to complete three laps wins, and once the first car finishes the rest have a grace period to follow), the other being a Knockout. A car that leaves the Room mid-race, or misses a Race's grace period, is DNF (did not finish).

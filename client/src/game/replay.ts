@@ -165,7 +165,7 @@ export class ReplayViewer {
     }
     const { x, z } = this.carMesh.position;
     followCar(this.bundle.camera, x, z, this.carMesh.rotation.y, dt);
-    updateSun(this.bundle.sun, x, z);
+    updateSun(this.bundle, x, z);
     this.bundle.renderer.render(this.bundle.scene, this.bundle.camera);
     this.animationFrame = requestAnimationFrame(this.frame);
   };

@@ -4,7 +4,7 @@
 > admit persisted human Replays as Pacers stands; the scope line keeping the AI Reference Lap
 > out of live Rooms is superseded.
 >
-> **Partially superseded by [ADR-0013](0013-server-run-races-in-rooms.md), for grid Pacers.**
+> **Partially superseded by [ADR-0014](0014-server-run-races-in-rooms.md), for grid Pacers.**
 > Pacers the server seats on a Race's Grid are chosen by the server, broadcast to the Room and
 > ranked in race results. The Lobby-armed Pacer stays a driver-local overlay as decided here.
 
