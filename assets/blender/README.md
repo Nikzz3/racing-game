@@ -156,3 +156,9 @@ length to 4.2 m. This pass changes artwork, not vehicle handling or collision di
 Tests inspect body proportions, both front lamps, wheel contact, pivot placement,
 texture signatures and geometry budgets. Review the actual exported materials in the
 browser after re-exporting; Blender's material preview handles transmission differently.
+
+Windows use reflective tinted PBR glass; lamp covers can use alpha transparency.
+Do not enable transmission/refraction on vehicle materials: one refractive car causes
+Three.js to render the entire race scene again into a transmission buffer. The asset
+tests guard this constraint. In the review scene, disabling transmission reduced the
+hypercar from 200 to 102 draw calls without changing its geometry.

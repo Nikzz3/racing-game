@@ -66,6 +66,17 @@ describe("Blender asset integration", () => {
     expect(triangles).toBeLessThan(100_000);
   });
 
+  it.each(CAR_VARIANTS)("avoids a full-scene refraction pass for %s glass", (variant) => {
+    getModel(`car:${variant}`)!.traverse((part) => {
+      if (!(part instanceof THREE.Mesh)) return;
+      for (const material of Array.isArray(part.material) ? part.material : [part.material]) {
+        if (material instanceof THREE.MeshPhysicalMaterial) {
+          expect(material.transmission, material.name).toBe(0);
+        }
+      }
+    });
+  });
+
   it("gives every car a distinct body silhouette at the game's common length", () => {
     const profiles = CAR_VARIANTS.map((variant) => {
       const car = createCarMesh("silhouette-test", undefined, variant);
