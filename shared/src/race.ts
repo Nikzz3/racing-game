@@ -80,7 +80,7 @@ export interface RacePacer {
 /**
  * Rows of two, the front row just behind the start line: inside the start
  * gate, so its lap starts at GO, as the grid Pacers' do. Not the free-driving
- * spawn, whose run-up to the line would cost every driver ~45 m.
+ * spawn, whose run-up to the line would cost every driver 50-60 m.
  */
 const GRID_FRONT_FROM_END = 1;
 const GRID_ROW_SAMPLES = 3;

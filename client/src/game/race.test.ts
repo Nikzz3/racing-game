@@ -95,16 +95,13 @@ describe("gridSlot", () => {
     }
   });
 
-  it.each(TRACKS)(
-    "puts every slot behind $name's start line, never ahead of the Pacers",
-    (track) => {
-      const line = track.checkpoints[0];
-      for (let slot = 0; slot < GRID_SIZE; slot++) {
-        const { x, z } = gridPosition(track, slot);
-        expect((x - line.x) * line.dirX + (z - line.z) * line.dirZ).toBeLessThan(0);
-      }
-    },
-  );
+  it.each(TRACKS)("puts every slot behind $name's start line", (track) => {
+    const line = track.checkpoints[0];
+    for (let slot = 0; slot < GRID_SIZE; slot++) {
+      const { x, z } = gridPosition(track, slot);
+      expect((x - line.x) * line.dirX + (z - line.z) * line.dirZ).toBeLessThan(0);
+    }
+  });
 });
 
 describe("gridPacerPose", () => {
