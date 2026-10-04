@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { RaceEntrant, RaceState, ReplayFrame } from "@racing/shared";
+import {
+  gridSlot,
+  reachedCheckpoint,
+  TRACKS,
+  type RaceEntrant,
+  type RaceState,
+  type ReplayFrame,
+} from "@racing/shared";
 import {
   cycleTarget,
   driveMode,
@@ -68,6 +75,16 @@ describe("the car a Spectator watches", () => {
     // From a car that stopped racing, the step counts from the leader shown instead.
     expect(cycleTarget(field, "x", 1)).toBe("b");
     expect(cycleTarget(race([]), "a", 1)).toBeNull();
+  });
+});
+
+describe("gridSlot", () => {
+  it.each(TRACKS)("puts the front row in $name's start gate, so its lap starts at GO", (track) => {
+    for (const slot of [0, 1]) {
+      const { sample, offset } = gridSlot(track, slot);
+      const { x, z, dirX, dirZ } = track.samples[sample];
+      expect(reachedCheckpoint(track.checkpoints, 0, x - dirZ * offset, z + dirX * offset)).toBe(0);
+    }
   });
 });
 

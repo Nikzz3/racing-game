@@ -77,15 +77,19 @@ export interface RacePacer {
   variant?: Variant;
 }
 
-/** Rows of two, behind the spot every car spawns at today. */
-const GRID_FRONT_FROM_END = 14;
+/**
+ * Rows of two, the front row just behind the start line: inside the start
+ * gate, so its lap starts at GO, as the grid Pacers' do. Not the free-driving
+ * spawn, whose run-up to the line would cost every driver ~45 m.
+ */
+const GRID_FRONT_FROM_END = 1;
 const GRID_ROW_SAMPLES = 3;
 const GRID_HALF_SPACING = 2.5;
 
 /**
  * Where grid slot `slot` sits: a centerline sample index and a lateral offset,
  * as `CarPhysics.spawnAtSample` takes them. Slots fill two abreast, pole on the
- * left, rows stepping back from the usual spawn point; slots beyond GRID_SIZE
+ * left, rows stepping back from the start line; slots beyond GRID_SIZE
  * keep stepping back.
  */
 export function gridSlot(track: Track, slot: number): { sample: number; offset: number } {
