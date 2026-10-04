@@ -816,7 +816,9 @@ a {
 }
 .track-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* One row like the garage, however many Tracks there are. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 24px;
   border-top: 1px solid #ffffff18;
   padding-top: 15px;

@@ -110,7 +110,7 @@ import it again. Scripts run with `T3CODE_PROJECT_ROOT` (the main checkout) and
 - `rl/` — Python port of the car physics plus the PPO trainer that produces the AI
   reference lap policy (see [rl/README.md](rl/README.md))
 
-The rebuilt client has eight cosmetic cars, two circuits, keyboard and touch driving,
+The rebuilt client has eight cosmetic cars, three circuits, keyboard and touch driving,
 live multiplayer, recorded replays, and human or trained AI pacers. The AI reference
 lap is available on Sunset Ridge at Medium difficulty. Leaderboards and recordings
 remain separated by circuit and difficulty.
@@ -142,7 +142,10 @@ cutting the track does not pay off. Best lap times are saved in the database and
 restarts. Rooms also survive restarts but are automatically closed 1 hour after creation.
 
 The Blender source and editing instructions are in [assets/blender](assets/blender/README.md).
-The client loads one shared GLB library and instances roadside geometry. Car geometry
+New circuits are drawn in Blender and checked for drivability with `npm run track:check`;
+the `/new-track` skill and the README's Tracks section cover the workflow (ADR-0015).
+The client loads one shared GLB library plus a small file per newer circuit, and instances
+roadside geometry. Car geometry
 and materials are reused across live drivers, replays, and garage thumbnails.
 
 ## Checks

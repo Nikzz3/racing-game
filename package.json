@@ -24,7 +24,11 @@
     "desktop:start": "npm run start -w desktop",
     "desktop:dist": "npm run dist -w desktop",
     "sandcastle": "npx tsx .sandcastle/main.ts",
-    "jev:record": "tsx scripts/record-jev-lap.ts"
+    "jev:record": "tsx scripts/record-jev-lap.ts",
+    "track:sketch": "python3 scripts/sketch_track.py",
+    "track:new": "tsx scripts/blender-track.ts new",
+    "track:export": "tsx scripts/blender-track.ts export",
+    "track:check": "tsx scripts/check-track.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

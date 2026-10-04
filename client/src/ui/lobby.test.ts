@@ -12,6 +12,7 @@ import {
   type ReplayFrame,
   type Standing,
   type TrackSlug,
+  TRACKS,
 } from "@racing/shared";
 import { shareText } from "./daily-banner";
 import type { ReferenceLap } from "../game/reference-lap";
@@ -752,7 +753,8 @@ describe("Lobby Garage picker", () => {
     click("[data-change-track]");
     expect(q(".lobby-deck").getAttribute("data-screen")).toBe("track");
     expect(q(".track-card.active").getAttribute("data-track")).toBe("stormhaven");
-    click('[data-track-carousel="next"]');
+    // Stepping on past the last track wraps round to the first.
+    for (let index = 1; index < TRACKS.length; index++) click('[data-track-carousel="next"]');
     expect(q(".track-slide.active").getAttribute("data-track-slide")).toBe("sunset-ridge");
   });
 

@@ -39,7 +39,8 @@ Use View > Local View > Toggle Local View to return from an isolated asset to th
 complete workshop.
 
 The library contains eight cars, five trees, three rocks, grass, two flowers, a barrier,
-a cone, a start gate, a grandstand, and both circuits. Cars include separate wheel
+a cone, a start gate, a grandstand, and the Sunset Ridge and Stormhaven circuits. Newer
+circuits live in their own files (see [Tracks](#tracks)). Cars include separate wheel
 pivots, tire tread, spokes, brake discs and calipers, grilles, lights, mirrors, cabin
 details, exhausts, and accessories for each variant.
 Side mirrors and window frames are part of the authored vehicle bodies.
@@ -119,9 +120,44 @@ through computer use, then saved and exported through Blender's UI. The saved
 `.blend` file is the source of truth; no asset-generation script is needed to build
 or run the game.
 
-`tracks.json` records the shared circuit samples used when the track source was made.
-The asset integration test parses the exported GLB, checks every car's tire contact
-and wheel pivots, and raycasts both roads against the shared driving surface.
+The asset integration test parses the exported GLBs, checks every car's tire contact
+and wheel pivots, and raycasts every road against the shared driving surface.
+
+## Tracks
+
+Each Track's source is `shared/src/tracks/<slug>.json`: name, description, checkpoint
+layout (a number of evenly spaced gates, or `"control-points"`) and the control points
+of its closed Catmull-Rom centerline, in game metres (x east, z south on the lobby map).
+The game and the Python RL port both read it (ADR-0015). The `/new-track` skill walks
+the whole workflow; the tools are:
+
+| Command | What it does |
+| --- | --- |
+| `npm run track:sketch -- <slug> <layout.json>` | Writes the JSON from straights and arcs (format in `scripts/sketch_track.py`). Two straights are left open and solved so the loop closes; points come out evenly spaced, which the uniform spline needs to hold each arc's radius. |
+| `npm run track:new -- <slug> "<Name>"` | Creates `tracks/<slug>.blend` with a `centerline` curve seeded from the JSON (or a default loop), then builds it. Refuses to overwrite; delete the `.blend` to reseed from a new sketch. |
+| `npm run track:export -- <slug>` | Rebuilds from the curve, saves, writes the JSON and `client/public/models/tracks/<slug>.glb`. |
+| `npm run track:check -- <slug>` | Hard rules, design targets, and a drive report with `map.png` and `speed.png` in `track-reports/<slug>/` (gitignored). Works before the Track is registered. |
+| `npm run test:e2e -- specs/track-start.spec.ts` | Once registered: in the real client and server, every Track's lap timer starts at the line and its checkpoints count. |
+
+These need Blender 5.2 (`BLENDER` overrides the macOS default path). Run headless
+Blender outside any sandbox that blocks Metal, or it crashes on GPU detection.
+
+In Blender, the design is the `centerline` object in the `design` collection: move its
+points in Edit Mode, keeping them roughly evenly spaced (about 25 m; bunched points kink
+the spline), then run `track_tools.py` from the Text editor to rebuild the road. Its
+custom properties `track_name`, `description` and `checkpoints` are exported to the JSON,
+so edit them there rather than in the JSON. Everything else in the file is generated:
+`track:<slug>` holds the asphalt, gravel shoulders (UVs repeat every 4 m), edge lines,
+alternating curbs, centre dashes and the checkered start line at sample 0;
+`preview:<slug>` reuses those meshes on a beveled grass island with eight giant pines
+for the lobby carousel. Barriers, grandstands, the start gate and roadside scenery are
+placed by the game at runtime.
+
+A track `.blend` links its materials and the preview pines from `sunset-ridge.blend`,
+so it stays a few hundred KB. Its GLB is exported without textures; `models.ts` loads it
+for every Track the library lacks and swaps in the library's textured materials by name.
+A new textured material therefore belongs in the library, exported with it. Track GLBs
+skip `optimize:glb`, whose untextured-UV pruning would strip the shoulder UVs.
 
 ## Reference-based vehicle fleet
 
