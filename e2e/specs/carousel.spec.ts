@@ -95,12 +95,10 @@ test.describe("touch controls", () => {
     await page
       .locator(".offtrack-warn, .cp-miss-warn")
       .evaluateAll((warnings) => warnings.forEach((w) => ((w as HTMLElement).style.opacity = "1")));
-    // One race, resized between checks: portrait then landscape, each on a roomy and a short
-    // phone, and the narrowest portrait phone, where the race actions only just clear the pedals.
+    // One race, resized between checks: portrait then landscape, each on a roomy and a short phone.
     for (const [width, height, name] of [
       [390, 844, "race-hud-portrait-390x844.png"],
       [375, 667, "race-hud-portrait-375x667.png"],
-      [320, 568, "race-hud-portrait-320x568.png"],
       [844, 390, "race-hud-landscape-844x390.png"],
       [667, 375, "race-hud-landscape-667x375.png"],
       [568, 320, "race-hud-landscape-568x320.png"],
@@ -109,6 +107,13 @@ test.describe("touch controls", () => {
       await expectTouchHudFits(page);
       await page.screenshot({ path: testInfo.outputPath(name) });
     }
+    // The narrowest portrait phone, where the three race actions only just clear the pedals.
+    await page.setViewportSize({ width: 320, height: 568 });
+    const actions = await boxOf(page.locator(".hud-actions"));
+    const pedals = await boxOf(page.locator(".touch-pedals"));
+    expectApart(actions, pedals, "race actions and pedals", 20);
+    expectApart(actions, await boxOf(page.locator(".touch-steer")), "race actions and slider", 20);
+    await page.screenshot({ path: testInfo.outputPath("race-hud-portrait-320x568.png") });
   });
 });
 

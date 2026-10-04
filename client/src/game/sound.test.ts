@@ -212,6 +212,23 @@ describe("Sound", () => {
     await vi.waitFor(() => expect(context.state).toBe("running"));
   });
 
+  it("leaves nothing of a half-built race sound plugged into the mix", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const output = sound();
+    // Build the shared mix with a first race, then fail the next one partway through.
+    output.race(TOP_SPEED)!.dispose();
+    const gainsBefore = context.gains.length;
+    let sources = 0;
+    const create = context.createBufferSource.bind(context);
+    context.createBufferSource = () => {
+      if (++sources > 5) throw new DOMException("Out of memory", "NotSupportedError");
+      return create();
+    };
+    expect(output.race(TOP_SPEED)).toBeNull();
+    // The failed race's own output, its first new gain node, is unplugged.
+    expect(context.gains[gainsBefore].outputs.size).toBe(0);
+  });
+
   it("races on in silence when the sound can't be built", () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

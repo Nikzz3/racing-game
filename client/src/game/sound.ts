@@ -242,10 +242,16 @@ export class RaceSound {
     this.output = context.createGain();
     this.output.connect(destination);
     this.engine = new Engine(topSpeed);
-    this.engineVoice = new EngineVoice(context, buffers.engine, this.output);
-    this.squeal = new LoopVoice(context, buffers.squeal, this.output);
-    this.road = new LoopVoice(context, buffers.road, this.output, 600);
-    this.gravel = new LoopVoice(context, buffers.gravel, this.output);
+    try {
+      this.engineVoice = new EngineVoice(context, buffers.engine, this.output);
+      this.squeal = new LoopVoice(context, buffers.squeal, this.output);
+      this.road = new LoopVoice(context, buffers.road, this.output, 600);
+      this.gravel = new LoopVoice(context, buffers.gravel, this.output);
+    } catch (error) {
+      // Every voice plays into the output: unplugged, whatever did start leaves the mix.
+      this.output.disconnect();
+      throw error;
+    }
   }
 
   /** Engine voices playing: the driver's and one per heard car. */
