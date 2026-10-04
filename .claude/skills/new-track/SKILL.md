@@ -49,7 +49,7 @@ Done when the export round-trips (re-exporting changes nothing in the JSON) and 
 
 ## 5. Integrate
 
-- Import the JSON in `shared/src/track.ts` and append the Track to `TRACKS` (lobby order).
+- Import the JSON in `shared/src/track.ts` `with { type: "json" }` (Playwright and the Railway server load it through plain Node) and append the Track to `TRACKS` (lobby order).
 - Name the Track in `CONTEXT.md`'s Track entry and the player-facing `README.md` line.
 - `npm test`, `npm run typecheck`, `npm run lint`, `npx oxfmt --check`: the asset and layout tests cover every Track automatically.
 - Drive it in the running app when one serves this checkout.

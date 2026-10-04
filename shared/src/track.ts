@@ -2,9 +2,9 @@
 // generation, off-track checks and server checkpoint validation all derive from
 // the sampled centerline defined here, from the control points in tracks/*.json.
 
-import arrowhead from "./tracks/arrowhead.json";
-import stormhaven from "./tracks/stormhaven.json";
-import sunsetRidge from "./tracks/sunset-ridge.json";
+import arrowhead from "./tracks/arrowhead.json" with { type: "json" };
+import stormhaven from "./tracks/stormhaven.json" with { type: "json" };
+import sunsetRidge from "./tracks/sunset-ridge.json" with { type: "json" };
 
 export const ROAD_HALF_WIDTH = 7;
 /** Distance from road edge to the physical barrier wall. */
