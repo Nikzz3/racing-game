@@ -5,6 +5,7 @@ import {
   DEFAULT_TRACK_SLUG,
   MAX_SPEED_MS,
   nearestCenterline,
+  pacerCheckpointTimes,
   resolveTrack,
   type Difficulty,
   type PlayerSnapshot,
@@ -23,7 +24,7 @@ import { TouchControls, type SteeringMode } from "./touch";
 import { CarPhysics } from "./physics";
 import { RemotePlayers } from "./remote";
 import { ServerClock } from "./server-clock";
-import { PacerOverlay, pacerCheckpointTimes, pacerDelta } from "./pacer";
+import { PacerOverlay, pacerDelta } from "./pacer";
 import {
   createScene,
   disposeWorld,

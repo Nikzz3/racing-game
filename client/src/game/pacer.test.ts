@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as THREE from "three";
-import type { ReplayFrame } from "@racing/shared";
+import { pacerCheckpointTimes, type ReplayFrame } from "@racing/shared";
 
 vi.mock("./car", async (importOriginal) => {
   const original = await importOriginal<typeof import("./car")>();
@@ -10,7 +10,7 @@ vi.mock("./car", async (importOriginal) => {
 });
 
 import { createCarMesh, resolveVariant } from "./car";
-import { pacerPoseAt, pacerCheckpointTimes, pacerDelta, PacerOverlay } from "./pacer";
+import { pacerPoseAt, pacerDelta, PacerOverlay } from "./pacer";
 
 const frames: ReplayFrame[] = [
   [0, 0, 0, 0, 0],
