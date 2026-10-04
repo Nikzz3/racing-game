@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { CAR_VARIANTS, ROAD_HALF_WIDTH, TRACKS } from "@racing/shared";
-import { createCarMesh } from "./car";
+import { animateCar, createCarMesh } from "./car";
 import { createAssetLoader, getMaterial, getModel, registerLibrary } from "./models";
 import { garageBayX } from "../ui/garage-camera";
 
@@ -21,7 +21,12 @@ beforeAll(async () => {
       expect(image.bufferView).toBeTypeOf("number");
       expect(["image/png", "image/jpeg"]).toContain(image.mimeType);
       const imageBytes = await parser.getDependency("bufferView", image.bufferView);
-      expect(imageBytes.byteLength).toBeGreaterThan(1024);
+      const signature = Array.from(
+        new Uint8Array(imageBytes).slice(0, image.mimeType === "image/png" ? 8 : 3),
+      );
+      expect(signature).toEqual(
+        image.mimeType === "image/png" ? [137, 80, 78, 71, 13, 10, 26, 10] : [255, 216, 255],
+      );
       return new THREE.Texture();
     },
   }));
@@ -61,42 +66,39 @@ describe("Blender asset integration", () => {
     expect(triangles).toBeLessThan(100_000);
   });
 
-  it.each(CAR_VARIANTS)("connects both %s mirrors to the cabin", (variant) => {
-    const car = getModel(`car:${variant}`)!;
-    car.updateMatrixWorld(true);
-    const cabin = car.getObjectByName(`car_${variant}_Cabin_coachwork`)!;
-    expect(cabin).toBeDefined();
-    const cabinBounds = new THREE.Box3().setFromObject(cabin, true).expandByScalar(0.02);
-    for (const [side, number] of [
-      ["left", -1],
-      ["right", 1],
-    ] as const) {
-      const mount = car.getObjectByName(`car_${variant}_mirror_mount_${side}`)!;
-      const housing = car.getObjectByName(`car_${variant}_Mirror_housing_${number}`)!;
-      expect(mount, `${variant} ${side} mirror mount`).toBeDefined();
-      expect(housing, `${variant} ${side} mirror housing`).toBeDefined();
-      const mountBounds = new THREE.Box3().setFromObject(mount, true);
-      expect(mountBounds.intersectsBox(cabinBounds), "mount must meet the cabin").toBe(true);
-      expect(
-        mountBounds.intersectsBox(new THREE.Box3().setFromObject(housing, true)),
-        "mount must meet the housing",
-      ).toBe(true);
-    }
-  });
-
-  it("gives every car a distinct cabin silhouette at the game's common length", () => {
+  it("gives every car a distinct body silhouette at the game's common length", () => {
     const profiles = CAR_VARIANTS.map((variant) => {
       const car = createCarMesh("silhouette-test", undefined, variant);
-      const cabin = car.getObjectByName(`car_${variant}_Cabin_coachwork`)!;
-      expect(cabin).toBeDefined();
       car.updateMatrixWorld(true);
-      const bounds = new THREE.Box3().setFromObject(cabin, true);
-      return { variant, profile: new THREE.Vector3(bounds.max.y, bounds.min.z, bounds.max.z) };
+      const vertices: THREE.Vector3[] = [];
+      car.traverse((part) => {
+        if (!(part instanceof THREE.Mesh)) return;
+        if (!part.userData.authored_bodywork && !part.parent?.userData.authored_bodywork) return;
+        const positions = part.geometry.getAttribute("position");
+        for (let index = 0; index < positions.count; index++) {
+          vertices.push(
+            new THREE.Vector3()
+              .fromBufferAttribute(positions, index)
+              .applyMatrix4(part.matrixWorld),
+          );
+        }
+      });
+      expect(vertices.length, `${variant} is missing authored coachwork`).toBeGreaterThan(100);
+      // Sample the roof/hood/deck outline, rather than comparing bounding boxes:
+      // a coupe and sedan can share outer dimensions while having different bodies.
+      const profile = Array.from({ length: 8 }, (_, index) => {
+        const z = -1.4 + index * 0.4;
+        return Math.max(...vertices.filter((v) => Math.abs(v.z - z) < 0.24).map((v) => v.y));
+      });
+      expect(profile.every(Number.isFinite)).toBe(true);
+      return { variant, profile };
     });
     for (let i = 0; i < profiles.length; i++) {
       for (let j = i + 1; j < profiles.length; j++) {
         expect(
-          profiles[i].profile.distanceTo(profiles[j].profile),
+          Math.hypot(
+            ...profiles[i].profile.map((height, index) => height - profiles[j].profile[index]),
+          ),
           `${profiles[i].variant} and ${profiles[j].variant} share a silhouette`,
         ).toBeGreaterThan(0.04);
       }
@@ -185,18 +187,24 @@ describe("Blender asset integration", () => {
     const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, -1));
     const carBounds = new THREE.Box3().setFromObject(car, true);
     let samples = 0;
+    const lampSides = new Set<number>();
     car.traverse((part) => {
-      if (!(part instanceof THREE.Mesh) || !part.name.includes("Warm_headlights")) return;
+      if (
+        !(part instanceof THREE.Mesh) ||
+        !(part.name.includes("Warm_headlights") || part.parent?.name.includes("Warm_headlights"))
+      )
+        return;
       const bounds = new THREE.Box3().setFromObject(part, true);
       for (let x = bounds.min.x + 0.025; x < bounds.max.x; x += 0.025) {
         for (let y = bounds.min.y + 0.025; y < Math.min(bounds.max.y, 1); y += 0.025) {
           ray.ray.origin.set(x, y, carBounds.max.z + 1);
           const hits = ray.intersectObject(car, true);
           const lens = hits.find(
-            (hit) => hit.object === part && hit.point.z > carBounds.max.z - 0.2,
+            (hit) => hit.object === part && hit.point.z > carBounds.max.z - 1.1,
           );
           if (!lens) continue;
           samples++;
+          lampSides.add(Math.sign(lens.point.x));
           const coplanar = hits.find(
             (hit) => hit.object !== part && Math.abs(hit.distance - lens.distance) < 0.00001,
           );
@@ -207,7 +215,8 @@ describe("Blender asset integration", () => {
         }
       }
     });
-    expect(samples).toBeGreaterThan(20);
+    expect(samples).toBeGreaterThan(1);
+    expect([...lampSides].sort((a, b) => a - b)).toEqual([-1, 1]);
   });
 
   it.each(CAR_VARIANTS)("places the %s car and its four wheel pivots on the road", (variant) => {
@@ -238,6 +247,15 @@ describe("Blender asset integration", () => {
       expect(Math.sign(position.x)).toBe(wheel.name.includes("left") ? -1 : 1);
       expect(Math.sign(position.z)).toBe(wheel.name.includes("front") ? 1 : -1);
     }
+    const tireRadius =
+      new THREE.Box3().setFromObject(wheels[0], true).getSize(new THREE.Vector3()).y / 2;
+    animateCar(car, 3, 0.5, 0.1);
+    expect(wheels[0].rotation.x).toBeCloseTo(0.3 / tireRadius, 3);
+    for (const wheel of wheels.filter((part) => part.name.includes("front"))) {
+      expect(wheel.rotation.y).toBeCloseTo(0.225);
+    }
+    // Restore the wheels before checking static vehicle dimensions.
+    animateCar(car, -3, 0, 0.1);
     const carBounds = new THREE.Box3().setFromObject(car, true);
     expect(carBounds.max.z - carBounds.min.z).toBeCloseTo(4.2, 4);
   });

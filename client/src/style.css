@@ -2792,3 +2792,14 @@ a {
     transition: none !important;
   }
 }
+
+.asset-credits {
+  color: var(--muted, #aab9c2);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+.asset-credits:hover {
+  color: #fff;
+}

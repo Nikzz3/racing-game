@@ -42,8 +42,7 @@ The library contains eight cars, five trees, three rocks, grass, two flowers, a 
 a cone, a start gate, a grandstand, and both circuits. Cars include separate wheel
 pivots, tire tread, spokes, brake discs and calipers, grilles, lights, mirrors, cabin
 details, exhausts, and accessories for each variant.
-Both side mirrors have solid mounting arms connecting their housings to the cabin.
-The asset integration test checks these attachment gaps on all eight cars.
+Side mirrors and window frames are part of the authored vehicle bodies.
 
 The `preview:sunset-ridge` and `preview:stormhaven` collections contain exact circuit
 copies on beveled terrain bases with their own trees for the track carousel. The
@@ -124,29 +123,36 @@ or run the game.
 The asset integration test parses the exported GLB, checks every car's tire contact
 and wheel pivots, and raycasts both roads against the shared driving surface.
 
-## Distinct car bodywork
+## Reference-based vehicle fleet
 
-The car redesign was authored through Blender MCP. Each car has its own longitudinal
-body sections, wheelbase, cabin proportions, roofline and equipment:
+The eight bodies are adapted from separately authored CC-BY 4.0 meshes through Blender MCP.
+Research and first-party photographic references are in
+[`docs/research/vehicle-design-references.md`](../../docs/research/vehicle-design-references.md).
+[Player-facing credits](../../client/public/credits.html) ship with the game; original
+license notices are in `licenses/`. Manufacturer photographs are references only.
 
-| Collection | Shape and details |
+| Collection | Body source and construction |
 | --- | --- |
-| `car:race` | Low GT coupe, raised fenders, cooling louvers, supported rear wing |
-| `car:race-future` | Wide wedge, low canopy, flying buttresses, triangular side intakes |
-| `car:sedan-sports` | Long three-box sedan, tapered cabin, small trunk lip |
-| `car:hatchback-sports` | Short wheelbase, tall rear cabin, roof spoiler |
-| `car:suv` | Upright two-box body, roof rails, running boards, skid plate |
-| `car:taxi` | Long classic sedan, round lamps, chrome bumper, checker strip and roof sign |
-| `car:police` | Broad cruiser, long hood, push bar, lightbar and aerial |
-| `car:van` | Tall cargo body, short hood, sliding-door track and split rear doors |
+| `car:race` | Car Concept by Eric Chadwick / DGG: wide, low coupe; hood vent, detailed interior, supported rear wing |
+| `car:race-future` | SportsCar by Yasutoshi Mori: mid-engine hypercar, concave flanks, deep ducts, projector lamps, detailed brakes |
+| `car:sedan-sports` | Comrade1280 coupe: classic long hood, short trunk, four circular headlamp reflectors, low cabin |
+| `car:hatchback-sports` | Comrade1280 hatchback: short bonnet, taller five-door cabin, near-vertical rear |
+| `car:suv` | Comrade1280 offroad: short two-door 4×4, upright screen, arch cladding and rear spare |
+| `car:taxi` | Comrade1280 sedan: long three-box form, rectangular lamps, chrome grille, checker belt and roof sign |
+| `car:police` | Comrade1280 SUV: long utility body, layered vertical lamps, roof lightbar and fitted push bar |
+| `car:van` | Comrade1280 minivan: long cabin, sliding doors, roof rails and short inclined bonnet |
 
-Body shells have curved shoulders and cut wheel openings. Clearcoat paint, smoked
-reflective glass, satin trim, polished aluminum and separate emissive lamp lenses use
-exportable PBR inputs. Glass remains opaque to avoid transparent sorting and transmission
-passes in the eight-car garage. These are detailed real-time models, not scanned cars.
-The damaged race front-left rim has been repaired in the source; no export repair is needed.
+Each car has its own authored body topology, wheel openings, UVs, window boundaries,
+lamp housings and trim. Six road cars use packed color/metallic/roughness textures;
+the performance cars have modeled interiors, brakes and separate body panels.
+The source retains editable components and game-quality modifiers. The export batches
+static surfaces by materials and each wheel independently, preserving lamp and bodywork
+metadata. All variants remain below 100,000 triangles. The runtime uses the authored
+`tire_radius` on the wheel pivot for rolling animation.
 
-The export batches small static details by material while keeping wheel pivots, body
-shells, cabins, windscreens and mirror attachments individually addressable. The source
-retains separate editable detail objects. Tests verify distinct normalized cabin profiles,
-mirror connections, clear headlights, tire contact and triangle budgets.
+Cars face Blender -Y, with four identity-rotation wheel pivots named `wheel_front_left`,
+`wheel_front_right`, `wheel_rear_left`, and `wheel_rear_right`. The loader normalizes
+length to 4.2 m. This pass changes artwork, not vehicle handling or collision dimensions.
+Tests inspect body proportions, both front lamps, wheel contact, pivot placement,
+texture signatures and geometry budgets. Review the actual exported materials in the
+browser after re-exporting; Blender's material preview handles transmission differently.

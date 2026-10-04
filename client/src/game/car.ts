@@ -55,7 +55,7 @@ export function createCarMesh(id: string, name?: string, variant?: Variant): THR
     car.userData.parts = {
       wheels,
       fronts: wheels.filter((w) => w.name.includes("front")),
-      radius: 0.43 * scale,
+      radius: (Number(wheels[0]?.userData.tire_radius) || 0.43) * scale,
     } satisfies MovingParts;
     car.add(body);
   } else {

@@ -1,10 +1,7 @@
-"""Run in Blender's Python console to export the library with batched car details.
+"""Export the saved library, batching static surfaces and each wheel independently.
 
-exec(compile(open('/absolute/path/to/assets/blender/export-library.py').read(),
-             'export-library.py', 'exec'))
-
-Save your source first. This batches details in memory, exports, then reloads the saved source.
-Editable component objects are preserved in the saved source.
+Run in Blender: exec(open('/absolute/path/to/assets/blender/export-library.py').read())
+The saved source keeps its editable components and modifiers; batching is temporary.
 """
 from pathlib import Path
 import bpy
@@ -19,24 +16,26 @@ try:
             continue
         groups = {}
         for obj in list(collection.objects):
-            if obj.type != 'MESH' or obj.parent or any(key in obj.name for key in (
-                'Sculpted body shell', 'Cabin coachwork', 'mirror_mount_',
-                'Mirror housing', 'Windscreen',
-            )):
+            if obj.type != 'MESH':
                 continue
             bpy.context.view_layer.objects.active = obj
             for modifier in list(obj.modifiers):
                 bpy.ops.object.modifier_apply(modifier=modifier.name)
-            groups.setdefault(obj.data.materials[0].name, []).append(obj)
-        for material, objects in groups.items():
+            # Keep lamps and bodywork identifiable, and never join across moving pivots.
+            key = (obj.parent, tuple(m.name for m in obj.data.materials),
+                   bool(obj.get('authored_bodywork')), 'Warm_headlights' in obj.name)
+            groups.setdefault(key, []).append(obj)
+        for (parent, materials, bodywork, headlight), objects in groups.items():
             bpy.ops.object.select_all(action='DESELECT')
             for obj in objects:
+                obj.hide_set(False)
                 obj.select_set(True)
             bpy.context.view_layer.objects.active = objects[0]
             if len(objects) > 1:
                 bpy.ops.object.join()
-            label = 'Warm_headlights' if material == 'Automotive LED headlamps' else material
+            label = 'Warm_headlights' if headlight else materials[0]
             objects[0].name = collection.name.replace(':', '_') + '_' + label
+            objects[0]['authored_bodywork'] = bodywork
     bpy.ops.export_scene.gltf(
         filepath=str(output), export_format='GLB', use_selection=False,
         use_visible=False, use_renderable=False, use_active_scene=True,
