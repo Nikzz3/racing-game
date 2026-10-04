@@ -109,6 +109,14 @@ describe("raceEvents", () => {
     expect(raceEvents(race(knockout.entrants), next, "me")).toEqual(["You finished P2"]);
   });
 
+  it("leaves the last elimination or finish to the results screen", () => {
+    const over = race([entrant("a", "finished"), entrant("me", "out"), entrant("b", "out")], {
+      format: "knockout",
+      phase: "results",
+    });
+    expect(raceEvents(knockout, over, "me")).toEqual([]);
+  });
+
   it("calls a Race's DNF nothing", () => {
     const next = race([entrant("a"), entrant("me"), entrant("b", "out")]);
     expect(raceEvents(race(knockout.entrants), next, "me")).toEqual([]);

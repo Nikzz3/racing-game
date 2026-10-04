@@ -213,7 +213,8 @@ export class Hud {
     this.el(".hud-start-race").hidden = !startable;
     this.el(".hud-start-knockout").hidden = !startable;
     this.el(".hud-standings").hidden = race !== null;
-    this.el(".race-standings").hidden = race === null;
+    // The results screen shows the same order, final.
+    this.el(".race-standings").hidden = race === null || race.phase === "results";
     this.el(".race-results").classList.toggle("visible", race?.phase === "results");
     const index = race ? race.entrants.findIndex((e) => e.id === myId) : -1;
     const me = race && index >= 0 ? race.entrants[index] : null;

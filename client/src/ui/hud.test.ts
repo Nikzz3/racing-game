@@ -286,6 +286,8 @@ describe("Hud race", () => {
     hud.setRace(field({ format: "knockout" }), "me");
     expect($(".race-standings h3").textContent).toBe("KNOCKOUT");
     expect(texts(".race-standings td.rs-status").at(-1)).toBe("OUT");
+    hud.setRace(field({ phase: "results" }), "me");
+    expect([$(".hud-standings").hidden, $(".race-standings").hidden]).toEqual([true, true]);
     hud.setRace(null, "me");
     expect([$(".hud-standings").hidden, $(".race-standings").hidden]).toEqual([false, true]);
   });

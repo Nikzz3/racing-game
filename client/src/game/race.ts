@@ -72,13 +72,16 @@ export function gridPacerPose(frames: ReplayFrame[], goT: number, serverNow: num
   return interpolatePose(frames, elapsed % lapMs);
 }
 
-/** Toasts for what changed between two states of one race: Knockout eliminations, and the local driver's finish. */
+/**
+ * Toasts for what changed between two states of one race: Knockout eliminations,
+ * and the local driver's finish. None once the results are up: they say it all.
+ */
 export function raceEvents(
   previous: RaceState | null,
   next: RaceState | null,
   myId: string,
 ): string[] {
-  if (!previous || !next || previous.goT !== next.goT) return [];
+  if (!previous || !next || previous.goT !== next.goT || next.phase === "results") return [];
   const before = new Map(previous.entrants.map((e) => [e.id, e.status]));
   return next.entrants.flatMap((entrant, index) => {
     if (before.get(entrant.id) !== "racing") return [];
