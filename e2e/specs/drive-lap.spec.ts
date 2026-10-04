@@ -22,8 +22,9 @@ function leaderboardNames(page: Page): Promise<string[]> {
 }
 
 // One real-time lap carries every assertion that needs a server-accepted lap:
-// checkpoint order, the persisted Variant, leaderboard rank among seeded rivals
-// (segregated by Track and Difficulty), the Pacer picker, and reload persistence.
+// checkpoint order, the persisted Variant, leaderboard rank among seeded drivers
+// (segregated by Track and Difficulty), the Medal chip and next Rival it answers,
+// the Pacer picker, and reload persistence.
 // A second lap-driving spec would cost the suite another 40s of wall time.
 test("drives a server-accepted Plausible Lap through every Checkpoint in order", async ({
   db,
@@ -32,9 +33,11 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
 }) => {
   // Server truncates names to 16 chars (see server/src/index.ts), so stay within it.
   const playerName = "lap-driver";
-  // Rivals bracket the driven lap: Alpha is faster, Omega slower. Other Pair is
-  // faster than everyone but on another (Track, Difficulty) pair: never listed here.
+  // Seeded laps bracket the driven lap: Alpha and Rung are faster, Omega slower.
+  // Other Pair is faster than everyone but on another (Track, Difficulty) pair:
+  // never listed here. Only Rung has a Replay, which makes it the Rival.
   await db.seedBestLap({ name: "Alpha", timeMs: 1_000 });
+  await db.seedBestLap({ name: "Rung", timeMs: 2_000, withReplay: true });
   await db.seedBestLap({ name: "Omega", timeMs: 9_999_999 });
   await db.seedBestLap({
     name: "Other Pair",
@@ -46,7 +49,7 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   // writes this same localStorage key.
   await page.addInitScript(() => localStorage.setItem("racer-variant", "taxi"));
   await game.createRace({ playerName, roomName: "valid-lap" });
-  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", "Omega"]);
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", "Rung", "Omega"]);
 
   const result = await game.driveLap();
 
@@ -62,7 +65,15 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
   // The hello carried the taxi Variant; the persisted lap snapshots it.
   expect(accepted.rows).toEqual([{ name: playerName, variant: "taxi" }]);
   expect((await db.bestLapFor(playerName)).map((lap) => lap.name)).toEqual([playerName]);
-  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", "Rung", playerName, "Omega"]);
+
+  // #169: the server answers the lap with the driver's Standing. A lap of about
+  // 40 s earns no Medal yet, and Rung, the slowest replay-bearing lap ahead, is
+  // offered as the next Rival; N races it as the Pacer in place.
+  await expect(page.locator(".hud-medal")).toHaveAttribute("data-next", "bronze");
+  await expect(page.locator(".rival-prompt")).toContainText("Rung");
+  await page.keyboard.press("KeyN");
+  await expect(page.locator(".pacer-chip-name")).toHaveText("Rung");
 
   // #127: a Pacer drives the Variant recorded with its lap. Leave the Room, arm a
   // Pacer from the picker, race again, and read the PacerOverlay seam.
@@ -73,14 +84,16 @@ test("drives a server-accepted Plausible Lap through every Checkpoint in order",
     await page.waitForFunction(() => window.__game !== undefined);
   };
 
-  // Value "0" is the single replay-bearing human entry: lap-driver's lap above.
-  // (The AI Record's canonical Variant needs no driven lap; pacer.spec.ts covers it.)
-  await raceAgainst("0", "pacer-vs-taxi");
+  // The Lobby offers Rung as the Next rival too, so value "1" is the other
+  // replay-bearing entry: lap-driver's lap above. (The AI Record's canonical
+  // Variant needs no driven lap; pacer.spec.ts covers it.)
+  await raceAgainst("1", "pacer-vs-taxi");
+  await expect(page.locator('.pacer-select option[value="rival"]')).toContainText("Rung");
   await expect.poll(pacerVariant, { timeout: 10_000 }).toBe("taxi");
 
   // The rank came from Postgres, not from client state: it survives a reload.
   await page.reload();
-  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", playerName, "Omega"]);
+  await expect.poll(() => leaderboardNames(page)).toEqual(["Alpha", "Rung", playerName, "Omega"]);
 });
 
 // "A slower lap never overwrites a driver's better time" is a server/Postgres

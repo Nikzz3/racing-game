@@ -16,6 +16,7 @@ const DRIVING_KEYS = new Set([
   "ArrowDown",
   "ArrowRight",
   "KeyR",
+  "KeyN",
 ]);
 const STEER_CHANGE_PER_SECOND = 3;
 
@@ -26,6 +27,8 @@ export class Input {
   onRespawn: (() => void) | null = null;
   /** ←/→ pressed: a Spectator steps through the cars still racing. */
   onCycle: ((step: 1 | -1) => void) | null = null;
+  /** N races the Rival the HUD is offering as the Pacer. */
+  onRaceRival: (() => void) | null = null;
 
   constructor(private readonly touch: TouchControls | null = null) {}
 
@@ -39,6 +42,10 @@ export class Input {
     event.preventDefault();
     if (event.code === "KeyR") {
       if (!event.repeat) this.onRespawn?.();
+      return;
+    }
+    if (event.code === "KeyN") {
+      if (!event.repeat) this.onRaceRival?.();
       return;
     }
     this.keys.add(event.code);

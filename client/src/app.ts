@@ -36,6 +36,8 @@ export class RacingApp {
    */
   private race: RaceState | null = null;
   private racePacers: RacePacer[] = [];
+  /** The Variant the server holds for this driver, which their own car must match. */
+  private variant: Variant | undefined;
 
   constructor(private readonly root: HTMLElement) {
     this.lobby = new Lobby(root, {
@@ -50,6 +52,7 @@ export class RacingApp {
       onReplay: (name, track, difficulty) =>
         this.net.send({ type: "getReplay", name, track, difficulty }),
       onVariantChange: () => this.hello(),
+      onNameChange: () => this.requestStandings(),
       onReferenceLap: () => {
         const lap = this.lobby.getReferenceLap();
         if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
@@ -117,11 +120,12 @@ export class RacingApp {
     this.reconnectTimer = setTimeout(() => void this.start(), delay);
   }
   private hello(): void {
-    this.net.send({
-      type: "hello",
-      name: this.lobby.playerName,
-      variant: this.lobby.selectedVariant,
-    });
+    this.variant = this.lobby.selectedVariant;
+    this.net.send({ type: "hello", name: this.lobby.playerName, variant: this.variant });
+  }
+  /** Medals, unlocks and the Rival all derive from the driver name's Standings. */
+  private requestStandings(): void {
+    this.net.send({ type: "getStandings", name: this.lobby.playerName });
   }
   private returnToLobby(): void {
     this.revision++;
@@ -138,6 +142,13 @@ export class RacingApp {
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
+        this.requestStandings();
+        return;
+      case "standings":
+        // A lap finished under a name the driver has since changed reports the old name.
+        if (message.name !== this.lobby.playerName) return;
+        this.lobby.setStandings(message.standings);
+        if (this.view instanceof Game) this.view.setStandings(message.standings, message.afterLap);
         return;
       case "rooms":
         this.lobby.setRooms(message.rooms);
@@ -161,7 +172,7 @@ export class RacingApp {
         return;
       case "replay":
         if (this.view instanceof Game)
-          this.view.receiveReplayFrames(message.frames, message.variant);
+          this.view.receiveReplayFrames(message.frames, message.variant, message.name);
         else if (!this.joining)
           await this.openReplay(
             message.name,
@@ -193,11 +204,12 @@ export class RacingApp {
             message.difficulty,
             message.track,
             pacer,
-            this.lobby.selectedVariant,
+            this.variant,
             this.lobby.steering,
           );
           this.view = game;
           this.joining = false;
+          game.setStandings(this.lobby.standings);
           if (this.race) {
             game.onMessage({ type: "racePacers", pacers: this.racePacers });
             game.onMessage({ type: "race", race: this.race });

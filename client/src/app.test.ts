@@ -33,6 +33,7 @@ vi.mock("./game/game", () => ({
     onMessage(message: ServerMessage) {
       this.messages.push(message);
     }
+    setStandings() {}
     dispose() {}
   },
 }));

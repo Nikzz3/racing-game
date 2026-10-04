@@ -1,14 +1,22 @@
 import {
   COUNTDOWN_MS,
+  MEDAL_LABELS,
+  medalFor,
+  nextMedal,
   trackPath,
+  type Medal,
+  type MedalTimes,
   type PlayerSnapshot,
   type RaceEntrant,
   type RaceFormat,
   type RaceState,
   type Track,
+  type Variant,
 } from "@racing/shared";
 import type { RemotePosition } from "../game/remote";
 import { escapeHtml, formatMs } from "../util";
+import { medalBadge } from "./medal-art";
+import { AWARD_MS, medalAward } from "./medal-award";
 
 // Cosmetic gauge calibration; physics and network speeds remain in world units.
 const DISPLAY_SPEED_SCALE = 0.5;
@@ -16,6 +24,7 @@ const DIAL_MAX_KMH = 200;
 // The lap time redraws at most this often (20 Hz): every new string re-rasters the
 // 48px digits, and nobody reads milliseconds at 60 Hz anyway.
 const LAP_TIMER_STEP_MS = 50;
+const RIVAL_PROMPT_MS = 9000;
 /** How long "GO!" stays up once the countdown ends. */
 const GO_SHOWN_MS = 1000;
 
@@ -75,6 +84,12 @@ export class Hud {
   private lapShown: number | null = null;
   private checkpointFill = "";
   private readonly remoteDots = new Map<string, HTMLElement>();
+  private medalKey = "";
+  private rivalPrompt: {
+    element: HTMLElement;
+    race: () => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   constructor(
     parent: HTMLElement,
     roomName: string,
@@ -85,14 +100,14 @@ export class Hud {
     race?: RaceControls,
   ) {
     this.root.className = "hud";
-    this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="race-position" hidden></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
+    this.root.innerHTML = `<div class="hud-panel hud-top-left"><div class="hud-room">${escapeHtml(roomName)}</div><div class="hud-progress"><div class="hud-lap">LAP 0</div><div class="hud-cp">CP 0/${checkpointCount}</div></div><div class="hud-checkpoint-bar"><i></i></div><div class="race-position" hidden></div><div class="hud-medal" hidden><span class="hud-medal-badge"></span><span class="hud-medal-text"><span class="hud-medal-label"></span> <b class="hud-medal-time"></b></span></div><div class="pacer-chip"><span class="pacer-chip-label">PACER</span><span class="pacer-chip-name"></span><button class="pacer-chip-dismiss" title="Dismiss Pacer" aria-label="Dismiss Pacer">✕</button></div></div>
     <div class="hud-panel hud-timer"><div class="hud-timer-label">LAP TIME</div><div class="hud-cur-lap">--:--.---</div><div class="hud-lap-small"><span>LAST <b class="hud-last">--:--.---</b></span><span>BEST <b class="hud-best">--:--.---</b></span></div></div>
     <div class="hud-panel hud-standings"><h3>BEST LAPS</h3><table><tbody></tbody></table></div>
     <div class="hud-panel race-standings" hidden><h3>RACE</h3><table><tbody></tbody></table></div>
     <div class="hud-panel hud-speed"><svg class="speed-dial" viewBox="0 0 200 200" aria-hidden="true"><path class="speed-dial-shadow" d="M 36 155 A 84 84 0 1 1 164 155"/><path class="speed-dial-track" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/><path class="speed-dial-fill" d="M 36 155 A 84 84 0 1 1 164 155" pathLength="100"/></svg><span class="speed-value">0</span><span class="speed-unit">KM/H</span></div>
     ${track ? `<div class="hud-map"><div class="hud-map-plot"><svg viewBox="-265 -250 530 500" aria-label="Circuit map"><path class="hud-map-shadow" d="${trackPath(track)}"/><path d="${trackPath(track)}"/></svg><div class="hud-map-remotes"></div><i class="hud-map-dot hud-map-driver"></i></div><span>${escapeHtml(track.name.replace(" Circuit", ""))}</span></div>` : ""}
     <div class="hud-actions"><button class="hud-leave">Leave race</button>${onRespawn ? '<button class="hud-respawn">Respawn</button>' : ""}<button class="hud-start-race">Start race</button><button class="hud-start-knockout">Start knockout</button></div>
-    <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div>
+    <div class="offtrack-warn">OFF TRACK</div><div class="cp-miss-warn">CHECKPOINT MISSED<span>Respawn or drive back through the gate</span></div><div class="medal-award-slot" aria-live="polite"></div>
     <div class="race-countdown"></div>
     <div class="spectator-banner"><button class="spectator-prev" aria-label="Previous car">‹</button><div class="spectator-info"><span class="spectator-label">SPECTATING</span><span class="spectator-target"></span></div><button class="spectator-next" aria-label="Next car">›</button></div>
     <div class="race-results"><h2></h2><ol class="race-results-list"></ol><div class="race-results-return"></div></div>
@@ -283,16 +298,78 @@ export class Hud {
   hidePacerChip(): void {
     this.el(".pacer-chip").classList.remove("visible");
   }
+  /** The Medal this board's persisted best earned (or an empty slot) and the next target. */
+  setMedal(times: MedalTimes | null, bestMs: number | null): void {
+    const chip = this.el(".hud-medal");
+    chip.hidden = times === null;
+    if (!times) return;
+    const earned = medalFor(times, bestMs),
+      next = nextMedal(times, bestMs);
+    const key = `${earned}:${next}:${next ? times[next] : bestMs}`;
+    if (key === this.medalKey) return;
+    this.medalKey = key;
+    chip.dataset.medal = earned ?? "none";
+    chip.dataset.next = next ?? "none";
+    this.el(".hud-medal-badge").innerHTML = earned
+      ? medalBadge(earned)
+      : next
+        ? medalBadge(next, "", { empty: true })
+        : "";
+    this.text(
+      ".hud-medal-label",
+      next ? `NEXT · ${MEDAL_LABELS[next].toUpperCase()}` : "AUTHOR EARNED",
+    );
+    this.text(".hud-medal-time", formatMs(next ? times[next] : bestMs));
+  }
+  /** Celebrate a better Medal; a later award replaces this one. */
+  awardMedal(medal: Medal, lapMs: number, unlocked: readonly Variant[]): void {
+    const award = medalAward(medal, lapMs, unlocked);
+    this.el(".medal-award-slot").replaceChildren(award);
+    this.later(AWARD_MS, () => award.remove());
+  }
+  /** Offer the next Rival as the Pacer until it times out, is replaced or is accepted. */
+  showRivalPrompt(name: string, timeMs: number, onRace: () => void): void {
+    this.hideRivalPrompt();
+    const element = document.createElement("div");
+    element.className = "toast rival-prompt";
+    element.innerHTML = `<span>NEXT RIVAL · <b>${escapeHtml(name)}</b> · ${formatMs(timeMs)}</span><button type="button" class="rival-prompt-race">Race rival<kbd>N</kbd></button>`;
+    const race = () => {
+      this.hideRivalPrompt();
+      onRace();
+    };
+    element.querySelector("button")!.onclick = race;
+    this.el(".toasts").append(element);
+    this.rivalPrompt = {
+      element,
+      race,
+      timer: this.later(RIVAL_PROMPT_MS, () => this.hideRivalPrompt()),
+    };
+  }
+  /** The prompt's keyboard shortcut: race the offered Rival, if one is on offer. */
+  acceptRivalPrompt(): void {
+    this.rivalPrompt?.race();
+  }
+  hideRivalPrompt(): void {
+    if (!this.rivalPrompt) return;
+    clearTimeout(this.rivalPrompt.timer);
+    this.timers.delete(this.rivalPrompt.timer);
+    this.rivalPrompt.element.remove();
+    this.rivalPrompt = null;
+  }
   toast(message: string, record = false): void {
     const item = document.createElement("div");
     item.className = record ? "toast record" : "toast";
     item.textContent = message;
     this.el(".toasts").append(item);
+    this.later(3800, () => item.remove());
+  }
+  private later(ms: number, task: () => void): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
-      item.remove();
       this.timers.delete(timer);
-    }, 3800);
+      task();
+    }, ms);
     this.timers.add(timer);
+    return timer;
   }
   dispose(): void {
     for (const timer of this.timers) clearTimeout(timer);

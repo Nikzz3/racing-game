@@ -80,7 +80,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "state", x: 0, y: 0, z: 0, rot: 0 })).toBeNull();
   });
 
-  it("validates getReplay and joinRoom string fields", () => {
+  it("validates getReplay, getStandings and joinRoom string fields", () => {
     expect(
       parseClientMessage({
         type: "getReplay",
@@ -90,6 +90,11 @@ describe("parseClientMessage", () => {
       }),
     ).toEqual({ type: "getReplay", name: "Ada", difficulty: "hard", track: "stormhaven" });
     expect(parseClientMessage({ type: "getReplay" })).toBeNull();
+    expect(parseClientMessage({ type: "getStandings", name: "Ada" })).toEqual({
+      type: "getStandings",
+      name: "Ada",
+    });
+    expect(parseClientMessage({ type: "getStandings", name: 7 })).toBeNull();
     expect(parseClientMessage({ type: "joinRoom", roomId: "abc123" })).toEqual({
       type: "joinRoom",
       roomId: "abc123",

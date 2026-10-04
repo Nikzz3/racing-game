@@ -7,3 +7,4 @@ export * from "./handling";
 export * from "./racing-line";
 export * from "./jev";
 export * from "./race";
+export * from "./medals";

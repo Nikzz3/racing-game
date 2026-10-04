@@ -16,6 +16,18 @@ export const CAR_VARIANTS = [
 
 export type Variant = (typeof CAR_VARIANTS)[number];
 
+/** Display names, as the Garage shows them. */
+export const VARIANT_LABELS: Record<Variant, string> = {
+  race: "Race",
+  "race-future": "Hyper",
+  "sedan-sports": "Coupe S",
+  "hatchback-sports": "Hatch S",
+  suv: "SUV",
+  taxi: "Taxi",
+  police: "Police",
+  van: "Van",
+};
+
 export function isVariant(value: unknown): value is Variant {
   return (CAR_VARIANTS as readonly unknown[]).includes(value);
 }
