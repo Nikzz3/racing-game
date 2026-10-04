@@ -127,10 +127,18 @@ export class Rumble {
 
   private play(effect: GamepadEffectParameters): void {
     for (const pad of this.pads()) {
-      // Typed as always present, but missing outside Chromium and on pads without motors.
-      const actuator = usable(pad) ? (pad.vibrationActuator as GamepadHapticActuator | null) : null;
-      // Rejected while the pad is busy or the page is hidden; rumble is best effort.
-      actuator?.playEffect("dual-rumble", effect).catch(() => undefined);
+      if (!usable(pad)) continue;
+      // Typed as always present, but missing outside Chromium and on pads without motors,
+      // and possibly partial elsewhere.
+      const actuator = pad.vibrationActuator as Partial<GamepadHapticActuator> | null;
+      if (typeof actuator?.playEffect !== "function") continue;
+      // Rumble is best effort, and this runs inside the frame loop: a refusal (a busy pad,
+      // a hidden page) rejects, and an implementation that throws instead is caught too.
+      try {
+        actuator.playEffect("dual-rumble", effect).catch(() => undefined);
+      } catch {
+        // Nothing to do: the pad just doesn't rumble.
+      }
     }
   }
 }

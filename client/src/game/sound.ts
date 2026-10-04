@@ -92,6 +92,8 @@ export class Sound {
   private races = 0;
   /** No Web Audio, or the browser refused a context: every race runs silent. */
   private unavailable = false;
+  /** Whether the context has ever run; see `gesture`. */
+  private started = false;
 
   constructor(
     readonly settings: SoundSettings,
@@ -106,14 +108,23 @@ export class Sound {
   race(topSpeed: number): RaceSound | null {
     const context = this.open();
     if (!context) return null;
-    this.mix ??= buildMix(context, this.settings.gain);
+    let race: RaceSound;
+    try {
+      this.mix ??= buildMix(context, this.settings.gain);
+      race = new RaceSound(context, this.mix.master, this.mix.buffers, topSpeed, () => {
+        this.races--;
+        // Let the stopped voices fade before the context stops rendering.
+        setTimeout(this.wake, (RELEASE * 2 + 0.05) * 1000);
+      });
+    } catch (error) {
+      // Out of memory, say: lose the sound, not the race. Any voice started before the
+      // failure never had its level raised from 0.
+      console.warn("Race sound could not start", error);
+      return null;
+    }
     this.races++;
     this.wake();
-    return new RaceSound(context, this.mix.master, this.mix.buffers, topSpeed, () => {
-      this.races--;
-      // Let the stopped voices fade before the context stops rendering.
-      setTimeout(this.wake, (RELEASE * 2 + 0.05) * 1000);
-    });
+    return race;
   }
 
   /** The output as the e2e journey sees it: null before the first race. */
@@ -139,11 +150,15 @@ export class Sound {
     return this.context;
   }
 
+  /**
+   * Started inside a gesture, the context may be resumed later without one. A start can
+   * be refused (a touch only counts once released), so every gesture retries until the
+   * context has run once.
+   */
   private gesture = (): void => {
-    const unlocking = !this.context;
     const context = this.open();
-    // Started inside a gesture, the context may be resumed later without one.
-    if (unlocking) context?.resume().catch(() => undefined);
+    if (context && !this.started && context.state !== "running")
+      context.resume().catch(() => undefined);
     else this.wake();
   };
 
@@ -154,6 +169,7 @@ export class Sound {
   private wake = (): void => {
     const context = this.context;
     if (!context) return;
+    if (context.state === "running") this.started = true;
     const wanted = this.races > 0 && !document.hidden;
     // Safari also stops a context as "interrupted" (a phone call, say), which resume() ends.
     // Both reject while the context is closing; there is nothing left to play then.

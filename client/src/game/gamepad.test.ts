@@ -157,6 +157,18 @@ describe("Rumble", () => {
     expect(playEffect).toHaveBeenCalledTimes(2);
   });
 
+  it("never lets a broken actuator stop the race", () => {
+    const throwing = vi.fn(() => {
+      throw new TypeError("Unsupported effect");
+    });
+    // An actuator without playEffect at all.
+    const partial = Object.defineProperty(pad(), "vibrationActuator", { value: {} });
+    const rumble = rumbling([pad({ playEffect: throwing }), partial]);
+    expect(() => rumble.impact(1, 0)).not.toThrow();
+    expect(() => rumble.surface(1, 1000)).not.toThrow();
+    expect(throwing).toHaveBeenCalledTimes(2);
+  });
+
   it("swallows a refused effect", async () => {
     const playEffect = vi.fn(() => Promise.reject(new Error("busy")));
     rumbling([pad({ playEffect })]).impact(1, 0);

@@ -181,13 +181,49 @@ describe("Sound", () => {
     window.dispatchEvent(new PointerEvent("pointerdown"));
     window.dispatchEvent(new PointerEvent("pointerup"));
     expect(create).toHaveBeenCalledOnce();
-    expect(context.resume).toHaveBeenCalledOnce();
+    // The release retries while the press's start is still landing; that is harmless.
+    expect(context.resume).toHaveBeenCalled();
     // Started, and with no race on, stopped again.
     await vi.waitFor(() => expect(context.suspend).toHaveBeenCalled());
     await vi.waitFor(() => expect(context.state).toBe("suspended"));
     output.race(TOP_SPEED);
     await vi.waitFor(() => expect(context.state).toBe("running"));
     expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("retries the start on every Lobby gesture until one is allowed", async () => {
+    context.deferred = true;
+    // A touch only activates the page on release: the press that created the context
+    // couldn't start it.
+    context.allowed = false;
+    const output = sound();
+    window.dispatchEvent(new PointerEvent("pointerdown"));
+    await Promise.resolve();
+    expect(context.state).toBe("suspended");
+    context.allowed = true;
+    window.dispatchEvent(new PointerEvent("pointerup"));
+    await vi.waitFor(() => expect(context.resume).toHaveBeenCalledTimes(2));
+    // Once it has run, the Lobby suspends it, and gestures stop retrying.
+    await vi.waitFor(() => expect(context.suspend).toHaveBeenCalled());
+    await vi.waitFor(() => expect(context.state).toBe("suspended"));
+    window.dispatchEvent(new PointerEvent("pointerdown"));
+    expect(context.resume).toHaveBeenCalledTimes(2);
+    output.race(TOP_SPEED);
+    await vi.waitFor(() => expect(context.state).toBe("running"));
+  });
+
+  it("races on in silence when the sound can't be built", () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    context.createBuffer = () => {
+      throw new DOMException("Out of memory", "NotSupportedError");
+    };
+    const output = sound();
+    expect(output.race(TOP_SPEED)).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    // Not counted as a race, so nothing keeps the context running.
+    vi.advanceTimersByTime(1000);
+    expect(context.state).not.toBe("running");
   });
 
   it("resumes a race whose page came back before its suspend landed", async () => {
