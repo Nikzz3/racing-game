@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHECKPOINT_PENALTY_MS,
   COUNTDOWN_MS,
   GRACE_MS,
   RACE_LAPS,
@@ -36,10 +37,18 @@ function pacer(id: string, lapMs: number): RacePacer {
   return { id, name: id, frames };
 }
 
-/** Report a driver's timing once it has passed `count` Checkpoints since GO, the line included. */
-function drive(race: Race, id: string, count: number, t: number): void {
+/**
+ * Report a driver's timing once it has passed `count` Checkpoints since GO, the
+ * line included, having missed `missed` this session.
+ */
+function drive(race: Race, id: string, count: number, t: number, missed = 0): void {
   const laps = count ? Math.floor((count - 1) / N) : 0;
-  race.driverProgress(id, { laps, next: (count - laps * N) % N, lapStartT: count ? 0 : null }, t);
+  const next = (count - laps * N) % N;
+  race.driverProgress(
+    id,
+    { laps, next, lapStartT: count ? 0 : null, missedCheckpoints: missed },
+    t,
+  );
 }
 
 /** The Checkpoints passed on completing `laps` laps: back across the line. */
@@ -219,5 +228,45 @@ describe("grid Pacers", () => {
       "pacer:4 R4",
     ]);
     expect(gridPacers(["A", "B", "C", "D", "E", "F"], replays)).toEqual([]);
+  });
+});
+
+describe("Checkpoint Penalties", () => {
+  it("finishes a penalized driver only once its penalty is served, so a cleaner finish beats it", () => {
+    const ranked = callRace("race", ["ava", "ben"]);
+    ranked.tick(GO);
+    // Misses from free driving before GO are not the race's to pay.
+    drive(ranked, "ava", 1, GO + 50, 5);
+    drive(ranked, "ava", lap(RACE_LAPS), GO + 90_000, 6);
+    expect(positions(ranked, GO + 90_000)).toEqual(["ava racing", "ben racing"]);
+
+    drive(ranked, "ben", lap(RACE_LAPS), GO + 91_000);
+    drive(ranked, "ava", lap(RACE_LAPS), GO + 90_000 + CHECKPOINT_PENALTY_MS, 6);
+    expect(ranked.tick(GO + 93_000)).toMatchObject({
+      entrants: [
+        { id: "ben", status: "finished", finishMs: 91_000 },
+        { id: "ava", status: "finished", finishMs: 90_000 + CHECKPOINT_PENALTY_MS },
+      ],
+    });
+  });
+
+  it("knocks out a car still serving a penalty when the rest complete the lap first", () => {
+    const knockout = callRace("knockout", ["ava", "ben", "cy"]);
+    knockout.tick(GO);
+    for (const id of ["ava", "ben", "cy"]) drive(knockout, id, 1, GO + 50);
+    drive(knockout, "ava", lap(1), GO + 40_000, 1);
+    drive(knockout, "ben", lap(1), GO + 41_000);
+    drive(knockout, "cy", lap(1), GO + 41_500);
+    expect(positions(knockout, GO + 41_500)).toEqual(["ben racing", "cy racing", "ava out"]);
+  });
+
+  it("counts a served lap at its own time, even before the driver's next state", () => {
+    const knockout = callRace("knockout", ["ava", "ben", "cy"]);
+    knockout.tick(GO);
+    for (const id of ["ava", "ben", "cy"]) drive(knockout, id, 1, GO + 50);
+    drive(knockout, "ava", lap(1), GO + 40_000, 1);
+    drive(knockout, "ben", lap(1), GO + 41_000);
+    drive(knockout, "cy", lap(1), GO + 40_000 + CHECKPOINT_PENALTY_MS + 10);
+    expect(positions(knockout, GO + 42_010)).toEqual(["ben racing", "ava racing", "cy out"]);
   });
 });

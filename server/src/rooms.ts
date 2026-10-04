@@ -175,6 +175,8 @@ export class Room {
       lastLapMs: player.timing.lastLapMs,
       bestLapMs: player.timing.bestLapMs,
       lapStartT: player.timing.lapStartT,
+      lapPenaltyMs: player.timing.penaltyMs,
+      missedCheckpoints: player.timing.missedCheckpoints,
       nextCheckpoint: player.timing.next,
       spawns: player.timing.spawns,
       t: player.stateT ?? undefined,
