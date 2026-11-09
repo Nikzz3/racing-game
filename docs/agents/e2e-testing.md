@@ -68,11 +68,21 @@ click, and no journey asserts on their pixels. The race scene still renders, so 
 that needs WebGL exercised should drive into a Room. Do not add e2e assertions about the
 garage or circuit stages' canvases; cover those with Vitest.
 
+Software WebGL in CI is far slower than a local GPU: a single Playwright click has taken
+about 20 seconds there. A journey that must catch a window of a few seconds, such as the
+3-second Race countdown, passes locally and fails in CI. Assert state that persists
+instead, and cover short windows with Vitest.
+
+The configured html reporter prints nothing while the suite runs. Pass `--reporter=line`
+to see per-test progress.
+
 A Docker-compatible container socket must be available. With rootless Podman, enable its socket
 (`systemctl --user enable --now podman.socket`) and the wrapper finds it at
 `$XDG_RUNTIME_DIR/podman/podman.sock`, setting `DOCKER_HOST` and disabling the Ryuk
 reaper — which cannot reap under rootless Podman — for you. An explicit `DOCKER_HOST`
-overrides that detection. To use an existing Postgres instead, set
+overrides that detection. The detection only checks that Linux path, so with Podman machine
+on macOS Ryuk stays on and fails to start ("Log stream ended and message /.*Started.*/ was
+not received"); run the suite as `TESTCONTAINERS_RYUK_DISABLED=true npm run test:e2e`. To use an existing Postgres instead, set
 `E2E_DATABASE_URL`; the wrapper uses that URL verbatim and skips testcontainers. This is
 also the escape hatch when no container socket is available. Because the suite truncates
 `rooms`, `best_laps`, `replays`, and `daily_laps` in the target database, an external URL also
