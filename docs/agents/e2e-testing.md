@@ -81,8 +81,7 @@ A Docker-compatible container socket must be available. With rootless Podman, en
 `$XDG_RUNTIME_DIR/podman/podman.sock`, setting `DOCKER_HOST` and disabling the Ryuk
 reaper — which cannot reap under rootless Podman — for you. An explicit `DOCKER_HOST`
 overrides that detection. The detection only checks that Linux path, so with Podman machine
-on macOS Ryuk stays on and fails to start ("Log stream ended and message /.*Started.*/ was
-not received"); run the suite as `TESTCONTAINERS_RYUK_DISABLED=true npm run test:e2e`. To use an existing Postgres instead, set
+on macOS Ryuk stays on and fails to start (`Log stream ended and message /.*Started.*/ was not received`); run the suite as `TESTCONTAINERS_RYUK_DISABLED=true npm run test:e2e`. To use an existing Postgres instead, set
 `E2E_DATABASE_URL`; the wrapper uses that URL verbatim and skips testcontainers. This is
 also the escape hatch when no container socket is available. Because the suite truncates
 `rooms`, `best_laps`, `replays`, and `daily_laps` in the target database, an external URL also
