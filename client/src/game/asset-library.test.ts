@@ -75,6 +75,18 @@ describe("Blender asset integration", () => {
     expect(triangles).toBeLessThan(100_000);
   });
 
+  it("draws the race-future body, outside its turning wheels, in one mesh per opaque surface", () => {
+    const surfaces: THREE.Material[] = [];
+    const visit = (node: THREE.Object3D): void => {
+      if (node.name.startsWith("wheel_")) return;
+      if (node instanceof THREE.Mesh && !node.material.transparent) surfaces.push(node.material);
+      node.children.forEach(visit);
+    };
+    visit(getModel("car:race-future")!);
+    expect(surfaces.length).toBeGreaterThan(20);
+    expect(new Set(surfaces).size).toBe(surfaces.length);
+  });
+
   it.each(CAR_VARIANTS)("avoids a full-scene refraction pass for %s glass", (variant) => {
     getModel(`car:${variant}`)!.traverse((part) => {
       if (!(part instanceof THREE.Mesh)) return;

@@ -7,7 +7,7 @@ import {
 } from "@racing/shared";
 import { disposeMaterials } from "./car";
 import { getMaterial, getModel, instancedFromModel, setTextureAnisotropy } from "./models";
-import { renderQuality } from "./quality";
+import { renderQuality, type RenderQuality } from "./quality";
 
 export interface SceneBundle {
   scene: THREE.Scene;
@@ -16,6 +16,8 @@ export interface SceneBundle {
   sun: THREE.DirectionalLight;
   /** Where the sun stays relative to the car it follows. */
   sunOffset: THREE.Vector3;
+  /** Whether the context draws many placements in one call (WEBGL_multi_draw). */
+  multiDraw: boolean;
 }
 
 /** How a Scene Preset colours and lights the world. */
@@ -85,17 +87,12 @@ export function createScene(
     1500,
   );
   const quality = renderQuality();
-  const renderer = new THREE.WebGLRenderer({
-    antialias: quality.antialias,
-    powerPreference: "high-performance",
-  });
+  const renderer = raceRenderer(quality);
   renderer.setPixelRatio(Math.min(devicePixelRatio, quality.maxPixelRatio));
   renderer.setSize(container.clientWidth, container.clientHeight);
-  renderer.shadowMap.enabled = quality.shadows;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.info.reset();
   container.append(renderer.domElement);
+  const multiDraw = renderer.extensions.has("WEBGL_multi_draw");
   scene.add(new THREE.HemisphereLight(hemisphere.sky, hemisphere.ground, hemisphere.intensity));
   const sun = new THREE.DirectionalLight(light.color, light.intensity);
   sun.position.copy(light.offset);
@@ -130,13 +127,13 @@ export function createScene(
   ground.receiveShadow = true;
   ground.userData.owned = true;
   scene.add(ground);
-  scatterEnvironment(scene, samples);
+  scatterEnvironment(scene, samples, multiDraw);
   // Everything added so far stays put; only the sun and its target follow the car.
   // The root never moves either, so it stops re-forcing every descendant's update.
   for (const child of scene.children)
     if (child !== sun && child !== sun.target) freezeStatic(child);
   scene.matrixAutoUpdate = false;
-  return { scene, camera, renderer, sun, sunOffset: light.offset };
+  return { scene, camera, renderer, sun, sunOffset: light.offset, multiDraw };
 }
 
 /**
@@ -208,20 +205,53 @@ function createSky(colors: SceneLook["sky"], sunOffset: THREE.Vector3): THREE.Me
   return sky;
 }
 
+let kept: { renderer: THREE.WebGLRenderer; quality: RenderQuality; lost: boolean } | null = null;
+
+/**
+ * Every race and replay draws with the same renderer, so the asset library's textures
+ * upload and its shaders link once a session. A renderer is replaced only for what is
+ * fixed when it is created (a new quality tier: MSAA, shadows, texture filtering) or
+ * once its context was lost. Only one race view exists at a time.
+ */
+function raceRenderer(quality: RenderQuality): THREE.WebGLRenderer {
+  if (kept && (kept.lost || kept.quality !== quality)) {
+    disposeRenderer(kept.renderer);
+    kept = null;
+  }
+  if (kept) return kept.renderer;
+  const renderer = new THREE.WebGLRenderer({
+    antialias: quality.antialias,
+    powerPreference: "high-performance",
+  });
+  renderer.shadowMap.enabled = quality.shadows;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  const created = { renderer, quality, lost: false };
+  renderer.domElement.addEventListener("webglcontextlost", () => {
+    created.lost = true;
+  });
+  kept = created;
+  return renderer;
+}
+
 export function disposeRenderer(renderer: THREE.WebGLRenderer): void {
   renderer.forceContextLoss();
   renderer.dispose();
 }
+/** Releases what the world built for itself; the race renderer and the asset library stay. */
 export function disposeWorld({ scene, renderer, sun }: SceneBundle): void {
   scene.traverse((part) => {
-    if (part instanceof THREE.InstancedMesh) part.dispose();
+    if (part instanceof THREE.InstancedMesh || part instanceof THREE.BatchedMesh) part.dispose();
     if (part instanceof THREE.Mesh && part.userData.owned) {
       part.geometry.dispose();
       disposeMaterials(part.material);
     }
   });
   sun.shadow.dispose();
-  disposeRenderer(renderer);
+  renderer.renderLists.dispose();
+  // Free the full-screen drawing buffer until the next race sizes it again.
+  renderer.setSize(1, 1, false);
   scene.clear();
 }
 export function updateSun({ sun, sunOffset }: SceneBundle, x: number, z: number): void {
@@ -256,7 +286,7 @@ export function followCar(
   camera.lookAt(look);
 }
 
-function scatterEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
+function scatterEnvironment(scene: THREE.Scene, samples: TrackSample[], multiDraw: boolean): void {
   let seed = 7193;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -319,7 +349,7 @@ function scatterEnvironment(scene: THREE.Scene, samples: TrackSample[]): void {
     }
     for (const [name, matrices] of placements) {
       const model = getModel(`nature:${name}`);
-      if (model) scene.add(instancedFromModel(model, matrices, spec.shadow));
+      if (model) scene.add(instancedFromModel(model, matrices, spec.shadow, multiDraw));
     }
   }
 }

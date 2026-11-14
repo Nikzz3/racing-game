@@ -44,6 +44,7 @@ export async function submitLap(
 ): Promise<boolean> {
   const storedVariant = asVariant(variant) ?? null;
   const client = await pool.connect();
+  let failed = false;
   try {
     await client.query("BEGIN");
     const result = await client.query(
@@ -75,10 +76,13 @@ export async function submitLap(
     await client.query("COMMIT");
     return changed;
   } catch (err) {
+    failed = true;
     await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
-    client.release();
+    // After a timeout the ROLLBACK may never have run either: discard the connection
+    // rather than hand the next caller one still inside this transaction.
+    client.release(failed);
   }
 }
 

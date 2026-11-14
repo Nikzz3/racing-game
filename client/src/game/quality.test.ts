@@ -121,6 +121,11 @@ describe("AdaptiveResolution", () => {
     expect(run(new AdaptiveResolution(1.5, 1), [16.7], 60)).toEqual([]);
   });
 
+  it("leaves a smooth race on a 50 Hz display alone, however its frames jitter", () => {
+    const jittery = [20, 19.2, 20.8, 20, 21.5, 18.6, 20, 22.4, 19, 20];
+    expect(run(new AdaptiveResolution(1.5, 1), jittery, 60)).toEqual([]);
+  });
+
   it("probes a steady 30 fps cadence once, then leaves a frame-rate cap alone", () => {
     expect(run(new AdaptiveResolution(1.5, 1), [33.3], 60)).toEqual([1.27]);
   });

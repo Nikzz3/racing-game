@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: racing
     ports:
-      - "5432:5432"
+      # Loopback only: the dev database's well-known password must not face the network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - racing-db:/var/lib/postgresql/data
     healthcheck:

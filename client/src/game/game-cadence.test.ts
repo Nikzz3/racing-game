@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import {
+  CAR_VARIANTS,
   DEFAULT_TRACK_SLUG,
   gridSlot,
   resolveTrack,
@@ -12,6 +13,8 @@ import {
 import { Game } from "./game";
 import { Net } from "../net";
 import { Hud } from "../ui/hud";
+import { Input } from "./input";
+import { createCarMesh } from "./car";
 import type { Sound } from "./sound";
 import { SoundSettings } from "./sound-settings";
 
@@ -34,7 +37,9 @@ vi.mock("three", async (importOriginal) => {
         get programs() {
           return linking.programs;
         },
+        reset() {},
       };
+      renderLists = { dispose() {} };
       render = vi.fn();
       forceContextLoss() {}
       dispose() {}
@@ -42,6 +47,11 @@ vi.mock("three", async (importOriginal) => {
   };
 });
 vi.mock("./trackMesh", () => ({ buildTrack() {} }));
+// Spied, not stubbed: the precompile builds a car of every Variant.
+vi.mock("./car", async (importOriginal) => {
+  const car = await importOriginal<typeof import("./car")>();
+  return { ...car, createCarMesh: vi.fn(car.createCarMesh) };
+});
 
 let now = 0;
 let frame: FrameRequestCallback | undefined;
@@ -136,6 +146,14 @@ describe("local car render cadence", () => {
     expect(carMesh.position.distanceTo(spawn)).toBeCloseTo(expectedDistance, 10);
   });
 
+  it("links every Variant's car before the race starts, not when an opponent arrives", () => {
+    const compiled = vi
+      .mocked(createCarMesh)
+      .mock.calls.filter(([id]) => id === "compile")
+      .map(([, , variant]) => variant);
+    expect(compiled).toEqual(expect.arrayContaining([...CAR_VARIANTS]));
+  });
+
   it("stops waiting for the shader link once the race is left", async () => {
     frame = undefined;
     const isReady = vi.fn(() => false);
@@ -148,6 +166,21 @@ describe("local car render cadence", () => {
     // A poll after dispose() would read the disposed renderer's programs.
     expect(isReady).toHaveBeenCalledTimes(polls);
     expect(frame).toBeUndefined();
+  });
+});
+
+describe("a race view that fails to start", () => {
+  it.each([
+    ["building the scene", () => vi.spyOn(THREE.Scene.prototype, "add")],
+    ["attaching the controls", () => vi.spyOn(Input.prototype, "attach")],
+  ])("leaves nothing behind when %s throws", (_step, spy) => {
+    spy().mockImplementationOnce(() => {
+      throw new Error("no WebGL");
+    });
+    const parent = document.createElement("div");
+    expect(() => new Game(parent, new Net(), "failed", "Test room", () => {})).toThrow("no WebGL");
+    // The Lobby the caller returns to must not sit under an invisible viewport or HUD.
+    expect(parent.childElementCount).toBe(0);
   });
 });
 

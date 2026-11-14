@@ -249,7 +249,9 @@ export class RoomManager {
   join(player: Player, roomId: string): Room | null {
     const room = this.rooms.get(roomId);
     if (!room) return null;
-    if (player.room !== room) this.leave(player);
+    // Already here: the join is answered, but the lap and race progress carry on.
+    if (player.room === room) return room;
+    this.leave(player);
     player.timing = createTiming();
     player.lapFrames = [];
     player.room = room;

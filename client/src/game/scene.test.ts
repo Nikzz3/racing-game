@@ -3,18 +3,24 @@ import * as THREE from "three";
 import { SCENE_PRESETS, SUNSET_RIDGE, type ScenePreset } from "@racing/shared";
 import { createScene, disposeRenderer, disposeWorld, updateSun, type SceneBundle } from "./scene";
 import { buildTrack } from "./trackMesh";
+import { registerLibrary } from "./models";
+import { downgradeQuality } from "./quality";
 
+const gl = vi.hoisted(() => ({ multiDraw: false }));
 vi.mock("three", async (importOriginal) => {
   const actual = await importOriginal<typeof THREE>();
   return {
     ...actual,
     WebGLRenderer: class {
-      domElement = {};
+      domElement = new EventTarget();
       shadowMap = {};
+      extensions = { has: (name: string) => name === "WEBGL_multi_draw" && gl.multiDraw };
+      info = { reset() {} };
+      renderLists = { dispose() {} };
       setPixelRatio() {}
       setSize() {}
-      forceContextLoss() {}
-      dispose() {}
+      forceContextLoss = vi.fn();
+      dispose = vi.fn();
     },
   };
 });
@@ -128,6 +134,77 @@ describe("static scenery", () => {
     expect(circuit).toHaveLength(1);
     circuit[0].traverse((part) => expect(part.matrixAutoUpdate).toBe(false));
     disposeWorld(bundle);
+  });
+});
+
+describe("race renderer", () => {
+  it("serves every world until its context is lost or the quality tier changes", () => {
+    const first = world();
+    disposeWorld(first);
+    const second = world();
+    expect(second.renderer).toBe(first.renderer);
+    expect(first.renderer.dispose).not.toHaveBeenCalled();
+    disposeWorld(second);
+
+    first.renderer.domElement.dispatchEvent(new Event("webglcontextlost"));
+    const restored = world();
+    expect(restored.renderer).not.toBe(first.renderer);
+    expect(first.renderer.dispose).toHaveBeenCalledOnce();
+    disposeWorld(restored);
+
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    downgradeQuality();
+    const lowered = world();
+    expect(lowered.renderer).not.toBe(restored.renderer);
+    expect(restored.renderer.dispose).toHaveBeenCalledOnce();
+    disposeWorld(lowered);
+  });
+});
+
+describe("scattered nature", () => {
+  it("draws each surface as one batch of every placement where the context can multi-draw", () => {
+    const root = new THREE.Group();
+    for (const name of [
+      "tree_detailed",
+      "tree_default",
+      "tree_oak",
+      "tree_pineDefaultA",
+      "tree_pineDefaultB",
+      "rock_largeA",
+      "rock_largeC",
+      "rock_largeE",
+      "grass_large",
+      "flower_redA",
+      "flower_yellowA",
+    ]) {
+      const model = new THREE.Group();
+      model.name = `nature:${name}`;
+      model.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()));
+      root.add(model);
+    }
+    registerLibrary(root);
+    const scenery = (multiDraw: boolean) => {
+      gl.multiDraw = multiDraw;
+      const bundle = world();
+      const meshes: (THREE.InstancedMesh | THREE.BatchedMesh)[] = [];
+      bundle.scene.traverse((part) => {
+        if (part instanceof THREE.InstancedMesh || part instanceof THREE.BatchedMesh)
+          meshes.push(part);
+      });
+      disposeWorld(bundle);
+      gl.multiDraw = false;
+      const placements = meshes.reduce(
+        (sum, mesh) => sum + (mesh instanceof THREE.BatchedMesh ? mesh.instanceCount : mesh.count),
+        0,
+      );
+      return { meshes, placements };
+    };
+    const cells = scenery(false);
+    const batches = scenery(true);
+    expect(batches.meshes).toHaveLength(11);
+    expect(batches.meshes.every((mesh) => mesh instanceof THREE.BatchedMesh)).toBe(true);
+    expect(batches.placements).toBe(cells.placements);
+    expect(cells.meshes.length).toBeGreaterThan(100);
   });
 });
 

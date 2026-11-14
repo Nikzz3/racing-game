@@ -20,4 +20,13 @@ export default defineConfig({
     allowedHosts: [".kingfisher-pain.ts.net"],
     ...(clientPort ? { port: Number(clientPort), strictPort: true } : {}),
   },
+  build: {
+    rolldownOptions: {
+      // three.js is most of the bundle and rarely changes: its own chunk stays
+      // cached across releases that only touch game code.
+      output: {
+        codeSplitting: { groups: [{ name: "three", test: /node_modules[\\/]three[\\/]/ }] },
+      },
+    },
+  },
 });

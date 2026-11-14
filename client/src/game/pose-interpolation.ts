@@ -30,6 +30,16 @@ export function lerpPose(
   return out;
 }
 
+const fromFrame: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
+const toFrame: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
+function framePose([, x, z, heading, speed]: ReplayFrame, out: Pose): Pose {
+  out.x = x;
+  out.z = z;
+  out.heading = heading;
+  out.speed = speed;
+  return out;
+}
+
 /** Sample a sorted recording in logarithmic time, clamped to its endpoints. */
 export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
   if (frames.length === 0) throw new Error("interpolatePose: frames must not be empty");
@@ -42,12 +52,9 @@ export function interpolatePose(frames: ReplayFrame[], t: number): Pose {
     else upper = middle - 1;
   }
 
-  const [start, x0, z0, heading0, speed0] = frames[lower];
-  const [end, x1, z1, heading1, speed1] = frames[Math.min(lower + 1, frames.length - 1)];
-  const amount = end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
-  return lerpPose(
-    { x: x0, z: z0, heading: heading0, speed: speed0 },
-    { x: x1, z: z1, heading: heading1, speed: speed1 },
-    amount,
-  );
+  const from = frames[lower];
+  const to = frames[Math.min(lower + 1, frames.length - 1)];
+  const amount = to[0] > from[0] ? Math.max(0, Math.min(1, (t - from[0]) / (to[0] - from[0]))) : 0;
+  // Only the returned pose is new: callers may keep it.
+  return lerpPose(framePose(from, fromFrame), framePose(to, toFrame), amount);
 }

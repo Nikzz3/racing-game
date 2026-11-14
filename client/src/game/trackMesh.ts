@@ -11,7 +11,8 @@ import { freezeStatic } from "./scene";
 
 const BARRIER_DIST = ROAD_HALF_WIDTH + BARRIER_OFFSET;
 
-export function buildTrack(scene: THREE.Scene, track: Track): void {
+/** `multiDraw` as the scene's bundle reports it; see instancedFromModel. */
+export function buildTrack(scene: THREE.Scene, track: Track, multiDraw = false): void {
   const { samples } = track;
   const group = new THREE.Group();
   const road = getModel(`track:${track.id}`);
@@ -46,7 +47,7 @@ export function buildTrack(scene: THREE.Scene, track: Track): void {
     }
   }
   const barrier = getModel("prop:barrier");
-  if (barrier) group.add(instancedFromModel(barrier, barrierMatrices(samples)));
+  if (barrier) group.add(instancedFromModel(barrier, barrierMatrices(samples), true, multiDraw));
   scene.add(group);
   freezeStatic(group);
 }

@@ -40,6 +40,7 @@ export function registerLibrary(root: THREE.Group): void {
       const offset = new THREE.Vector3(center.x, bounds.min.y, center.z);
       for (const child of group.children) child.position.sub(offset);
       group.updateMatrixWorld(true);
+      mergeCarBody(group);
     } else {
       group.updateMatrixWorld(true);
       if (name.startsWith("nature:")) batchNatureSurfaces(group);
@@ -109,6 +110,44 @@ function batchNatureSurfaces(model: THREE.Group): void {
     model.add(mesh);
     mesh.updateMatrixWorld(true);
   }
+}
+
+/** A car moves as a whole and only its wheels turn, so the rest of its body draws once
+ * per shared surface. Coachwork keeps its tag, so it stays apart from the interior. */
+function mergeCarBody(car: THREE.Group): void {
+  const batches = new Map<string, BatchableMesh[]>();
+  car.traverseVisible((part) => {
+    if (!isBatchable(part) || insideWheel(part)) return;
+    const key = `${part.material.uuid}|${geometryLayoutKey(part.geometry)}|${isBodywork(part)}`;
+    const batch = batches.get(key);
+    if (batch) batch.push(part);
+    else batches.set(key, [part]);
+  });
+  for (const parts of batches.values()) {
+    if (parts.length < 2) continue;
+    const geometries = parts.map((part) => part.geometry.clone().applyMatrix4(part.matrixWorld));
+    const geometry = mergeGeometries(geometries);
+    for (const source of geometries) source.dispose();
+    if (!geometry) continue;
+    const mesh = new THREE.Mesh(geometry, parts[0].material);
+    mesh.name = `${car.name}:${parts[0].material.name}`;
+    mesh.userData.authored_bodywork = isBodywork(parts[0]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    for (const part of parts) part.removeFromParent();
+    car.add(mesh);
+    mesh.updateMatrixWorld(true);
+  }
+}
+
+function insideWheel(part: THREE.Object3D): boolean {
+  for (let node: THREE.Object3D | null = part; node; node = node.parent)
+    if (node.name.startsWith("wheel_")) return true;
+  return false;
+}
+
+function isBodywork(part: THREE.Object3D): boolean {
+  return Boolean(part.userData.authored_bodywork || part.parent?.userData.authored_bodywork);
 }
 
 type BatchableMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -221,11 +260,18 @@ export function getMaterial(name: string): THREE.MeshStandardMaterial | null {
   return materials.get(name) ?? null;
 }
 
-/** Share geometry and materials across all placements; each mesh is one draw call. */
+/**
+ * Share geometry and materials across all placements. With `multiDraw` (the context's
+ * WEBGL_multi_draw) each surface is one batch that culls every placement on its own
+ * and draws the visible ones in a single call, in both the colour and shadow passes.
+ * Without it three would issue a call per visible placement, so placements instance
+ * per spatial cell instead, one call per surface and visible cell.
+ */
 export function instancedFromModel(
   model: THREE.Group,
   transforms: THREE.Matrix4[],
   shadows = true,
+  multiDraw = false,
 ): THREE.Group {
   const group = new THREE.Group();
   if (transforms.length === 0) return group;
@@ -242,14 +288,36 @@ export function instancedFromModel(
   }
   model.traverse((part) => {
     if (!(part instanceof THREE.Mesh)) return;
-    for (const placements of cells.values()) {
-      const mesh = new THREE.InstancedMesh(part.geometry, part.material, placements.length);
-      placements.forEach((placement, index) =>
-        mesh.setMatrixAt(index, matrix.multiplyMatrices(placement, part.matrixWorld)),
+    const meshes: (THREE.InstancedMesh | THREE.BatchedMesh)[] = [];
+    // A batch takes one material; glTF exports one per primitive.
+    if (multiDraw && !Array.isArray(part.material)) {
+      const { geometry } = part;
+      const batch = new THREE.BatchedMesh(
+        transforms.length,
+        geometry.getAttribute("position").count,
+        geometry.index?.count ?? 0,
+        part.material,
       );
+      const id = batch.addGeometry(geometry);
+      for (const transform of transforms)
+        batch.setMatrixAt(
+          batch.addInstance(id),
+          matrix.multiplyMatrices(transform, part.matrixWorld),
+        );
+      meshes.push(batch);
+    } else {
+      for (const placements of cells.values()) {
+        const mesh = new THREE.InstancedMesh(part.geometry, part.material, placements.length);
+        placements.forEach((placement, index) =>
+          mesh.setMatrixAt(index, matrix.multiplyMatrices(placement, part.matrixWorld)),
+        );
+        mesh.computeBoundingSphere();
+        meshes.push(mesh);
+      }
+    }
+    for (const mesh of meshes) {
       mesh.castShadow = shadows;
       mesh.receiveShadow = true;
-      mesh.computeBoundingSphere();
       group.add(mesh);
     }
   });

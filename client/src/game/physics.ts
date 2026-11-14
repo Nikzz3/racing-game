@@ -75,6 +75,9 @@ export class CarPhysics {
   private readonly previousPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly renderPose: Pose = { x: 0, z: 0, heading: 0, speed: 0 };
   private readonly tuning: SurfaceTuning;
+  /** The centerline sample nearest (x, z), kept because a step's surface check
+   * usually asks about the position the previous step's barrier check left. */
+  private readonly nearest = { x: Number.NaN, z: Number.NaN, index: 0, dist: 0 };
 
   constructor(
     difficulty: Difficulty = DEFAULT_DIFFICULTY,
@@ -173,8 +176,17 @@ export class CarPhysics {
     this.speed -= this.speed * Math.abs(this.speed) * DRAG * dt;
   }
 
+  private nearestCenterline(): Readonly<{ index: number; dist: number }> {
+    const nearest = this.nearest;
+    if (nearest.x !== this.x || nearest.z !== this.z) {
+      const { index, dist } = nearestCenterline(this.x, this.z, this.samples);
+      Object.assign(nearest, { x: this.x, z: this.z, index, dist });
+    }
+    return nearest;
+  }
+
   private applySurface(dt: number): void {
-    const nearest = nearestCenterline(this.x, this.z, this.samples);
+    const nearest = this.nearestCenterline();
     this.onTrack = nearest.dist <= ROAD_HALF_WIDTH + 0.6;
     const limit = this.onTrack ? this.tuning.maxSpeed : this.tuning.grassMaxSpeed;
     if (this.speed > limit) this.speed = Math.max(limit, this.speed - GRASS_DECEL * dt);
@@ -230,7 +242,7 @@ export class CarPhysics {
   }
 
   private resolveBarrier(): void {
-    const nearest = nearestCenterline(this.x, this.z, this.samples);
+    const nearest = this.nearestCenterline();
     this.centerIndex = nearest.index;
     if (nearest.dist > WALL_DIST) {
       const sample = this.samples[nearest.index];
