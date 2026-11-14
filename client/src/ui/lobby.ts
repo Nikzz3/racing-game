@@ -39,6 +39,7 @@ import type { ConnectionState } from "../net";
 import policy from "../../../rl/policy.json";
 import { escapeHtml as html, formatMs, whenIdle } from "../util";
 import { medalBadge } from "./medal-art";
+import { loadSetting, saveSetting } from "../storage";
 import { LOCK_ICON, medalSummary, medalTargets, unlockCopy } from "./lobby-medals";
 
 export interface LobbyCallbacks {
@@ -161,6 +162,16 @@ function cardLock(variant: Variant): string {
 function row(value: string, body: string): string {
   return `<label class="room-row"><input type="radio" name="room-choice" value="${html(value)}">${body}</label>`;
 }
+const painted = new WeakMap<Element, string>();
+/**
+ * Replaces `element`'s markup only when it changed. Broadcasts repeat unchanged lists,
+ * and a rebuild drops keyboard focus, a click landing mid-rebuild and an open dropdown.
+ */
+function paintHtml(element: Element, markup: string): void {
+  if (painted.get(element) === markup) return;
+  painted.set(element, markup);
+  element.innerHTML = markup;
+}
 function step(key: string, index: number, length: number, wrap = true): number {
   if (key === "Home") return 0;
   if (key === "End") return length - 1;
@@ -182,7 +193,7 @@ export class Lobby {
   private difficulty: Difficulty = DEFAULT_DIFFICULTY;
   /** Touch steering preference; the picker only shows on touch screens (CSS). */
   private steeringMode: SteeringMode =
-    asSteeringMode(localStorage.getItem("racer-steering")) ?? DEFAULT_STEERING;
+    asSteeringMode(loadSetting("racer-steering")) ?? DEFAULT_STEERING;
   // Records-panel browse filters. They follow the race selection whenever it
   // changes, but changing them never touches the race selection.
   private boardTrack: TrackSlug = DEFAULT_TRACK_SLUG;
@@ -217,10 +228,9 @@ export class Lobby {
     private readonly callbacks: LobbyCallbacks,
     private readonly sound: SoundSettings,
   ) {
-    const saved = localStorage.getItem("racer-variant");
+    const saved = loadSetting("racer-variant");
     this.browsed = asVariant(saved) ?? FREE_VARIANT;
-    if (saved !== null && saved !== this.browsed)
-      localStorage.setItem("racer-variant", this.browsed);
+    if (saved !== null && saved !== this.browsed) saveSetting("racer-variant", this.browsed);
     this.root.className = "lobby-backdrop";
     this.root.innerHTML = `
       <main class="lobby">
@@ -264,7 +274,7 @@ export class Lobby {
     this.nameInput = this.find<HTMLInputElement>("#driver-name");
     this.picker = this.find<HTMLSelectElement>(".pacer-select");
     this.nameInput.value =
-      localStorage.getItem("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
+      loadSetting("racer-name") ?? `Racer${100 + Math.floor(Math.random() * 900)}`;
     this.standingsName = this.playerName;
     this.nameInput.addEventListener("change", () => this.saveName());
     this.daily = new DailyBanner(this.find(".garage-heading"), () => {
@@ -300,8 +310,13 @@ export class Lobby {
     const volume = this.find<HTMLInputElement>(".sound-volume");
     volume.addEventListener("input", () => sound.setVolume(Number(volume.value)));
     sound.subscribe(() => this.paintSound());
+    // Every tap lands here, each touch pedal press in a race included.
     document.addEventListener("pointerdown", ({ target }) => {
-      if (target instanceof Node && !this.find(".board-track-menu").contains(target))
+      if (
+        this.boardTrackMenuOpen() &&
+        target instanceof Node &&
+        !this.find(".board-track-menu").contains(target)
+      )
         this.toggleBoardTrackMenu(false);
     });
     const stage = this.find(".track-stage");
@@ -332,6 +347,7 @@ export class Lobby {
     this.setRooms([]);
     this.paintJevLap();
     this.renderBoard();
+    this.setStartable(false);
     this.bindUpdates();
   }
   /** The Jev Lap is bundled, so its button carries the lap time from the start. */
@@ -390,7 +406,7 @@ export class Lobby {
   }
   private saveName(): void {
     const name = this.playerName;
-    localStorage.setItem("racer-name", name);
+    saveSetting("racer-name", name);
     if (name === this.standingsName) return;
     this.standingsName = name;
     // Medals belong to a name: the new one has none until its own Standings arrive.
@@ -448,7 +464,7 @@ export class Lobby {
   }
   private chooseSteering(mode: SteeringMode): void {
     this.steeringMode = mode;
-    localStorage.setItem("racer-steering", mode);
+    saveSetting("racer-steering", mode);
     this.check(".steering-opt", "steering", mode);
   }
   private chooseDifficulty(difficulty: Difficulty): void {
@@ -463,7 +479,7 @@ export class Lobby {
     if (choice === this.browsed) return;
     const selected = this.selectedVariant;
     this.browsed = choice;
-    localStorage.setItem("racer-variant", choice);
+    saveSetting("racer-variant", choice);
     this.check(".garage-card", "variant", choice);
     this.paintHero();
     if (this.selectedVariant !== selected) this.callbacks.onVariantChange();
@@ -650,6 +666,13 @@ export class Lobby {
     badge.textContent = state === "connected" ? "LIVE MULTIPLAYER" : state.toUpperCase();
     badge.dataset.state = state;
   }
+  /** Create & Race, Join & Race and Race the Daily wait for a connection and a join in flight. */
+  setStartable(startable: boolean): void {
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>(
+      ".create-form [type=submit], .daily-race",
+    ))
+      button.disabled = !startable;
+  }
   paintGarageThumbnails(): boolean {
     if (CHEAP_RENDER) {
       // The e2e build skips the lobby's three WebGL contexts: the car thumbnails,
@@ -749,20 +772,22 @@ export class Lobby {
     this.find(".room-total").textContent = rooms.length
       ? `${rooms.length} OPEN ${rooms.length === 1 ? "ROOM" : "ROOMS"}`
       : "NO OPEN ROOMS";
-    this.find(".room-list").innerHTML =
+    paintHtml(
+      this.find(".room-list"),
       row(
         "",
         '<span class="room-name">New room<small class="room-track-name">Open a room with the settings above</small></span>',
       ) +
-      rooms
-        .map((room) => {
-          const track = resolveTrack(room.track);
-          return row(
-            room.id,
-            `${outline(track, "room-track-thumb")}<span class="room-name">${html(room.name)}<small class="room-track-name">${html(track.name)}</small></span><span class="room-badge diff-${room.difficulty}">${DIFFICULTY_LABELS[room.difficulty]}</span><span class="room-count">${room.players} racing</span>`,
-          );
-        })
-        .join("");
+        rooms
+          .map((room) => {
+            const track = resolveTrack(room.track);
+            return row(
+              room.id,
+              `${outline(track, "room-track-thumb")}<span class="room-name">${html(room.name)}<small class="room-track-name">${html(track.name)}</small></span><span class="room-badge diff-${room.difficulty}">${DIFFICULTY_LABELS[room.difficulty]}</span><span class="room-count">${room.players} racing</span>`,
+            );
+          })
+          .join(""),
+    );
     this.reconcileRoomChoice();
   }
   /** Pick an open room to join (its track and difficulty apply) or null for a new room. */
@@ -896,17 +921,19 @@ export class Lobby {
       .filter((c) => c.name !== rival?.name);
     if (ai) choices.push({ time: ai.timeMs, value: "ai", name: "AI Record" });
     choices.sort((a, b) => a.time - b.time);
-    this.picker.innerHTML =
+    paintHtml(
+      this.picker,
       '<option value="-1">No Pacer — race alone</option>' +
-      (rival
-        ? `<option value="rival" class="pacer-opt-rival">⚑ Next rival: ${html(rival.name)} — ${formatMs(rival.timeMs)}</option>`
-        : "") +
-      choices
-        .map(
-          (c) =>
-            `<option value="${c.value}"${c.value === "ai" ? ' class="pacer-opt-ai"' : ""}>⚑ ${html(c.name)} — ${formatMs(c.time)}</option>`,
-        )
-        .join("");
+        (rival
+          ? `<option value="rival" class="pacer-opt-rival">⚑ Next rival: ${html(rival.name)} — ${formatMs(rival.timeMs)}</option>`
+          : "") +
+        choices
+          .map(
+            (c) =>
+              `<option value="${c.value}"${c.value === "ai" ? ' class="pacer-opt-ai"' : ""}>⚑ ${html(c.name)} — ${formatMs(c.time)}</option>`,
+          )
+          .join(""),
+    );
     this.picker.disabled = choices.length === 0 && !rival;
     const armed = this.pacer;
     this.picker.value = !armed
@@ -947,12 +974,15 @@ export class Lobby {
         ? `<span class="lb-medal" data-medal="${medal}">${medalBadge(medal, "lb-medal-badge")}</span>`
         : '<span class="lb-medal"></span>';
     };
-    this.find(".lb-list").innerHTML = entries
-      .map(
-        (e) =>
-          `<li><span class="lb-name">${html(e.name)}</span>${badge(e.timeMs)}<span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${e.track}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
-      )
-      .join("");
+    paintHtml(
+      this.find(".lb-list"),
+      entries
+        .map(
+          (e) =>
+            `<li><span class="lb-name">${html(e.name)}</span>${badge(e.timeMs)}<span class="lb-time">${formatMs(e.timeMs)}</span>${e.hasReplay ? `<button class="lb-replay" data-replay="${html(e.name)}" data-track="${e.track}" data-diff="${e.difficulty}" title="Watch replay" aria-label="Watch ${html(e.name)} replay">▶</button>` : ""}</li>`,
+        )
+        .join(""),
+    );
     // The AI Record button plays the Sunset Ridge / Medium reference lap, so
     // it belongs to whatever the board is browsing, not to the race setup.
     this.find(".lb-ai-record").hidden = !(

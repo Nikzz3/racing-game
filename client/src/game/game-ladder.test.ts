@@ -12,7 +12,8 @@ vi.mock("three", async (importOriginal) => ({
     domElement = document.createElement("canvas");
     shadowMap = {};
     extensions = { has: () => false };
-    info = { programs: [] };
+    info = { programs: [], reset() {} };
+    renderLists = { dispose() {} };
     setPixelRatio() {}
     getPixelRatio() {
       return 1;

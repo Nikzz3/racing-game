@@ -72,6 +72,13 @@ interface Entrant extends Omit<RaceEntrant, "pacer" | "laps"> {
   servingT: number[];
 }
 
+/**
+ * Far longer than any honest lap (the lap-time floors run 13–35 s), so a race
+ * still running `laps` × this after GO is only waiting on a driver who stopped:
+ * whoever is still racing then is DNF, and the Room's Spectators drive again.
+ */
+export const MAX_LAP_MS = 5 * 60_000;
+
 const STANDING: Record<EntrantStatus, number> = { finished: 0, racing: 1, out: 2 };
 
 /**
@@ -110,6 +117,8 @@ export class Race {
   private currentPhase: RacePhase = "countdown";
   /** The grace period's end while racing, or the results screen's end. */
   private deadlineT: number | undefined;
+  /** The race's time limit: everyone still racing then is out. */
+  private readonly endT: number;
   /** The Knockout lap whose last car goes out next. */
   private knockoutLap = 1;
   /** The time the machine has reached; ahead of the clock once the Pacers were played out. */
@@ -143,6 +152,7 @@ export class Race {
       progressT: now,
     }));
     this.laps = format === "race" ? RACE_LAPS : this.entrants.length - 1;
+    this.endT = this.goT + this.laps * MAX_LAP_MS;
   }
 
   get phase(): RacePhase {
@@ -238,12 +248,13 @@ export class Race {
     }
   }
 
-  /** When GO, a lap counting or the deadline next changes the race; Infinity if nothing will. */
+  /** When GO, a lap counting, the deadline or the time limit next changes the race; Infinity if nothing will. */
   private nextEventT(): number {
     if (this.currentPhase === "countdown") return this.goT;
     const racing = this.racing();
     if (this.currentPhase !== "racing" || !racing.length) return Infinity;
     let next = this.deadlineT !== undefined && this.deadlineT > this.t ? this.deadlineT : Infinity;
+    if (this.endT > this.t) next = Math.min(next, this.endT);
     for (const { lap, lapT } of racing) {
       if (lap && lapT.length < this.laps)
         next = Math.min(next, this.pacerLapT(lap, lapT.length + 1));
@@ -264,6 +275,7 @@ export class Race {
     }
     if (this.format === "race") this.raceRules(t);
     else this.knockoutRules(t);
+    if (t >= this.endT) for (const entrant of this.racing()) this.out(entrant, this.endT);
   }
 
   /** When a Pacer completes lap k, looping its recording from the line at GO. */

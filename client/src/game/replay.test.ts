@@ -43,7 +43,7 @@ vi.mock("./car", () => ({
 }));
 
 import { animateCar, createCarMesh, disposeCarMesh } from "./car";
-import { disposeWorld } from "./scene";
+import { createScene, disposeWorld } from "./scene";
 import { ReplayViewer } from "./replay";
 import { pacerPoseAt } from "./pacer";
 import { JevPanel } from "../ui/jev-panel";
@@ -122,6 +122,33 @@ describe("ReplayViewer lifecycle", () => {
     expect(disposeCarMesh).toHaveBeenCalledOnce();
     expect(disposeWorld).toHaveBeenCalledOnce();
     expect(document.querySelector(".replay-hud")).toBeNull();
+  });
+
+  it("picks up where it left off when the tab comes back, not at the finish", () => {
+    const viewer = makeViewer("taxi");
+    const mesh = vi.mocked(createCarMesh).mock.results[0].value;
+    frame(500);
+    vi.mocked(performance.now).mockReturnValue(500);
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    hidden.mockReturnValue(false);
+    vi.mocked(performance.now).mockReturnValue(60_000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    frame(60_000);
+    expect(mesh.position.x).toBe(2.5);
+    expect(document.querySelector<HTMLElement>(".replay-finished")!.hidden).toBe(true);
+    viewer.dispose();
+  });
+
+  it("leaves nothing behind when the scene cannot be built", () => {
+    vi.mocked(createScene).mockImplementationOnce(() => {
+      throw new Error("no WebGL");
+    });
+    const parent = document.createElement("div");
+    expect(
+      () => new ReplayViewer(parent, "Ava", "sunset-ridge", 61_000, FRAMES, "taxi", () => {}),
+    ).toThrow("no WebGL");
+    expect(parent.childElementCount).toBe(0);
   });
 
   it("rejects empty recordings before attaching DOM or allocating a car", () => {

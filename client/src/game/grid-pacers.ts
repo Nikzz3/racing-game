@@ -62,9 +62,10 @@ export class GridPacers {
 
   /** The Pacers drawn this frame, for the circuit map and the race's sound. */
   positions(): RemotePosition[] {
-    return [...this.cars].flatMap(([id, { mesh, speed }]) =>
-      mesh.visible ? [{ id, x: mesh.position.x, z: mesh.position.z, speed }] : [],
-    );
+    const drawn: RemotePosition[] = [];
+    for (const [id, { mesh, speed }] of this.cars)
+      if (mesh.visible) drawn.push({ id, x: mesh.position.x, z: mesh.position.z, speed });
+    return drawn;
   }
 
   clear(): void {

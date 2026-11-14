@@ -123,8 +123,15 @@ const WINDOW_MS = 2000;
 const COOLDOWN_MS = 1000;
 /** Longer gaps are a hidden tab or a one-off stall, not a frame rate. */
 const PAUSE_MS = 250;
-/** Below 50 fps for most of a window. */
+/** Below 50 fps for most of a window... */
 const SLOW_MS = 20;
+/**
+ * ...or, on a slower display (50 Hz), a frame this much longer than its refresh. The
+ * refresh is read off the window's fastest frames, and taken to be at most 50 Hz,
+ * so a GPU that never once keeps up cannot pass its own pace off as the display's.
+ */
+const SLOW_MARGIN = 1.2;
+const SLOWEST_REFRESH_MS = 20;
 /** Under a 30 fps cap (Chrome's Energy Saver) the typical frame takes two refreshes... */
 const CAPPED_MEDIAN_MS = 36;
 /** ...and hardly any frame is faster, however much the timing jitters. */
@@ -178,7 +185,8 @@ export class AdaptiveResolution {
     // takes two refreshes. One step tells them apart, since under a cap it changes
     // nothing; after that a cap is left alone, and it never costs a tier.
     const capped = p10 >= CAPPED_FAST_MS && median <= CAPPED_MEDIAN_MS;
-    if (p90 <= SLOW_MS || (capped && this.probed)) {
+    const slow = Math.max(SLOW_MS, Math.min(p10, SLOWEST_REFRESH_MS) * SLOW_MARGIN);
+    if (p90 <= slow || (capped && this.probed)) {
       this.slowAtFloor = 0;
       return null;
     }

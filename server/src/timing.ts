@@ -23,6 +23,8 @@ export interface TimingState {
   bestLapMs: number | null;
   /** Recent samples of the lap in progress; reset on lap start and Respawn. */
   windowSamples: WindowSample[];
+  /** Path length through `windowSamples`, kept as they come and go so a sample costs O(1). */
+  windowDistance: number;
   /** Set once any window violates the speed bound; cleared on lap start and Respawn. */
   lapImplausible: boolean;
   /** Respawns so far; lets clients tell a teleport from movement. */
@@ -41,6 +43,7 @@ export function createTiming(): TimingState {
     lastLapMs: null,
     bestLapMs: null,
     windowSamples: [],
+    windowDistance: 0,
     lapImplausible: false,
     spawns: 0,
     spawnPending: false,
@@ -56,6 +59,7 @@ export function respawnTiming(t: TimingState): void {
   t.lapStartT = null;
   t.penaltyMs = 0;
   t.windowSamples = [];
+  t.windowDistance = 0;
   t.lapImplausible = false;
   t.spawnPending = true;
 }
@@ -101,14 +105,12 @@ const SPEED_TOLERANCE = 1.1;
  */
 const MIN_WINDOW_MS = 250;
 
-function exceedsSpeedBound(samples: WindowSample[], now: number, maxSpeedMs: number): boolean {
-  if (samples.length < 2) return false;
-  let dist = 0;
-  for (let i = 1; i < samples.length; i++) {
-    dist += Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z);
-  }
-  const windowMs = Math.max(now - samples[0].t, MIN_WINDOW_MS);
-  return dist / (windowMs / 1000) > maxSpeedMs * SPEED_TOLERANCE;
+const hop = (a: WindowSample, b: WindowSample): number => Math.hypot(b.x - a.x, b.z - a.z);
+
+function exceedsSpeedBound(t: TimingState, now: number, maxSpeedMs: number): boolean {
+  if (t.windowSamples.length < 2) return false;
+  const windowMs = Math.max(now - t.windowSamples[0].t, MIN_WINDOW_MS);
+  return t.windowDistance / (windowMs / 1000) > maxSpeedMs * SPEED_TOLERANCE;
 }
 
 /**
@@ -129,14 +131,19 @@ export function updateTiming(
   minLapMs: number,
 ): LapResult | null {
   if (t.lapStartT !== null) {
-    t.windowSamples.push({ t: now, x, z });
+    const sample = { t: now, x, z };
+    const last = t.windowSamples.at(-1);
+    if (last) t.windowDistance += hop(last, sample);
+    t.windowSamples.push(sample);
     // Judge before trimming: trimming first can collapse the window to this one
     // sample whenever the gap since the previous sample exceeds the window
     // width, which would let sparse updates teleport any distance per hop.
-    if (!t.lapImplausible && exceedsSpeedBound(t.windowSamples, now, maxSpeedMs)) {
+    if (!t.lapImplausible && exceedsSpeedBound(t, now, maxSpeedMs)) {
       t.lapImplausible = true;
     }
     while (t.windowSamples.length > 1 && now - t.windowSamples[0].t > PLAUSIBILITY_WINDOW_MS) {
+      const [first, second] = t.windowSamples;
+      t.windowDistance -= hop(first, second);
       t.windowSamples.shift();
     }
   }
@@ -166,6 +173,7 @@ export function updateTiming(
     t.penaltyMs = 0;
     t.lapImplausible = false;
     t.windowSamples = [{ t: now, x, z }];
+    t.windowDistance = 0;
   }
   t.next = (reached + 1) % checkpoints.length;
   return result;

@@ -1,3 +1,5 @@
+import { loadSetting, saveSetting } from "../storage";
+
 const VOLUME_KEY = "racer-volume";
 const MUTED_KEY = "racer-muted";
 /** Volume steps the Lobby's slider moves in, in percent. */
@@ -15,9 +17,9 @@ export class SoundSettings {
   private readonly listeners = new Set<() => void>();
 
   constructor() {
-    const stored = Number(localStorage.getItem(VOLUME_KEY) ?? Number.NaN);
+    const stored = Number(loadSetting(VOLUME_KEY) ?? Number.NaN);
     this.volumePercent = Number.isFinite(stored) ? clampVolume(stored) : DEFAULT_VOLUME;
-    this.isMuted = localStorage.getItem(MUTED_KEY) === "true";
+    this.isMuted = loadSetting(MUTED_KEY) === "true";
   }
 
   /** 0 to 100. */
@@ -41,14 +43,14 @@ export class SoundSettings {
     const volume = clampVolume(percent);
     if (volume === this.volumePercent) return;
     this.volumePercent = volume;
-    localStorage.setItem(VOLUME_KEY, String(volume));
+    saveSetting(VOLUME_KEY, String(volume));
     this.changed();
   }
 
   setMuted(muted: boolean): void {
     if (muted === this.isMuted) return;
     this.isMuted = muted;
-    localStorage.setItem(MUTED_KEY, String(muted));
+    saveSetting(MUTED_KEY, String(muted));
     this.changed();
   }
 

@@ -10,7 +10,7 @@ import {
   type Standing,
   type Variant,
 } from "@racing/shared";
-import { RacingApplication } from "./application";
+import { MESSAGE_BURST, MESSAGE_RATE, RacingApplication } from "./application";
 import { dailyBoard, submitDailyLap } from "./daily";
 import { standings, topEntries } from "./leaderboard";
 import { pool } from "./db";
@@ -631,5 +631,64 @@ describe("standings", () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(submitLap).not.toHaveBeenCalled();
     expect(standings).not.toHaveBeenCalled();
+  });
+});
+
+describe("message budget", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("drops a socket's messages past its burst until the budget refills", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    const start = Date.now();
+    vi.setSystemTime(start);
+    const application = new RacingApplication();
+    const client = new ClientSocket();
+    application.connect(client.socket);
+    await vi.waitFor(() => expect(client.messages[0]?.type).toBe("welcome"));
+    const leave = (count: number) => {
+      for (let i = 0; i < count; i++) client.message({ type: "leaveRoom" });
+    };
+    const answered = () => client.messages.filter(({ type }) => type === "left").length;
+
+    leave(MESSAGE_BURST + 10);
+    expect(answered()).toBe(MESSAGE_BURST);
+    vi.setSystemTime(start + 1000);
+    leave(MESSAGE_RATE + 10);
+    expect(answered()).toBe(MESSAGE_BURST + MESSAGE_RATE);
+  });
+});
+
+describe("lobby broadcasts", () => {
+  it("send the room list only when it changed", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    const application = new RacingApplication();
+    const ava = await connect(application, "Ava");
+    const ben = await connect(application, "Ben");
+    const lists = () => ben.messages.filter(({ type }) => type === "rooms");
+
+    ava.message({ type: "leaveRoom" });
+    expect(lists()).toEqual([]);
+    ava.message(DUSK);
+    expect(lists()).toHaveLength(1);
+    ava.message({ type: "joinRoom", roomId: application.rooms.list()[0].id });
+    expect(lists()).toHaveLength(1);
+  });
+
+  it("send the leaderboard only when a personal best changed its top entries", async () => {
+    vi.mocked(topEntries).mockResolvedValue([]);
+    vi.mocked(standings).mockResolvedValue([]);
+    vi.mocked(submitLap).mockResolvedValue(true);
+    const application = new RacingApplication();
+    const lobby = await connect(application, "Cy");
+    for (const name of ["Ava", "Ben"]) {
+      const driver = await connect(application, name);
+      await enter(driver, DUSK);
+      driveLap(driver, 5_000);
+      await vi.waitFor(() => expect(driver.messages.at(-1)?.type).toBe("standings"));
+    }
+    expect(submitLap).toHaveBeenCalledTimes(2);
+    expect(lobby.messages.filter(({ type }) => type === "leaderboard")).toHaveLength(1);
   });
 });

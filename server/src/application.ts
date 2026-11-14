@@ -29,6 +29,30 @@ function rawToString(raw: RawData): string {
   return Buffer.isBuffer(raw) ? raw.toString() : Buffer.from(raw).toString();
 }
 
+/**
+ * A socket's message budget: a client sends states every 50 ms (20/s) plus the
+ * odd control message, so 100/s is five times that, and a 200-message burst
+ * absorbs ten seconds of states a stalled link delivers at once. Messages past
+ * the budget are dropped unread.
+ */
+export const MESSAGE_RATE = 100;
+export const MESSAGE_BURST = 200;
+
+/** A token bucket over `Date.now()`; true while the socket is within its budget. */
+function messageBudget(): () => boolean {
+  let tokens = MESSAGE_BURST;
+  let refilledT = Date.now();
+  return () => {
+    const now = Date.now();
+    // Clamped, so a clock stepping back never drains the bucket.
+    tokens = Math.min(MESSAGE_BURST, tokens + (Math.max(0, now - refilledT) * MESSAGE_RATE) / 1000);
+    refilledT = now;
+    if (tokens < 1) return false;
+    tokens--;
+    return true;
+  };
+}
+
 export class RacingApplication {
   readonly rooms = new RoomManager();
   private readonly players = new Set<Player>();
@@ -45,6 +69,9 @@ export class RacingApplication {
    * the broadcasts around it; tick() rolls it over at UTC midnight.
    */
   private daily: DailyBoard = { challenge: dailyChallenge(Date.now()), entries: [] };
+  /** The room list and leaderboard as last broadcast, so an unchanged one is not sent again. */
+  private roomsData = "";
+  private leaderboardData = "";
 
   async load(): Promise<void> {
     await this.rooms.load();
@@ -57,8 +84,10 @@ export class RacingApplication {
     // Messages arriving before the welcome is sent are held until then.
     const pending: ClientMessage[] = [];
     let ready = false;
+    const withinBudget = messageBudget();
 
     socket.on("message", (raw) => {
+      if (!withinBudget()) return;
       try {
         const message = parseClientMessage(JSON.parse(rawToString(raw)));
         if (!message) return;
@@ -137,9 +166,8 @@ export class RacingApplication {
         this.join(player, this.rooms.dailyRoom(dailyChallenge(Date.now())).id, true);
         return;
       case "leaveRoom":
-        this.rooms.leave(player);
+        if (this.rooms.leave(player)) this.broadcastRooms();
         send(player.ws, { type: "left" });
-        this.broadcastRooms();
         return;
       case "respawn":
         if (player.room) {
@@ -264,7 +292,15 @@ export class RacingApplication {
         );
         if (changed) {
           message.isTrackRecord = message.lapTimeMs < (record ?? Infinity);
-          this.broadcast({ type: "leaderboard", entries: await topEntries() });
+          // Most personal bests are outside every board's top entries and change nothing here.
+          const data = JSON.stringify({
+            type: "leaderboard",
+            entries: await topEntries(),
+          } satisfies ServerMessage);
+          if (data !== this.leaderboardData) {
+            this.leaderboardData = data;
+            this.broadcastEncoded(data);
+          }
         }
       } finally {
         room.broadcast(message);
@@ -289,11 +325,20 @@ export class RacingApplication {
   }
 
   private broadcast(message: ServerMessage): void {
-    const data = JSON.stringify(message);
+    this.broadcastEncoded(JSON.stringify(message));
+  }
+
+  private broadcastEncoded(data: string): void {
     for (const player of this.players) sendEncoded(player.ws, data);
   }
 
   private broadcastRooms(): void {
-    this.broadcast({ type: "rooms", rooms: this.rooms.list() });
+    const data = JSON.stringify({
+      type: "rooms",
+      rooms: this.rooms.list(),
+    } satisfies ServerMessage);
+    if (data === this.roomsData) return;
+    this.roomsData = data;
+    this.broadcastEncoded(data);
   }
 }

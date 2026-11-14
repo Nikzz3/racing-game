@@ -89,6 +89,8 @@ export class ReplayViewer {
   private lastFrame: number;
   private playStart: number;
   private finishedAt: number | null = null;
+  /** When the tab was hidden; playback resumes where it left off, like a race's clock. */
+  private hiddenAt: number | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -106,11 +108,18 @@ export class ReplayViewer {
     this.lastFrame = this.playStart = performance.now();
     this.container.style.cssText = "position:absolute;inset:0;";
     parent.append(this.container);
-    const track = resolveTrack(trackSlug);
-    this.bundle = createScene(this.container, track.samples);
-    buildTrack(this.bundle.scene, track);
-    this.carMesh = createCarMesh(name, name, variant);
-    this.bundle.scene.add(this.carMesh);
+    try {
+      const track = resolveTrack(trackSlug);
+      this.bundle = createScene(this.container, track.samples);
+      buildTrack(this.bundle.scene, track, this.bundle.multiDraw);
+      this.carMesh = createCarMesh(name, name, variant);
+      this.bundle.scene.add(this.carMesh);
+      this.jev = jev ? new JevReplayPanel(this.overlay, jev, track) : null;
+    } catch (error) {
+      // The caller falls back to the Lobby, which an empty replay view must not cover.
+      this.dispose();
+      throw error;
+    }
 
     this.overlay.className = "replay-hud";
     this.overlay.innerHTML = `
@@ -131,8 +140,8 @@ export class ReplayViewer {
       this.onClose();
     });
     parent.append(this.overlay);
-    this.jev = jev ? new JevReplayPanel(this.overlay, jev, track) : null;
     window.addEventListener("resize", this.onResize);
+    document.addEventListener("visibilitychange", this.onVisibility);
     this.restart(this.playStart);
     this.animationFrame = requestAnimationFrame(this.frame);
   }
@@ -142,6 +151,18 @@ export class ReplayViewer {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+
+  private onVisibility = (): void => {
+    if (document.hidden) {
+      this.hiddenAt = performance.now();
+      return;
+    }
+    if (this.hiddenAt === null) return;
+    const away = performance.now() - this.hiddenAt;
+    this.hiddenAt = null;
+    this.playStart += away;
+    if (this.finishedAt !== null) this.finishedAt += away;
   };
 
   private frame = (now: number): void => {
@@ -193,9 +214,11 @@ export class ReplayViewer {
     this.running = false;
     cancelAnimationFrame(this.animationFrame);
     window.removeEventListener("resize", this.onResize);
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    // Also unwinds a constructor that threw part-way, so any part may not exist yet.
     this.jev?.dispose();
-    disposeCarMesh(this.carMesh);
-    disposeWorld(this.bundle);
+    if (this.carMesh) disposeCarMesh(this.carMesh);
+    if (this.bundle) disposeWorld(this.bundle);
     this.container.remove();
     this.overlay.remove();
   }

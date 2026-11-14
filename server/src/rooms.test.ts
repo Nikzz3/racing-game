@@ -33,6 +33,18 @@ describe("room lifecycle", () => {
     expect(player.room).toBe(room);
   });
 
+  it("keeps a driver's lap and race progress when they join the Room they are in", () => {
+    const manager = new RoomManager();
+    const room = manager.create("Evening race", "hard", "stormhaven");
+    const player = createPlayer("driver", {} as WebSocket);
+    manager.join(player, room.id);
+    const timing = { ...player.timing, laps: 2, missedCheckpoints: 3 };
+    player.timing = timing;
+    manager.join(player, room.id);
+    expect(player.timing).toBe(timing);
+    expect(player.timing).toMatchObject({ laps: 2, missedCheckpoints: 3 });
+  });
+
   it("waits for room creation before deleting the last driver's room", async () => {
     let finishInsert!: (value: never) => void;
     vi.mocked(pool.query).mockImplementationOnce(

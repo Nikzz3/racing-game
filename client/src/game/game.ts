@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {
+  CAR_VARIANTS,
   CHECKPOINT_PENALTY_MS,
   DEFAULT_DIFFICULTY,
   DEFAULT_TRACK_SLUG,
@@ -70,14 +71,21 @@ declare global {
   }
 }
 
-/** A hidden remote car with a name tag, whose materials the first opponent will need. */
-function compileTemplate(variant?: Variant): THREE.Group | null {
+/**
+ * One hidden car of every Variant, one with a name tag: Variants use different
+ * shader features, so any opponent's car is linked before it first appears.
+ */
+function compileTemplate(): THREE.Group | null {
   try {
-    const template = createCarMesh("compile", "compile", variant);
+    const template = new THREE.Group();
+    for (const [index, variant] of CAR_VARIANTS.entries()) {
+      const last = index === CAR_VARIANTS.length - 1;
+      template.add(createCarMesh("compile", last ? "compile" : undefined, variant));
+    }
     template.visible = false;
     return template;
   } catch (error) {
-    // The first opponent's shaders then link when it arrives.
+    // An opponent's shaders then link when it arrives.
     console.warn("Remote car shaders could not precompile", error);
     return null;
   }
@@ -155,72 +163,82 @@ export class Game {
     this.car = new CarPhysics(difficulty, this.track.samples);
     this.container.className = "race-viewport";
     parent.append(this.container);
-    this.bundle = createScene(this.container, this.track.samples, scene);
-    buildTrack(this.bundle.scene, this.track);
-    this.remote = new RemotePlayers(this.bundle.scene, myId, MAX_SPEED_MS[difficulty]);
-    this.gridPacers = new GridPacers(this.bundle.scene);
-    this.carMesh = createCarMesh(myId, undefined, variant);
-    this.bundle.scene.add(this.carMesh);
-    const settings = audio?.settings;
-    const toggleMute = settings && (() => settings.toggleMuted());
-    this.hud = new Hud(
-      parent,
-      roomName,
-      onLeave,
-      this.track.checkpoints.length,
-      () => this.requestRespawn(),
-      this.track,
-      {
-        start: (format) => this.net.send({ type: "startRace", format }),
-        cycle: (step) => this.cycle(step),
-      },
-      toggleMute,
-    );
-    this.unsubscribeSound = settings
-      ? settings.subscribe(() => this.hud.setMuted(settings.muted))
-      : () => undefined;
-    if (settings) this.hud.setMuted(settings.muted);
-    this.touch = new TouchControls(parent, steering);
-    this.input = new Input(this.touch);
-    this.input.onRespawn = () => this.requestRespawn();
-    this.input.onCycle = (step) => this.cycle(step);
-    this.input.onRaceRival = () => this.hud.acceptRivalPrompt();
-    this.input.onToggleMute = toggleMute ?? null;
-    this.input.attach();
-    if (armedPacer) {
-      this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
-      this.hud.showPacerChip(() => this.dismissPacer(), armedPacer.name);
+    try {
+      this.bundle = createScene(this.container, this.track.samples, scene);
+      buildTrack(this.bundle.scene, this.track, this.bundle.multiDraw);
+      this.remote = new RemotePlayers(this.bundle.scene, myId, MAX_SPEED_MS[difficulty]);
+      this.gridPacers = new GridPacers(this.bundle.scene);
+      this.carMesh = createCarMesh(myId, undefined, variant);
+      this.bundle.scene.add(this.carMesh);
+      const settings = audio?.settings;
+      const toggleMute = settings && (() => settings.toggleMuted());
+      this.hud = new Hud(
+        parent,
+        roomName,
+        onLeave,
+        this.track.checkpoints.length,
+        () => this.requestRespawn(),
+        this.track,
+        {
+          start: (format) => this.net.send({ type: "startRace", format }),
+          cycle: (step) => this.cycle(step),
+        },
+        toggleMute,
+      );
+      this.unsubscribeSound = settings
+        ? settings.subscribe(() => this.hud.setMuted(settings.muted))
+        : () => undefined;
+      if (settings) this.hud.setMuted(settings.muted);
+      this.touch = new TouchControls(parent, steering);
+      this.input = new Input(this.touch);
+      this.input.onRespawn = () => this.requestRespawn();
+      this.input.onCycle = (step) => this.cycle(step);
+      this.input.onRaceRival = () => this.hud.acceptRivalPrompt();
+      this.input.onToggleMute = toggleMute ?? null;
+      this.input.attach();
+      if (armedPacer) {
+        this.pacer = new PacerOverlay(this.bundle.scene, armedPacer.name);
+        this.hud.showPacerChip(() => this.dismissPacer(), armedPacer.name);
+      }
+      this.installSeam();
+      this.spawn();
+      this.sendTimer = setInterval(() => {
+        // A Spectator has no car, and the e2e seam sends its own states while it drives.
+        if (this.mode === "spectate" || (this.mode === "drive" && this.seam?.driving)) return;
+        this.sendState();
+      }, SEND_MS);
+      window.addEventListener("resize", this.resize);
+      document.addEventListener("visibilitychange", this.visibility);
+      // Dev-console hook: window.__autopilot(true) hands the wheel to the follower.
+      window.__autopilot = (enabled) => {
+        this.autopilot = enabled;
+      };
+      // Software WebGL under e2e is always slow, and its tier is already the cheapest.
+      this.resolution = CHEAP_RENDER
+        ? null
+        : new AdaptiveResolution(
+            this.bundle.renderer.getPixelRatio(),
+            renderQuality().minPixelRatio,
+          );
+      // Last, so a race view that failed to start leaves no voices playing.
+      this.sound = audio?.race(this.car.topSpeed) ?? null;
+      this.started = this.start();
+    } catch (error) {
+      // The caller falls back to the Lobby, which a half-built race view must not cover.
+      this.dispose();
+      throw error;
     }
-    this.installSeam();
-    this.spawn();
-    this.sendTimer = setInterval(() => {
-      // A Spectator has no car, and the e2e seam sends its own states while it drives.
-      if (this.mode === "spectate" || (this.mode === "drive" && this.seam?.driving)) return;
-      this.sendState();
-    }, SEND_MS);
-    window.addEventListener("resize", this.resize);
-    document.addEventListener("visibilitychange", this.visibility);
-    // Dev-console hook: window.__autopilot(true) hands the wheel to the follower.
-    window.__autopilot = (enabled) => {
-      this.autopilot = enabled;
-    };
-    // Software WebGL under e2e is always slow, and its tier is already the cheapest.
-    this.resolution = CHEAP_RENDER
-      ? null
-      : new AdaptiveResolution(this.bundle.renderer.getPixelRatio(), renderQuality().minPixelRatio);
-    // Last, so a race view that failed to start leaves no voices playing.
-    this.sound = audio?.race(this.car.topSpeed) ?? null;
-    this.started = this.start();
   }
   /**
    * Link every shader, and draw once, before the first frame instead of stalling
    * the first frames of the race. The scene already holds the (hidden) Pacer; the
-   * remote-car template covers the first opponent's materials and name tag, and
-   * the draw links the shadow pass's depth shaders, which compiling skips.
+   * template covers every Variant an opponent may drive and its name tag, and the
+   * draw links the shadow pass's depth shaders, which compiling skips. The race
+   * renderer keeps its programs, so later races find most of them already linked.
    */
   private async start(): Promise<void> {
     const { renderer, scene, camera } = this.bundle;
-    const template = compileTemplate(this.variant);
+    const template = compileTemplate();
     if (template) scene.add(template);
     try {
       renderer.compile(scene, camera);
@@ -635,17 +653,18 @@ export class Game {
     clearInterval(this.sendTimer);
     window.removeEventListener("resize", this.resize);
     document.removeEventListener("visibilitychange", this.visibility);
-    this.input.detach();
-    this.touch.dispose();
+    // Also unwinds a constructor that threw part-way, so any part may not exist yet.
+    this.input?.detach();
+    this.touch?.dispose();
     this.sound?.dispose();
-    this.unsubscribeSound();
-    this.remote.dispose();
+    this.unsubscribeSound?.();
+    this.remote?.dispose();
     this.pacer?.dispose();
-    this.gridPacers.clear();
+    this.gridPacers?.clear();
     this.seam?.dispose();
-    this.hud.dispose();
-    disposeCarMesh(this.carMesh);
-    disposeWorld(this.bundle);
+    this.hud?.dispose();
+    if (this.carMesh) disposeCarMesh(this.carMesh);
+    if (this.bundle) disposeWorld(this.bundle);
     this.container.remove();
     delete window.__autopilot;
   }

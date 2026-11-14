@@ -10,6 +10,7 @@ import {
   type Difficulty,
   type LeaderboardEntry,
   type ReplayFrame,
+  type RoomInfo,
   type Standing,
   type TrackSlug,
   TRACKS,
@@ -229,6 +230,54 @@ describe("Lobby create-room callback", () => {
     click(diff("hard"));
     submitForm();
     expect(cbs.onCreate).toHaveBeenCalledWith(expect.any(String), "sunset-ridge", "hard");
+  });
+});
+
+describe("Lobby with storage blocked", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("starts on its defaults instead of failing", () => {
+    vi.stubGlobal(
+      "localStorage",
+      new Proxy(
+        {},
+        {
+          get() {
+            throw new DOMException("The operation is insecure.", "SecurityError");
+          },
+        },
+      ),
+    );
+    mountSetup();
+    click(steering("buttons"));
+    expect(lobby.playerName).toMatch(/^Racer\d{3}$/);
+    expect(lobby.selectedVariant).toBe(FREE);
+    expect(lobby.steering).toBe("buttons");
+    expect(sound.volume).toBe(70);
+  });
+});
+
+describe("Lobby broadcasts", () => {
+  beforeEach(mountSetup);
+
+  it("leave unchanged lists in place, so focus, clicks and an open picker survive", () => {
+    const rooms: RoomInfo[] = [
+      {
+        id: "r1",
+        name: "Room",
+        players: 1,
+        difficulty: "medium",
+        track: "sunset-ridge",
+      },
+    ];
+    const entries = [entry({ hasReplay: true })];
+    const rendered = () => [q(".room-row:last-child"), q(".lb-replay"), picker().options[1]];
+    lobby.setRooms(rooms);
+    lobby.setLeaderboard(entries);
+    const before = rendered();
+    lobby.setRooms(structuredClone(rooms));
+    lobby.setLeaderboard(structuredClone(entries));
+    rendered().forEach((node, i) => expect(node).toBe(before[i]));
   });
 });
 
@@ -832,6 +881,9 @@ describe("Lobby Daily Challenge banner", () => {
 
   it("Race the Daily joins straight from the Garage and keeps the driver name", () => {
     lobby.setDaily(board());
+    click(".daily-race");
+    expect(cbs.onDaily).not.toHaveBeenCalled();
+    lobby.setStartable(true);
     click(".daily-race");
     expect(cbs.onDaily).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("racer-name")).toBe(lobby.playerName);

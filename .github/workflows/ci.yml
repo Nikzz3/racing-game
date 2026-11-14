@@ -51,6 +51,10 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
+      # e2e runs on the Vite dev server, so nothing else proves the production
+      # bundles (the web client and the desktop app's relative-base build) still build.
+      - run: npm run build
+      - run: npm run desktop:build
 
   e2e:
     name: Playwright e2e tests

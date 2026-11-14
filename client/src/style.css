@@ -48,7 +48,8 @@ button:disabled {
 }
 button:focus-visible,
 a:focus-visible,
-.car-stage:focus-visible {
+.car-stage:focus-visible,
+.track-stage:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 5px;
 }
@@ -512,7 +513,7 @@ a {
 }
 /* Touch screens keep :hover after a tap, which would leave the button lifted. */
 @media (hover: hover) {
-  .primary-action:hover {
+  .primary-action:not(:disabled):hover {
     background: #ffd19a;
     box-shadow: 0 5px 30px #efa65c22;
     transform: translateY(-2px);

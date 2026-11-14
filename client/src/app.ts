@@ -1,6 +1,7 @@
 import {
   JEV_TRACK,
   JEV_VARIANT,
+  type ClientMessage,
   type RacePacer,
   type RaceState,
   type ReplayFrame,
@@ -31,7 +32,14 @@ export class RacingApp {
   private connectionAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
+  private connected = false;
+  /** From asking to enter a Room until its Game exists; Create, Join and Daily wait meanwhile. */
   private joining = false;
+  /**
+   * The Replay the Lobby asked for. Only its reply opens the viewer: a Pacer's or
+   * Rival's asked for in a Room can arrive after leaving it.
+   */
+  private lobbyReplay: { name: string; track: TrackSlug } | null = null;
   private notice: HTMLElement | null = null;
   /**
    * The Room's latest race and its grid Pacers. A driver joining mid-race is sent
@@ -46,16 +54,13 @@ export class RacingApp {
     this.lobby = new Lobby(
       root,
       {
-        onCreate: (roomName, track, difficulty) => {
-          this.hello();
-          this.net.send({ type: "createRoom", roomName, track, difficulty });
+        onCreate: (roomName, track, difficulty) =>
+          this.enterRoom({ type: "createRoom", roomName, track, difficulty }),
+        onJoin: (roomId) => this.enterRoom({ type: "joinRoom", roomId }),
+        onReplay: (name, track, difficulty) => {
+          this.lobbyReplay = { name, track };
+          this.net.send({ type: "getReplay", name, track, difficulty });
         },
-        onJoin: (roomId) => {
-          this.hello();
-          this.net.send({ type: "joinRoom", roomId });
-        },
-        onReplay: (name, track, difficulty) =>
-          this.net.send({ type: "getReplay", name, track, difficulty }),
         onVariantChange: () => this.hello(),
         onNameChange: () => this.requestStandings(),
         onReferenceLap: () => {
@@ -63,20 +68,22 @@ export class RacingApp {
           if (lap) void this.openReplay(lap.name, lap.track, lap.timeMs, lap.frames, lap.variant);
         },
         onJevLap: () => void this.openJevLap(),
-        onDaily: () => {
-          this.hello();
-          this.net.send({ type: "joinDaily" });
-        },
+        onDaily: () => this.enterRoom({ type: "joinDaily" }),
       },
       this.sound.settings,
     );
     this.net.onMessage((message) => void this.receive(message));
     this.net.onStatus((state) => {
+      const wasConnected = this.connected;
+      this.connected = state === "connected";
       this.lobby.setConnection(state);
       if (state === "offline") {
-        this.returnToLobby();
-        this.scheduleReconnect("Connection lost.");
+        // Replays, the AI Record and the Jev Lap need no server and play on.
+        if (this.view instanceof Game || this.joining) this.returnToLobby();
+        // A connection that never opened is reported by start() instead.
+        if (wasConnected) this.scheduleReconnect("Connection lost.");
       }
+      this.paintStartable();
     });
     const loading = new LoadingScreen(root);
     let assetFailure = false;
@@ -112,7 +119,6 @@ export class RacingApp {
     this.notice = null;
     try {
       await this.net.connect(resolveServerUrl());
-      if (attempt === this.connectionAttempt) this.reconnectDelay = 1000;
     } catch (error) {
       if (
         attempt !== this.connectionAttempt ||
@@ -130,6 +136,23 @@ export class RacingApp {
     this.showError(`${message} Reconnecting automatically in ${delay / 1000} seconds.`, true);
     this.reconnectTimer = setTimeout(() => void this.start(), delay);
   }
+  /** Sends one createRoom, joinRoom or joinDaily at a time, answered by joined or error. */
+  private enterRoom(
+    message: Extract<ClientMessage, { type: "createRoom" | "joinRoom" | "joinDaily" }>,
+  ): void {
+    if (!this.connected || this.joining) return;
+    this.setJoining(true);
+    this.lobbyReplay = null;
+    this.hello();
+    this.net.send(message);
+  }
+  private setJoining(joining: boolean): void {
+    this.joining = joining;
+    this.paintStartable();
+  }
+  private paintStartable(): void {
+    this.lobby.setStartable(this.connected && !this.joining);
+  }
   private hello(): void {
     this.variant = this.lobby.selectedVariant;
     this.net.send({ type: "hello", name: this.lobby.playerName, variant: this.variant });
@@ -140,7 +163,7 @@ export class RacingApp {
   }
   private returnToLobby(): void {
     this.revision++;
-    this.joining = false;
+    this.setJoining(false);
     this.race = null;
     this.racePacers = [];
     this.view?.dispose();
@@ -150,6 +173,9 @@ export class RacingApp {
   private async receive(message: ServerMessage): Promise<void> {
     switch (message.type) {
       case "welcome":
+        // Only a server that got this far resets the backoff: one that accepts and
+        // drops every connection keeps being retried ever more slowly.
+        this.reconnectDelay = 1000;
         this.playerId = message.playerId;
         this.lobby.setRooms(message.rooms);
         this.lobby.setLeaderboard(message.leaderboard);
@@ -175,6 +201,8 @@ export class RacingApp {
         this.returnToLobby();
         return;
       case "error":
+        // How the server turns down a createRoom, joinRoom or joinDaily.
+        this.setJoining(false);
         this.showError(message.message);
         return;
       case "race":
@@ -185,21 +213,26 @@ export class RacingApp {
         this.racePacers = message.pacers;
         if (this.view instanceof Game) this.view.onMessage(message);
         return;
-      case "replay":
-        if (this.view instanceof Game)
+      case "replay": {
+        if (this.view instanceof Game) {
           this.view.receiveReplayFrames(message.frames, message.variant, message.name);
-        else if (!this.joining)
-          await this.openReplay(
-            message.name,
-            message.track,
-            message.timeMs,
-            message.frames,
-            message.variant,
-          );
+          return;
+        }
+        const asked = this.lobbyReplay;
+        if (asked?.name !== message.name || asked.track !== message.track) return;
+        this.lobbyReplay = null;
+        await this.openReplay(
+          message.name,
+          message.track,
+          message.timeMs,
+          message.frames,
+          message.variant,
+        );
         return;
+      }
       case "joined": {
         this.returnToLobby();
-        this.joining = true;
+        this.setJoining(true);
         const revision = this.revision;
         const choice = this.lobby.armedPacer;
         const pacer =
@@ -226,7 +259,7 @@ export class RacingApp {
             this.sound,
           );
           this.view = game;
-          this.joining = false;
+          this.setJoining(false);
           game.setStandings(this.lobby.standings);
           if (this.race) {
             game.onMessage({ type: "racePacers", pacers: this.racePacers });

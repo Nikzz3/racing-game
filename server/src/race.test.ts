@@ -10,7 +10,7 @@ import {
   type RacePacer,
   type ReplayFrame,
 } from "@racing/shared";
-import { gridPacers, Race } from "./race";
+import { gridPacers, MAX_LAP_MS, Race } from "./race";
 
 const CHECKPOINTS = SUNSET_RIDGE.checkpoints;
 const N = CHECKPOINTS.length;
@@ -105,6 +105,18 @@ describe("race", () => {
     ranked.leave("dan", GO + 22_000);
     drive(ranked, "dan", 9, GO + 23_000);
     expect(positions(ranked, GO + 30_000)).toEqual(["ava racing", "dan out", "cy out", "ben out"]);
+  });
+
+  it("puts a driver who stopped out once the race's time is up, so the Room drives again", () => {
+    const ranked = callRace("race", ["ava"]);
+    drive(ranked, "ava", 1, GO);
+    const end = GO + RACE_LAPS * MAX_LAP_MS;
+    expect(positions(ranked, end - 1)).toEqual(["ava racing"]);
+    expect(ranked.tick(end)).toMatchObject({
+      phase: "results",
+      entrants: [{ id: "ava", status: "out" }],
+    });
+    expect(ranked.tick(end + RESULTS_MS)).toBeNull();
   });
 });
 
