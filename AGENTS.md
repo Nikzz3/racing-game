@@ -28,6 +28,12 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 Playwright is the outside-in bookend and Vitest is the feature-development inner loop.
 See `docs/agents/e2e-testing.md` for suite conventions, commands, and growth rules.
 
+### Verifying changes
+
+Prove a client, server or shared change in the running game before calling it done, with the
+`verify-racing-game` skill. Which journeys to run per change and the report format:
+`docs/agents/verifying.md`.
+
 ### Worktrees
 
 T3 Code threads run in git worktrees; the setup action declared in `t3.json` (imported once
