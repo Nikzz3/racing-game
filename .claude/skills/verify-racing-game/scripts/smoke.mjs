@@ -115,9 +115,29 @@ const board = (name) =>
     [name],
   );
 
+// Today's Daily decides where the Rival ladder runs: a Daily lap on the same board would
+// compete with Ace for the Track Record and for being Slow's Rival.
+const DAY = `Day ${uid}`;
+const dailyBot = bot("daily", ["--name", DAY, "--daily"]);
+const dailyJoined = await dailyBot.until("joined").catch(() => null);
+const BOARD =
+  process.env.VERIFY_SMOKE_BOARD ??
+  (dailyJoined?.track === "sunset-ridge" && dailyJoined?.difficulty === "medium"
+    ? "arrowhead"
+    : "sunset-ridge");
+
 const ACE = `Ace ${uid}`;
 const acePersisted = (async () => {
-  const ace = bot("ace", ["--name", ACE, "--variant", "suv", "--create", `Rec ${uid}`]);
+  const ace = bot("ace", [
+    "--name",
+    ACE,
+    "--variant",
+    "suv",
+    "--create",
+    `Rec ${uid}`,
+    "--track",
+    BOARD,
+  ]);
   const lap = await ace.until("lap");
   expect((await ace.exit) === 0, "the drive bot's lap was not persisted");
   return lap;
@@ -135,12 +155,21 @@ await Promise.all([
 
   check("rival-ladder", "a slower driver's Standing names the faster one as Rival", async () => {
     // Started alongside Ace: at pace 0.8 it crosses the line seconds after Ace's lap is stored.
-    const slow = bot("slow", ["--name", `Slow ${uid}`, "--create", `Slow ${uid}`, "--pace", "0.8"]);
+    const slow = bot("slow", [
+      "--name",
+      `Slow ${uid}`,
+      "--create",
+      `Slow ${uid}`,
+      "--track",
+      BOARD,
+      "--pace",
+      "0.8",
+    ]);
     const aceLap = await acePersisted;
     const lap = await slow.until("lap");
     const { standings } = await slow.until("standings");
     expect(lap.lapTimeMs > aceLap.lapTimeMs, "the pace 0.8 lap was not slower than pace 1");
-    const standing = standings.find((s) => s.track === "sunset-ridge" && s.difficulty === "medium");
+    const standing = standings.find((s) => s.track === BOARD && s.difficulty === "medium");
     expect(standing?.rival?.name === ACE, `Rival is ${JSON.stringify(standing?.rival)}, not Ace`);
     return standing;
   }),
@@ -156,6 +185,8 @@ await Promise.all([
         `Ga ${uid}`,
         "--create",
         room,
+        "--track",
+        BOARD,
         "--mode",
         "warp",
         "--laps",
@@ -190,10 +221,10 @@ await Promise.all([
     "daily-board",
     "a lap in the Daily Room lands on the Daily Board and the all-time board",
     async () => {
-      const name = `Day ${uid}`;
-      const daily = bot("daily", ["--name", name, "--daily"]);
-      const joined = await daily.until("joined");
-      expect(joined.daily !== undefined, "joinDaily did not land in a Daily Room");
+      const name = DAY;
+      const daily = dailyBot;
+      const joined = dailyJoined;
+      expect(joined?.daily !== undefined, "joinDaily did not land in a Daily Room");
       expect((await daily.exit) === 0, "the Daily lap was not persisted");
       const rows = await sql("SELECT name FROM daily_laps WHERE name = $1", [name]);
       expect(rows.length === 1, `expected 1 daily_laps row, found ${rows.length}`);

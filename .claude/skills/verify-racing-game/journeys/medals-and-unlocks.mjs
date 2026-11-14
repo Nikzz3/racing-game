@@ -136,10 +136,6 @@ await journey("medals-and-unlocks", async (j) => {
     },
   );
 
-  // Same reasoning: A's reload fetches Standings within a second or two, long before this
-  // ~30 s lap persists, so the Bronze assertions stay deterministic.
-  const silver = medalBot(j, "silver", "1");
-
   await j.step(
     "reloaded: Bronze earned, Silver Next; the Coupe S unlocked, the Race still locked",
     async () => {
@@ -165,6 +161,10 @@ await journey("medals-and-unlocks", async (j) => {
     await j.expect(chip(a)).toContainText("NEXT · SILVER");
     await j.shot("a", "06-hud-bronze-next-silver");
   });
+
+  // Started only now: a Silver lap that persisted during the Bronze checks would overwrite the
+  // Bronze best they read.
+  const silver = medalBot(j, "silver", "1");
 
   await j.step("a second drive bot at full pace beats it (personal best)", async () => {
     const silverLap = await botLap(silver, "bot-silver");

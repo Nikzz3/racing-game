@@ -243,7 +243,8 @@ setInterval(() => {
   const now = performance.now();
   const elapsed = (now - previous) / 1000;
   previous = now;
-  if (Date.now() - started > Number(opt.timeout) * 1000)
+  // The timeout bounds the work, not a --stay after it.
+  if (finishedAt === null && Date.now() - started > Number(opt.timeout) * 1000)
     fail(`timed out after ${opt.timeout}s with ${laps}/${LAPS} laps`);
   if (!car || !joined) return;
 

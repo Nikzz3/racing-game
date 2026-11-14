@@ -141,6 +141,8 @@ cmd_run() {
 # no journey), driven by bots only. See scripts/smoke.mjs.
 cmd_smoke() {
   local port=$((SERVER_PORT + 5)) db="${DB_NAME}_smoke"
+  # Its own run directory: `down` on this slot removes the slot's, and may run meanwhile.
+  local RUN_DIR="$EVIDENCE_ROOT/.run/smoke$SLOT"
   if port_busy "$port"; then echo "verify: port $port is held; pick another VERIFY_SLOT" >&2; exit 1; fi
   [[ -d "$REPO/node_modules" ]] || { echo "verify: run 'npm ci' first" >&2; exit 1; }
   export VERIFY_SERVER_PORT=$port
@@ -155,8 +157,7 @@ cmd_smoke() {
   cp "$RUN_DIR/smoke.log" "$VERIFY_EVIDENCE_DIR/server.log"
   kill -TERM -- "-$(cat "$RUN_DIR/smoke.pid")" 2>/dev/null || true
   pg admin "$ADMIN_URL" "DROP DATABASE IF EXISTS $db WITH (FORCE)" || true
-  rm -f "$RUN_DIR/smoke.pid" "$RUN_DIR/smoke.log"
-  rmdir "$RUN_DIR" 2>/dev/null || true
+  rm -rf "$RUN_DIR"
   return "$code"
 }
 

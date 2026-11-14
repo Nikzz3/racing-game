@@ -379,7 +379,8 @@ await journey("controls-and-sound", async (j) => {
     const before = await speed(t);
     await touch(cdp, "touchStart", [{ id: 9, ...(await centreOf(brake)) }]);
     await j.expect(brake).toHaveClass(/\bpressed\b/);
-    await j.expect.poll(() => speed(t), slow).toBeLessThan(before / 2);
+    // Poll fast, as for the S key: held BRAKE takes the car through zero into reverse.
+    await j.expect.poll(() => speed(t), { ...slow, intervals: [50] }).toBeLessThan(before / 2);
     await touch(cdp, "touchEnd", []);
     await j.expect(brake).not.toHaveClass(/\bpressed\b/);
     await j.shot("t", "13-t-braked");
