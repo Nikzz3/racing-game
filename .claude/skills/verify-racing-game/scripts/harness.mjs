@@ -222,7 +222,10 @@ export async function journey(name, body) {
       const done = new Promise((resolve) =>
         child.once("close", (code) => {
           bots.delete(child);
-          for (const waiter of waiters) waiter({ event: "exit", code });
+          // Remembered like any event, so a wait that starts after the exit fails at once.
+          const exited = { event: "exit", code };
+          events.push(exited);
+          for (const waiter of waiters) waiter(exited);
           resolve(code);
         }),
       );
@@ -234,6 +237,13 @@ export async function journey(name, body) {
         until(eventName, pred = () => true, timeoutMs = 300_000) {
           const hit = events.find((e) => e.event === eventName && pred(e));
           if (hit) return Promise.resolve(hit);
+          const dead = events.find((e) => e.event === "error" || e.event === "exit");
+          if (dead)
+            return Promise.reject(
+              new Error(
+                `bot ${id} ${dead.message ?? `exited (code ${dead.code})`} before "${eventName}"`,
+              ),
+            );
           return new Promise((resolve, reject) => {
             const settle = (finish, value) => {
               clearTimeout(timer);

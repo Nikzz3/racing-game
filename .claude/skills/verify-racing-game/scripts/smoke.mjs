@@ -57,7 +57,10 @@ function bot(id, args) {
   });
   const exit = new Promise((resolve) =>
     child.once("close", (code) => {
-      publish({ event: "exit", code });
+      // Remembered like any event, so a wait that starts after the exit fails at once.
+      const exited = { event: "exit", code };
+      events.push(exited);
+      publish(exited);
       resolve(code);
     }),
   );
@@ -68,6 +71,11 @@ function bot(id, args) {
     until(name, pred = () => true) {
       const hit = events.find((e) => e.event === name && pred(e));
       if (hit) return Promise.resolve(hit);
+      const dead = events.find((e) => e.event === "error" || e.event === "exit");
+      if (dead)
+        return Promise.reject(
+          new Error(`bot ${id} ${dead.message ?? `exited (${dead.code})`} before ${name}`),
+        );
       return new Promise((resolve, reject) => {
         const waiter = (e) => {
           if (e.event === name && pred(e)) resolve(e);

@@ -1,6 +1,5 @@
 // features/records-and-replays.md — the Records tab, the AI Record and Jev Lap viewers,
 // and a human Replay of a lap a `drive` bot sets, all watched from the real build.
-import { readFileSync } from "node:fs";
 import { journey } from "../scripts/harness.mjs";
 import { openLobby, openSetupTab, uid } from "./lib.mjs";
 
@@ -25,13 +24,18 @@ await journey("records-and-replays", async (j) => {
   const jevLap = r.locator("button[data-jev-lap]");
   const row = records.locator(".lb-list li").filter({ hasText: DRIVER });
 
-  /** Two screenshots at least 2 s of playback apart; they must differ (the car and camera moved). */
+  /** The scene alone: the replay HUD and Jev's panel are masked, so their clocks cannot differ. */
+  const scene = () => r.screenshot({ mask: [r.locator(".replay-panel"), r.locator(".jev-panel")] });
+
+  /** Two frames at least 2 s of playback apart; the scene must differ (the car and camera moved). */
   async function provePlayback(prefix) {
     await j.expect.poll(() => elapsedMs(r)).toBeGreaterThan(0);
     const first = await elapsedMs(r);
-    const early = readFileSync(await j.shot("r", `${prefix}a-early`));
+    const early = await scene();
+    await j.shot("r", `${prefix}a-early`);
     await j.expect.poll(() => elapsedMs(r)).toBeGreaterThan(first + 2_000);
-    const late = readFileSync(await j.shot("r", `${prefix}b-later`));
+    const late = await scene();
+    await j.shot("r", `${prefix}b-later`);
     j.note(`playback clock advanced from ${first} ms to ${await elapsedMs(r)} ms`);
     j.expect(early.equals(late)).toBe(false);
   }

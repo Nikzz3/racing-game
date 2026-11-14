@@ -179,8 +179,14 @@ cmd_all() {
 
 cmd_one() { # slot journey — one line of cmd_all
   local slot=$1 journey=$2 out="$EVIDENCE_ROOT/.all/$2.log" code=0 t=$SECONDS
-  { VERIFY_SLOT=$slot "$0" up && VERIFY_SLOT=$slot "$0" run "$journey"; } >"$out" 2>&1 || code=$?
-  VERIFY_SLOT=$slot "$0" down >>"$out" 2>&1 || true
+  # Only tear down a slot this call brought up: a refused `up` means someone else's instance
+  # holds it, and a failed start has already cleaned up after itself.
+  if VERIFY_SLOT=$slot "$0" up >"$out" 2>&1; then
+    VERIFY_SLOT=$slot "$0" run "$journey" >>"$out" 2>&1 || code=$?
+    VERIFY_SLOT=$slot "$0" down >>"$out" 2>&1 || true
+  else
+    code=1
+  fi
   if ((code == 0)); then echo "ok   $journey ($((SECONDS - t)) s)"; else echo "FAIL $journey ($((SECONDS - t)) s) — see $out"; fi
   return "$code"
 }
