@@ -27,3 +27,4 @@ desktop/release/
 
 # npm run track:check output (drive reports and their images).
 track-reports/
+reports/verify/
