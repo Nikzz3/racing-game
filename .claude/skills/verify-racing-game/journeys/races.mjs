@@ -259,6 +259,8 @@ await journey("races", async (j) => {
       j.expect(statuses).toEqual(["finished", "out"]);
       const aOut = (race) =>
         race?.format === "knockout" && race.entrants.find((e) => e.name === A)?.status === "out";
+      // The bots' stdout can beat A's own WebSocket frames: wait for A to be told.
+      await j.expect.poll(() => races("a").some(aOut)).toBe(true);
       const out = races("a").find(aOut);
       j.json("knockout-a-out-state", out);
       j.expect(out).toMatchObject({ format: "knockout", laps: 2, phase: "racing" });

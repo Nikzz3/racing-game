@@ -69,12 +69,11 @@ await journey("rooms", async (j) => {
   });
 
   await j.step("the Room row is persisted", async () => {
-    const rows = await j.sql(
-      "SELECT id, name, track, difficulty, created_at FROM rooms WHERE name = $1",
-      [ROOM],
-    );
-    j.json("db-rooms", rows);
-    j.expect(rows).toHaveLength(1);
+    // The server does not await the INSERT before answering, so wait for the row.
+    const read = () =>
+      j.sql("SELECT id, name, track, difficulty, created_at FROM rooms WHERE name = $1", [ROOM]);
+    await j.expect.poll(async () => (await read()).length).toBe(1);
+    j.json("db-rooms", await read());
   });
 
   await j.step(
